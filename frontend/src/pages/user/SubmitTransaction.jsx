@@ -140,7 +140,7 @@ export default function SubmitTransaction() {
   if (loading) return <div className="loading">Loading inventory…</div>;
 
   return (
-    <div className="submit-transaction-page">
+    <div className="page submit-transaction-page">
       <h1>Submit Adjustment</h1>
 
       {successMessage && (
@@ -174,14 +174,17 @@ export default function SubmitTransaction() {
 
         {/* Specification */}
         <div className="form-group">
-          <label htmlFor="spec-select">Specification (mg)</label>
+          <label htmlFor="spec-select">
+            Specification ({selectedType === 'VIAL' ? 'mg/ml' : 'mg'})
+          </label>
           <select id="spec-select" value={selectedSpec}
             disabled={!selectedType}
             onChange={(e) => { setSelectedSpec(e.target.value); setQuantity(''); }}>
             <option value="">-- Select Specification --</option>
-            {specOptions.map((s) => (
-              <option key={s} value={String(s)}>{s} mg</option>
-            ))}
+            {specOptions.map((s) => {
+              const unit = selectedType === 'VIAL' ? 'mg/ml' : 'mg';
+              return <option key={s} value={String(s)}>{s} {unit}</option>;
+            })}
           </select>
         </div>
 
