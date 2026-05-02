@@ -95,6 +95,50 @@ async function run() {
     assert(r.status === 401, `Expected 401, got ${r.status}`);
   });
 
+  // CORS — simulate browser cross-origin requests from the frontend origin.
+  // Node.js fetch does not enforce CORS, but the server must return the
+  // correct headers; otherwise browsers will block the response even when
+  // the backend returns 200.
+  console.log('\n-- CORS (browser origin simulation)');
+  await test('Preflight OPTIONS from frontend origin returns 200', async () => {
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': FRONTEND,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type',
+      },
+    });
+    assert(res.status === 200 || res.status === 204, `Expected 200/204, got ${res.status}`);
+    const acao = res.headers.get('access-control-allow-origin');
+    assert(acao === FRONTEND || acao === '*', `ACAO header: ${acao}`);
+  });
+  await test('Admin login with frontend Origin header returns ACAO header', async () => {
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': FRONTEND,
+      },
+      body: JSON.stringify({ username: 'admin', password: 'Admin@123' }),
+    });
+    const acao = res.headers.get('access-control-allow-origin');
+    assert(res.status === 200, `Login status: ${res.status}`);
+    assert(acao === FRONTEND || acao === '*', `ACAO header missing or wrong: "${acao}"`);
+  });
+  await test('Backend rejects cross-origin from unknown origin', async () => {
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': 'https://evil.example.com',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type',
+      },
+    });
+    const acao = res.headers.get('access-control-allow-origin');
+    assert(acao !== 'https://evil.example.com', `Should not allow evil origin, got ACAO: ${acao}`);
+  });
+
   // Protected routes
   console.log('\n-- Protected Routes');
   await test('Admin-only endpoint rejects no token (401/403)', async () => {
