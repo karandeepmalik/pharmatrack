@@ -1,0 +1,80 @@
+# ── PostgreSQL StatefulSet ─────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: pharmatrack
+type: Opaque
+stringData:
+  POSTGRES_DB:       pharma_inventory
+  POSTGRES_USER:     pharma
+  POSTGRES_PASSWORD: CHANGE_ME   # replace with base64-encoded value
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: pharmatrack
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: pharmatrack
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests: { memory: 256Mi, cpu: 250m }
+            limits:   { memory: 512Mi, cpu: 500m }
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, pharma, -d, pharma_inventory]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, pharma, -d, pharma_inventory]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: pharmatrack
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  clusterIP: None   # headless for StatefulSet DNS

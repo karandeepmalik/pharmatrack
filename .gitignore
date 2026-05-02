@@ -1,0 +1,20 @@
+# Frontend
+frontend/node_modules/
+frontend/build/
+frontend/.env.local
+frontend/.env.production
+frontend/.env.*.local
+
+# Backend
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+!backend/.mvn/wrapper/maven-wrapper.properties
+
+# General
+.DS_Store
+*.log
+.env
+*.class
+
+# E2E tests
+e2e/node_modules/

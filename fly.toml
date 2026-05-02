@@ -1,0 +1,65 @@
+# ─────────────────────────────────────────────────────────────────────
+#  PharmaTrack — Fly.io Deployment
+#  https://fly.io/docs/
+#
+#  Setup:
+#    brew install flyctl
+#    fly auth login
+#    fly launch --no-deploy          # first time: creates app in Fly
+#    fly postgres create             # provision managed Postgres
+#    fly postgres attach pharmatrack-db
+#    fly secrets set JWT_SECRET=$(openssl rand -base64 64)
+#    fly deploy
+# ─────────────────────────────────────────────────────────────────────
+
+# ── Backend app ───────────────────────────────────────────────────────
+app    = "pharmatrack-backend"
+primary_region = "ord"          # Chicago — change to nearest: lhr, fra, sin, syd
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https   = true
+  auto_stop_machines  = true
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type       = "requests"
+    hard_limit = 200
+    soft_limit = 150
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"
+
+[env]
+  DDL_AUTO              = "update"
+  LOG_LEVEL             = "WARN"
+  SERVER_PORT           = "8080"
+  SPRING_PROFILES_ACTIVE = "prod"
+  # DATABASE_URL is auto-set by `fly postgres attach`
+  # JWT_SECRET must be set via: fly secrets set JWT_SECRET=...
+
+[[services.ports]]
+  port     = 443
+  handlers = ["tls", "http"]
+
+[[services.ports]]
+  port     = 80
+  handlers = ["http"]
+
+[[services.http_checks]]
+  interval       = "15s"
+  timeout        = "5s"
+  grace_period   = "60s"
+  method         = "GET"
+  path           = "/actuator/health"
+  protocol       = "http"
+  tls_skip_verify = false
+
+[deploy]
+  strategy = "rolling"

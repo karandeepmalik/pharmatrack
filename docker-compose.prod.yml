@@ -1,0 +1,72 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────
+#  PharmaTrack — Production Overrides
+#  Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+#  All secrets MUST be supplied via environment variables or a .env file.
+#  Never commit real credentials to version control.
+# ─────────────────────────────────────────────────────────────────────
+
+services:
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB}
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: []                          # not exposed — internal only
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    deploy:
+      resources:
+        limits:   { cpus: "1.0", memory: 512M }
+        reservations: { memory: 256M }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  backend:
+    restart: always
+    environment:
+      DDL_AUTO:    validate        # never auto-migrate in prod; use Flyway/Liquibase
+      LOG_LEVEL:   WARN
+      SPRING_PROFILES_ACTIVE: prod
+    ports: []                          # not exposed — proxied through frontend
+    deploy:
+      replicas: 2
+      resources:
+        limits:   { cpus: "1.0", memory: 768M }
+        reservations: { memory: 384M }
+      update_config:
+        parallelism: 1
+        delay: 15s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  frontend:
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/docker/ssl:/etc/nginx/ssl:ro   # mount TLS certs in prod
+    deploy:
+      resources:
+        limits:   { cpus: "0.5", memory: 128M }
+        reservations: { memory: 64M }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  postgres_data:
+    driver: local

@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────
+#  PharmaTrack — Railway Deployment Configuration
+#  https://railway.app/
+#
+#  Setup:
+#    1. railway init          (first time only)
+#    2. railway add postgres  (provision managed PostgreSQL)
+#    3. railway up            (deploy both services)
+# ─────────────────────────────────────────────────────────────────────
+
+[build]
+builder = "dockerfile"
+
+# ── Backend service ───────────────────────────────────────────────────
+[[services]]
+name        = "backend"
+source      = "backend"
+dockerfile  = "backend/Dockerfile"
+
+[services.deploy]
+startCommand  = "java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -jar app.jar"
+healthcheckPath = "/actuator/health"
+healthcheckTimeout = 60
+restartPolicyType  = "on_failure"
+restartPolicyMaxRetries = 3
+
+[services.variables]
+# DATABASE_URL is auto-injected by Railway's Postgres plugin as ${{Postgres.DATABASE_URL}}
+# Map it to the variable Spring Boot expects:
+DB_URL                = "${{Postgres.DATABASE_URL}}"
+JWT_SECRET            = "${{JWT_SECRET}}"
+JWT_EXPIRATION_MS     = "86400000"
+CORS_ORIGINS          = "${{RAILWAY_PUBLIC_DOMAIN}}"
+DDL_AUTO              = "update"
+LOG_LEVEL             = "WARN"
+SPRING_PROFILES_ACTIVE = "prod"
+
+# ── Frontend service ──────────────────────────────────────────────────
+[[services]]
+name        = "frontend"
+source      = "frontend"
+dockerfile  = "frontend/Dockerfile"
+
+[services.deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 10
+
+[services.variables]
+# The Nginx proxy target — Railway internal DNS resolves service names
+BACKEND_URL = "http://backend:8080"

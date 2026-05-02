@@ -1,0 +1,12 @@
+package com.pharma.inventory.repository;
+import com.pharma.inventory.entity.Inventory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import java.util.List;
+import java.util.Optional;
+public interface InventoryRepository extends JpaRepository<Inventory,Long> {
+    Optional<Inventory> findByUserIdAndMedicineId(Long userId, Long medicineId);
+    @Query("SELECT i FROM Inventory i JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany WHERE i.user.id=:userId AND i.quantity>0")
+    List<Inventory> findAvailableByUserId(Long userId);
+    List<Inventory> findByUserId(Long userId);
+}

@@ -1,0 +1,9 @@
+{
+  "name": "pharmatrack-e2e",
+  "version": "1.0.0",
+  "description": "E2E authentication tests for PharmaTrack",
+  "scripts": {
+    "test": "node auth.test.js"
+  },
+  "engines": { "node": ">=18" }
+}

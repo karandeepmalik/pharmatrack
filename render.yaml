@@ -1,0 +1,70 @@
+# ─────────────────────────────────────────────────────────────────────
+#  PharmaTrack — Render Deployment Blueprint
+#  https://render.com/docs/blueprint-spec
+#
+#  Setup:
+#    1. Push this repo to GitHub
+#    2. In Render dashboard → "New Blueprint" → connect your repo
+#    3. Render reads this file and provisions all services automatically
+# ─────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Spring Boot Backend ──────────────────────────────────────────────
+  - type: web
+    name: pharmatrack-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext:   ./backend
+    plan: starter           # starter | standard | pro
+    region: oregon          # oregon | frankfurt | singapore | ohio
+    branch: main
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+
+    envVars:
+      - key:   DB_URL
+        fromDatabase:
+          name: pharmatrack-db
+          property: connectionString
+      - key:   JWT_SECRET
+        generateValue: true      # Render auto-generates a secure random value
+      - key:   JWT_EXPIRATION_MS
+        value: "86400000"
+      - key:   CORS_ORIGINS
+        fromService:
+          name:     pharmatrack-frontend
+          type:     web
+          property: host
+      - key:   DDL_AUTO
+        value: update
+      - key:   LOG_LEVEL
+        value: WARN
+
+  # ── React / Nginx Frontend ───────────────────────────────────────────
+  - type: web
+    name: pharmatrack-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext:   ./frontend
+    plan: starter
+    region: oregon
+    branch: main
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      - key:   BACKEND_URL
+        fromService:
+          name:     pharmatrack-backend
+          type:     web
+          property: host
+
+# ── Managed PostgreSQL ───────────────────────────────────────────────
+databases:
+  - name: pharmatrack-db
+    databaseName: pharma_inventory
+    user:         pharma
+    plan: starter
+    region: oregon
+    postgresMajorVersion: "15"

@@ -1,0 +1,84 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────
+#  PharmaTrack — Local Development Stack
+#  Usage: docker compose up --build
+# ─────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: pharma-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-pharma_inventory}
+      POSTGRES_USER:     ${POSTGRES_USER:-pharma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pharma}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pharma} -d ${POSTGRES_DB:-pharma_inventory}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - pharma-net
+
+  # ── Spring Boot Backend ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pharma-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL:          jdbc:postgresql://postgres:5432/${POSTGRES_DB:-pharma_inventory}
+      DB_USERNAME:     ${POSTGRES_USER:-pharma}
+      DB_PASSWORD:     ${POSTGRES_PASSWORD:-pharma}
+      JWT_SECRET:      ${JWT_SECRET:-dev-secret-change-in-production-32chars}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      CORS_ORIGINS:    ${CORS_ORIGINS:-http://localhost:80,http://localhost:3000}
+      DDL_AUTO:        ${DDL_AUTO:-update}
+      LOG_LEVEL:       ${LOG_LEVEL:-INFO}
+      SERVER_PORT:     8080
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - pharma-net
+
+  # ── React Frontend (Nginx) ───────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pharma-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - pharma-net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  pharma-net:
+    driver: bridge
