@@ -6,6 +6,8 @@ import Login from './components/Login';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AddInventory from './pages/admin/AddInventory';
 import ApproveTransactions from './pages/admin/ApproveTransactions';
+import AdminInventory from './pages/admin/AdminInventory';
+import ManageUsers from './pages/admin/ManageUsers';
 import UserDashboard from './pages/user/UserDashboard';
 import SubmitTransaction from './pages/user/SubmitTransaction';
 import MyTransactions from './pages/user/MyTransactions';
@@ -16,6 +18,8 @@ export default function App(){
         <Route path="/admin/dashboard" element={<ProtectedRoute adminOnly><AdminDashboard/></ProtectedRoute>}/>
         <Route path="/admin/add-inventory" element={<ProtectedRoute adminOnly><AddInventory/></ProtectedRoute>}/>
         <Route path="/admin/transactions" element={<ProtectedRoute adminOnly><ApproveTransactions/></ProtectedRoute>}/>
+        <Route path="/admin/inventory" element={<ProtectedRoute adminOnly><AdminInventory/></ProtectedRoute>}/>
+        <Route path="/admin/users" element={<ProtectedRoute adminOnly><ManageUsers/></ProtectedRoute>}/>
         <Route path="/user/dashboard" element={<ProtectedRoute><UserDashboard/></ProtectedRoute>}/>
         <Route path="/user/submit" element={<ProtectedRoute><SubmitTransaction/></ProtectedRoute>}/>
         <Route path="/user/transactions" element={<ProtectedRoute><MyTransactions/></ProtectedRoute>}/>

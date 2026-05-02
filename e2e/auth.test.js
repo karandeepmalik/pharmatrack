@@ -154,6 +154,98 @@ async function run() {
     assert(r.status === 200, `Expected 200, got ${r.status}`);
   });
 
+  // Admin: Inventory view
+  console.log('\n-- Admin: Inventory View');
+  await test('Admin can list all inventory', async () => {
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(Array.isArray(r.data), 'Expected array');
+    assert(r.data.length > 0, 'Expected at least one inventory record');
+  });
+  await test('Inventory records have expected fields', async () => {
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    const item = r.data[0];
+    assert(item.username !== undefined, 'Missing username');
+    assert(item.medicineName !== undefined, 'Missing medicineName');
+    assert(item.quantity !== undefined, 'Missing quantity');
+    assert(item.pharmaName !== undefined, 'Missing pharmaName');
+  });
+  await test('User cannot access admin inventory endpoint', async () => {
+    const r = await apiGet(`${API}/inventory`, userToken);
+    assert(r.status === 403, `Expected 403, got ${r.status}`);
+  });
+
+  // Admin: User management
+  console.log('\n-- Admin: User Management');
+  await test('Admin can list all users', async () => {
+    const r = await apiGet(`${API}/users`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(Array.isArray(r.data), 'Expected array');
+    assert(r.data.length >= 3, `Expected at least 3 seeded users, got ${r.data.length}`);
+  });
+  await test('User list includes expected fields', async () => {
+    const r = await apiGet(`${API}/users`, adminToken);
+    const u = r.data[0];
+    assert(u.username !== undefined, 'Missing username');
+    assert(u.fullName !== undefined, 'Missing fullName');
+    assert(u.role !== undefined, 'Missing role');
+    assert(u.active !== undefined, 'Missing active');
+  });
+  await test('Non-admin cannot list users (403)', async () => {
+    const r = await apiGet(`${API}/users`, userToken);
+    assert(r.status === 403, `Expected 403, got ${r.status}`);
+  });
+
+  const testUsername = `e2e_user_${Date.now()}`;
+  let createdUserId;
+  await test('Admin can create a new user', async () => {
+    const r = await apiPost(`${API}/users`, {
+      username: testUsername,
+      email: `${testUsername}@e2e.test`,
+      fullName: 'E2E Test User',
+      password: 'TestPass1!',
+      role: 'USER',
+    }, adminToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.username === testUsername, `Got: ${r.data.username}`);
+    assert(r.data.role === 'USER', `Got role: ${r.data.role}`);
+    createdUserId = r.data.id;
+  });
+  await test('Newly created user can log in', async () => {
+    const r = await apiPost(`${API}/auth/login`, { username: testUsername, password: 'TestPass1!' });
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.token && r.data.token.length > 20, 'Expected valid token');
+  });
+  await test('Admin cannot create user with duplicate username', async () => {
+    const r = await apiPost(`${API}/users`, {
+      username: testUsername,
+      email: `other_${testUsername}@e2e.test`,
+      fullName: 'Duplicate',
+      password: 'TestPass1!',
+      role: 'USER',
+    }, adminToken);
+    assert(r.status === 400 || r.status === 409, `Expected 4xx, got ${r.status}`);
+  });
+  await test('Non-admin cannot create a user (403)', async () => {
+    const r = await apiPost(`${API}/users`, {
+      username: 'shouldfail',
+      email: 'shouldfail@test.com',
+      fullName: 'Should Fail',
+      password: 'TestPass1!',
+    }, userToken);
+    assert(r.status === 403, `Expected 403, got ${r.status}`);
+  });
+  await test('Admin can toggle user active status', async () => {
+    assert(createdUserId, 'No createdUserId — create test must have passed');
+    const r = await apiPost(`${API}/users/${createdUserId}/toggle`, {}, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(r.data.active === false, `Expected active=false, got ${r.data.active}`);
+  });
+  await test('Deactivated user cannot log in', async () => {
+    const r = await apiPost(`${API}/auth/login`, { username: testUsername, password: 'TestPass1!' });
+    assert(r.status === 401, `Expected 401 for deactivated user, got ${r.status}`);
+  });
+
   // Summary
   console.log(`\n${'='.repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);

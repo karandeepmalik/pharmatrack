@@ -25,7 +25,7 @@ public class AuthController {
             String token=jwtService.generateToken(ud.getUsername());
             var user=userRepo.findByUsername(req.getUsername()).orElseThrow();
             return ResponseEntity.ok(new AuthResponse(token,user.getUsername(),user.getFullName(),user.getRole().name()));
-        } catch(BadCredentialsException|InternalAuthenticationServiceException|UsernameNotFoundException e) {
+        } catch(BadCredentialsException|DisabledException|LockedException|InternalAuthenticationServiceException|UsernameNotFoundException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
         }
     }

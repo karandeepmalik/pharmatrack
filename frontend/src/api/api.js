@@ -76,8 +76,10 @@ export const getAllTransactions  = ()           => api.get('/transactions');
 export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/approve`, data);
 
 // ── Users ──────────────────────────────────────────────────────────────
-export const getUsers      = ()           => api.get('/users');
-export const updateUser    = (id, data)   => api.put(`/users/${id}`, data);
-export const changePassword = (data)      => api.put('/users/me/password', data);
+export const getUsers       = ()           => api.get('/users');
+export const createUser     = (data)       => api.post('/users', data);
+export const toggleUser     = (id)         => api.post(`/users/${id}/toggle`);
+export const updateUser     = (id, data)   => api.put(`/users/${id}`, data);
+export const changePassword = (data)       => api.put('/users/me/password', data);
 
 export default api;
