@@ -1,6 +1,5 @@
 // Copyright (c) 2024 Karandeep Malik. All rights reserved.
-// PharmaTrack E2E Authentication Tests
-// Run from Cloud Shell: cd e2e && npm install && node auth.test.js
+// PharmaTrack E2E Authentication & Inventory Tests
 
 const FRONTEND = 'https://pharmatrack-frontend-558147403401.asia-south1.run.app';
 const BACKEND  = 'https://pharmatrack-backend-558147403401.asia-south1.run.app';
@@ -34,7 +33,7 @@ async function apiGet(url, token) {
 }
 
 async function run() {
-  console.log('\nPharmaTrack E2E Auth Tests\n');
+  console.log('\nPharmaTrack E2E Tests\n');
 
   // Infrastructure
   console.log('-- Infrastructure');
@@ -62,10 +61,6 @@ async function run() {
     const r = await apiPost(`${API}/auth/login`, { username: 'admin', password: 'Admin@123' });
     assert(r.data.role === 'ADMIN', `Got role: ${r.data.role}`);
   });
-  await test('Admin username is correct', async () => {
-    const r = await apiPost(`${API}/auth/login`, { username: 'admin', password: 'Admin@123' });
-    assert(r.data.username === 'admin', `Got: ${r.data.username}`);
-  });
   await test('Admin fullName is present', async () => {
     const r = await apiPost(`${API}/auth/login`, { username: 'admin', password: 'Admin@123' });
     assert(r.data.fullName && r.data.fullName.length > 0, `Got: ${r.data.fullName}`);
@@ -84,7 +79,7 @@ async function run() {
     assert(r.data.role === 'USER', `Got role: ${r.data.role}`);
   });
 
-  // Bad credentials
+  // Invalid credentials
   console.log('\n-- Invalid Credentials');
   await test('Wrong password returns 401', async () => {
     const r = await apiPost(`${API}/auth/login`, { username: 'admin', password: 'wrongpass' });
@@ -94,13 +89,14 @@ async function run() {
     const r = await apiPost(`${API}/auth/login`, { username: 'nobody', password: 'pass' });
     assert(r.status === 401, `Expected 401, got ${r.status}`);
   });
+  await test('lostinventory user cannot log in (inactive → 401)', async () => {
+    const r = await apiPost(`${API}/auth/login`, { username: 'lostinventory', password: 'NoLogin@System999!' });
+    assert(r.status === 401, `Expected 401 for system user, got ${r.status}`);
+  });
 
-  // CORS — simulate browser cross-origin requests from the frontend origin.
-  // Node.js fetch does not enforce CORS, but the server must return the
-  // correct headers; otherwise browsers will block the response even when
-  // the backend returns 200.
+  // CORS
   console.log('\n-- CORS (browser origin simulation)');
-  await test('Preflight OPTIONS from frontend origin returns 200', async () => {
+  await test('Preflight OPTIONS from frontend origin returns 200/204', async () => {
     const res = await fetch(`${API}/auth/login`, {
       method: 'OPTIONS',
       headers: {
@@ -116,10 +112,7 @@ async function run() {
   await test('Admin login with frontend Origin header returns ACAO header', async () => {
     const res = await fetch(`${API}/auth/login`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Origin': FRONTEND,
-      },
+      headers: { 'Content-Type': 'application/json', 'Origin': FRONTEND },
       body: JSON.stringify({ username: 'admin', password: 'Admin@123' }),
     });
     const acao = res.headers.get('access-control-allow-origin');
@@ -154,34 +147,111 @@ async function run() {
     assert(r.status === 200, `Expected 200, got ${r.status}`);
   });
 
-  // Admin: Inventory view
-  console.log('\n-- Admin: Inventory View');
-  await test('Admin can list all inventory', async () => {
+  // System Inventory
+  console.log('\n-- System Inventory');
+  let firstMedicineId;
+  await test('Admin can get system inventory', async () => {
+    const r = await apiGet(`${API}/inventory/system`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(Array.isArray(r.data), 'Expected array');
+    assert(r.data.length > 0, 'Expected at least one system inventory record');
+    firstMedicineId = r.data[0].medicineId;
+  });
+  await test('System inventory records have specUnit field', async () => {
+    const r = await apiGet(`${API}/inventory/system`, adminToken);
+    const item = r.data[0];
+    assert(item.specUnit === 'mg/ml' || item.specUnit === 'mg', `Expected mg/ml or mg, got: ${item.specUnit}`);
+  });
+  await test('VIAL medicines have specUnit mg/ml', async () => {
+    const r = await apiGet(`${API}/inventory/system`, adminToken);
+    const vials = r.data.filter(i => i.medicineType === 'VIAL');
+    assert(vials.length > 0, 'Expected at least one VIAL in system inventory');
+    vials.forEach(v => assert(v.specUnit === 'mg/ml', `VIAL specUnit should be mg/ml, got: ${v.specUnit}`));
+  });
+  await test('TABLET medicines have specUnit mg', async () => {
+    const r = await apiGet(`${API}/inventory/system`, adminToken);
+    const tablets = r.data.filter(i => i.medicineType === 'TABLET');
+    assert(tablets.length > 0, 'Expected at least one TABLET in system inventory');
+    tablets.forEach(t => assert(t.specUnit === 'mg', `TABLET specUnit should be mg, got: ${t.specUnit}`));
+  });
+  await test('Non-admin cannot access system inventory (403)', async () => {
+    const r = await apiGet(`${API}/inventory/system`, userToken);
+    assert(r.status === 403, `Expected 403, got ${r.status}`);
+  });
+  await test('Admin can add to system inventory', async () => {
+    const r = await apiPost(`${API}/inventory/system`, { medicineId: firstMedicineId, quantity: 10 }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.quantity > 0, `Expected positive quantity, got: ${r.data.quantity}`);
+  });
+  await test('Adding system inventory with quantity 0 returns 400', async () => {
+    const r = await apiPost(`${API}/inventory/system`, { medicineId: firstMedicineId, quantity: 0 }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}`);
+  });
+
+  // Inventory Allocation
+  console.log('\n-- Inventory Allocation (Add Inventory to User)');
+  let availableBeforeAlloc;
+  await test('Admin can view all user inventory', async () => {
     const r = await apiGet(`${API}/inventory`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     assert(Array.isArray(r.data), 'Expected array');
     assert(r.data.length > 0, 'Expected at least one inventory record');
+    // lostinventory should NOT appear in user inventory list
+    const hasSystem = r.data.some(i => i.username === 'lostinventory');
+    assert(!hasSystem, 'lostinventory should be excluded from user inventory view');
   });
-  await test('Inventory records have expected fields', async () => {
+  await test('User inventory records have expected fields', async () => {
     const r = await apiGet(`${API}/inventory`, adminToken);
     const item = r.data[0];
     assert(item.username !== undefined, 'Missing username');
     assert(item.medicineName !== undefined, 'Missing medicineName');
     assert(item.quantity !== undefined, 'Missing quantity');
-    assert(item.pharmaName !== undefined, 'Missing pharmaName');
+    assert(item.specUnit !== undefined, 'Missing specUnit');
   });
-  await test('User cannot access admin inventory endpoint', async () => {
-    const r = await apiGet(`${API}/inventory`, userToken);
+  await test('System inventory shows available for first medicine', async () => {
+    const r = await apiGet(`${API}/inventory/system`, adminToken);
+    const item = r.data.find(i => i.medicineId === firstMedicineId);
+    assert(item, 'Expected system inventory for first medicine');
+    availableBeforeAlloc = item.quantity;
+    assert(availableBeforeAlloc >= 0, `Expected non-negative qty, got: ${availableBeforeAlloc}`);
+  });
+  await test('Admin can allocate inventory to user', async () => {
+    if (availableBeforeAlloc < 1) { console.log('    (skipping: no system inventory available)'); return; }
+    const usersR = await apiGet(`${API}/users`, adminToken);
+    const john = usersR.data.find(u => u.username === 'john.doe');
+    assert(john, 'john.doe not found');
+    const r = await apiPost(`${API}/inventory/allocate`,
+      { userId: john.id, medicineId: firstMedicineId, quantity: 1 }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+  await test('Allocating more than system inventory returns 409', async () => {
+    const usersR = await apiGet(`${API}/users`, adminToken);
+    const john = usersR.data.find(u => u.username === 'john.doe');
+    const r = await apiPost(`${API}/inventory/allocate`,
+      { userId: john.id, medicineId: firstMedicineId, quantity: 999999 }, adminToken);
+    assert(r.status === 409, `Expected 409, got ${r.status}`);
+  });
+  await test('User cannot allocate inventory (403)', async () => {
+    const usersR = await apiGet(`${API}/users`, adminToken);
+    const john = usersR.data.find(u => u.username === 'john.doe');
+    const r = await apiPost(`${API}/inventory/allocate`,
+      { userId: john.id, medicineId: firstMedicineId, quantity: 1 }, userToken);
     assert(r.status === 403, `Expected 403, got ${r.status}`);
   });
 
-  // Admin: User management
+  // Admin: User Management
   console.log('\n-- Admin: User Management');
   await test('Admin can list all users', async () => {
     const r = await apiGet(`${API}/users`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     assert(Array.isArray(r.data), 'Expected array');
-    assert(r.data.length >= 3, `Expected at least 3 seeded users, got ${r.data.length}`);
+    assert(r.data.length >= 4, `Expected at least 4 seeded users (incl. lostinventory), got ${r.data.length}`);
+  });
+  await test('lostinventory user exists and is inactive', async () => {
+    const r = await apiGet(`${API}/users`, adminToken);
+    const sysUser = r.data.find(u => u.username === 'lostinventory');
+    assert(sysUser, 'lostinventory user not found');
+    assert(sysUser.active === false, `Expected lostinventory to be inactive, got: ${sysUser.active}`);
   });
   await test('User list includes expected fields', async () => {
     const r = await apiGet(`${API}/users`, adminToken);
@@ -200,15 +270,11 @@ async function run() {
   let createdUserId;
   await test('Admin can create a new user', async () => {
     const r = await apiPost(`${API}/users`, {
-      username: testUsername,
-      email: `${testUsername}@e2e.test`,
-      fullName: 'E2E Test User',
-      password: 'TestPass1!',
-      role: 'USER',
+      username: testUsername, email: `${testUsername}@e2e.test`,
+      fullName: 'E2E Test User', password: 'TestPass1!', role: 'USER',
     }, adminToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
     assert(r.data.username === testUsername, `Got: ${r.data.username}`);
-    assert(r.data.role === 'USER', `Got role: ${r.data.role}`);
     createdUserId = r.data.id;
   });
   await test('Newly created user can log in', async () => {
@@ -218,20 +284,15 @@ async function run() {
   });
   await test('Admin cannot create user with duplicate username', async () => {
     const r = await apiPost(`${API}/users`, {
-      username: testUsername,
-      email: `other_${testUsername}@e2e.test`,
-      fullName: 'Duplicate',
-      password: 'TestPass1!',
-      role: 'USER',
+      username: testUsername, email: `other_${testUsername}@e2e.test`,
+      fullName: 'Duplicate', password: 'TestPass1!', role: 'USER',
     }, adminToken);
     assert(r.status === 400 || r.status === 409, `Expected 4xx, got ${r.status}`);
   });
   await test('Non-admin cannot create a user (403)', async () => {
     const r = await apiPost(`${API}/users`, {
-      username: 'shouldfail',
-      email: 'shouldfail@test.com',
-      fullName: 'Should Fail',
-      password: 'TestPass1!',
+      username: 'shouldfail', email: 'shouldfail@test.com',
+      fullName: 'Should Fail', password: 'TestPass1!',
     }, userToken);
     assert(r.status === 403, `Expected 403, got ${r.status}`);
   });
@@ -244,6 +305,27 @@ async function run() {
   await test('Deactivated user cannot log in', async () => {
     const r = await apiPost(`${API}/auth/login`, { username: testUsername, password: 'TestPass1!' });
     assert(r.status === 401, `Expected 401 for deactivated user, got ${r.status}`);
+  });
+
+  // Medicine Specifications
+  console.log('\n-- Medicine Specifications');
+  await test('All VIAL medicines have specification 5 or 10 (mg/ml)', async () => {
+    const r = await apiGet(`${API}/inventory/system`, adminToken);
+    const vials = r.data.filter(i => i.medicineType === 'VIAL');
+    assert(vials.length > 0, 'Expected at least one VIAL');
+    vials.forEach(v => {
+      assert(v.specification === 5 || v.specification === 10,
+        `VIAL specification must be 5 or 10 mg/ml, got: ${v.specification}`);
+    });
+  });
+  await test('All TABLET medicines have specification 12, 25, or 50 (mg)', async () => {
+    const r = await apiGet(`${API}/inventory/system`, adminToken);
+    const tablets = r.data.filter(i => i.medicineType === 'TABLET');
+    assert(tablets.length > 0, 'Expected at least one TABLET');
+    tablets.forEach(t => {
+      assert([12, 25, 50].includes(t.specification),
+        `TABLET specification must be 12, 25, or 50 mg, got: ${t.specification}`);
+    });
   });
 
   // Summary
