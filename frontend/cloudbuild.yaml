@@ -1,4 +1,4 @@
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build','--build-arg','REACT_APP_API_URL=https://pharmatrack-backend-xhlza2c2ua-el.a.run.app/api','-t','asia-south1-docker.pkg.dev/$PROJECT_ID/pharmatrack-repo/pharmatrack-frontend:latest','.']
+  args: ['build','--build-arg','REACT_APP_API_URL=https://pharmatrack-backend-558147403401.asia-south1.run.app/api','-t','asia-south1-docker.pkg.dev/$PROJECT_ID/pharmatrack-repo/pharmatrack-frontend:latest','.']
 images: ['asia-south1-docker.pkg.dev/$PROJECT_ID/pharmatrack-repo/pharmatrack-frontend:latest']
