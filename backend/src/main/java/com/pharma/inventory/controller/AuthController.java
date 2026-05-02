@@ -1,6 +1,6 @@
 package com.pharma.inventory.controller;
+import com.pharma.inventory.dto.AuthResponse;
 import com.pharma.inventory.dto.LoginRequest;
-import com.pharma.inventory.dto.LoginResponse;
 import com.pharma.inventory.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,9 +22,9 @@ public class AuthController {
         try {
             authManager.authenticate(new UsernamePasswordAuthenticationToken(req.getUsername(),req.getPassword()));
             UserDetails ud=userDetailsService.loadUserByUsername(req.getUsername());
-            String token=jwtService.generateToken(ud);
+            String token=jwtService.generateToken(ud.getUsername());
             var user=userRepo.findByUsername(req.getUsername()).orElseThrow();
-            return ResponseEntity.ok(new LoginResponse(token,user.getUsername(),user.getFullName(),user.getRoles()));
+            return ResponseEntity.ok(new AuthResponse(token,user.getUsername(),user.getFullName(),user.getRole().name()));
         } catch(BadCredentialsException|InternalAuthenticationServiceException|UsernameNotFoundException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
         }

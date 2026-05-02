@@ -3,7 +3,7 @@
 // Run from Cloud Shell: cd e2e && npm install && node auth.test.js
 
 const FRONTEND = 'https://pharmatrack-frontend-558147403401.asia-south1.run.app';
-const BACKEND  = 'https://pharmatrack-backend-xhlza2c2ua-el.a.run.app';
+const BACKEND  = 'https://pharmatrack-backend-558147403401.asia-south1.run.app';
 const API      = `${BACKEND}/api`;
 
 let passed = 0, failed = 0;
@@ -19,7 +19,8 @@ async function apiPost(url, body, token) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-  let data; try { data = await res.json(); } catch { data = await res.text(); }
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
   return { status: res.status, data };
 }
 
@@ -27,7 +28,8 @@ async function apiGet(url, token) {
   const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(url, { headers });
-  let data; try { data = await res.json(); } catch { data = await res.text(); }
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
   return { status: res.status, data };
 }
 
