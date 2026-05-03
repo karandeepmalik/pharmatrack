@@ -152,7 +152,7 @@ export default function ModifyInventory() {
                 </form>
             </div>
 
-            {inventory.length > 0 && (
+            {inventory.filter(i => i.quantity > 0).length > 0 && (
                 <div className="form-section" style={{ marginTop: '2rem' }}>
                     <h2>Current User Inventory</h2>
                     <div className="table-wrapper">
@@ -168,7 +168,7 @@ export default function ModifyInventory() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {inventory.map(i => (
+                                {inventory.filter(i => i.quantity > 0).map(i => (
                                     <tr key={i.id}>
                                         <td>{i.username}</td>
                                         <td>{i.medicineName}</td>

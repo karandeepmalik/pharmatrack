@@ -63,8 +63,14 @@ export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/
 export const getUsers            = ()           => api.get('/users');
 export const createUser          = (data)       => api.post('/users', data);
 export const toggleUser          = (id)         => api.post(`/users/${id}/toggle`);
+export const deleteUser          = (id)         => api.delete(`/users/${id}`);
 export const updateUser          = (id, data)   => api.put(`/users/${id}`, data);
 export const changePassword      = (data)       => api.put('/users/me/password', data);
 export const adminChangePassword = (id, data)   => api.put(`/users/${id}/password`, data);
+
+// ── Reports ────────────────────────────────────────────────────────────
+export const getReportInventoryByUser  = () => api.get('/reports/inventory-by-user');
+export const getReportInventoryValuation = () => api.get('/reports/inventory-valuation');
+export const getReportTodaySales       = () => api.get('/reports/today-sales');
 
 export default api;

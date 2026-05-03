@@ -31,7 +31,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .btn-primary{background:#2563eb;color:#fff}.btn-primary:hover{background:#1d4ed8}
 .btn-primary:disabled{background:#93c5fd;cursor:not-allowed}
 .btn-secondary{background:#f3f4f6;color:#374151}.btn-full{width:100%}
-.btn-approve{background:#059669;color:#fff}.btn-reject{background:#dc2626;color:#fff}
+.btn-approve{background:#059669;color:#fff}.btn-reject{background:#dc2626;color:#fff}.btn-delete{background:#7f1d1d;color:#fff}.btn-delete:hover{background:#991b1b}
 .btn-sm{padding:.375rem .75rem;font-size:.8rem}
 .alert{padding:.875rem 1rem;border-radius:8px;margin-bottom:1rem}
 .alert-success{background:#d1fae5;color:#065f46}.alert-error{background:#fee2e2;color:#991b1b}
@@ -72,7 +72,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .form-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:1.5rem 2rem;margin-bottom:1.5rem}
 .page-subtitle{color:#6b7280;margin-bottom:1.25rem;font-size:.9rem}
 .availability-badge{display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:.375rem .875rem;border-radius:8px;font-size:.875rem;margin-bottom:1rem}
-@media(max-width:600px){.page{padding:1rem .75rem}.form-card{padding:1.25rem 1rem}.tx-body{flex-direction:column}.nav-cards{grid-template-columns:1fr}}
+.report-section{margin-top:1.5rem}.report-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem}.report-content{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1.25rem 1.5rem;font-family:monospace;font-size:.85rem;white-space:pre-wrap;word-break:break-word;line-height:1.6;max-height:70vh;overflow-y:auto}
+@media(max-width:600px){.page{padding:1rem .75rem}.form-card{padding:1.25rem 1rem}.tx-body{flex-direction:column}.nav-cards{grid-template-columns:1fr}.report-content{padding:1rem .75rem;font-size:.78rem}}
 h1{margin-bottom:1.25rem;font-size:1.75rem;font-weight:700}
 h3{font-size:1rem;font-weight:600;margin-bottom:.5rem}
 p{margin-bottom:.5rem;font-size:.9rem}

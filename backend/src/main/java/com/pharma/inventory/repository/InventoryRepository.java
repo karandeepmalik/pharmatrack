@@ -9,4 +9,9 @@ public interface InventoryRepository extends JpaRepository<Inventory,Long> {
     @Query("SELECT i FROM Inventory i JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany WHERE i.user.id=:userId AND i.quantity>0")
     List<Inventory> findAvailableByUserId(Long userId);
     List<Inventory> findByUserId(Long userId);
+    void deleteByUserId(Long userId);
+    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany WHERE i.quantity > 0 ORDER BY m.name, m.specification, u.fullName")
+    List<Inventory> findAllNonZeroOrderByMedicineAndUser();
+    @Query("SELECT i FROM Inventory i JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany WHERE i.quantity > 0 ORDER BY m.name, m.specification")
+    List<Inventory> findAllNonZeroForValuation();
 }

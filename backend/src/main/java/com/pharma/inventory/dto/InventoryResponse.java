@@ -5,6 +5,7 @@ public class InventoryResponse {
     private Double specification;
     private Integer quantity;
     private Integer price;
+    private String lastNote;
     public Long getId(){return id;} public void setId(Long i){this.id=i;}
     public Long getUserId(){return userId;} public void setUserId(Long u){this.userId=u;}
     public String getUsername(){return username;} public void setUsername(String u){this.username=u;}
@@ -17,4 +18,5 @@ public class InventoryResponse {
     public String getPharmaName(){return pharmaName;} public void setPharmaName(String p){this.pharmaName=p;}
     public Integer getQuantity(){return quantity;} public void setQuantity(Integer q){this.quantity=q;}
     public Integer getPrice(){return price;} public void setPrice(Integer p){this.price=p;}
+    public String getLastNote(){return lastNote;} public void setLastNote(String n){this.lastNote=n;}
 }
