@@ -1,8 +1,8 @@
 // Copyright (c) 2024 Karandeep Malik. All rights reserved.
 // PharmaTrack E2E Tests — run against production Cloud Run services
 
-const FRONTEND = 'https://pharmatrack-frontend-558147403401.asia-south1.run.app';
-const BACKEND  = 'https://pharmatrack-backend-558147403401.asia-south1.run.app';
+const FRONTEND = 'https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app';
+const BACKEND  = 'https://pharmatrack-backend-xhlza2c2ua-el.a.run.app';
 const API      = `${BACKEND}/api`;
 
 let passed = 0, failed = 0;
