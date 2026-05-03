@@ -189,6 +189,27 @@ class ReportServiceTest {
         }
 
         @Test
+        void tabletHeaderHasNoSpecSuffix() {
+            when(inventoryRepository.findAllNonZeroForValuation())
+                    .thenReturn(List.of(makeInv(1L, john, tablet, 5, null)));
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            assertThat(r.getContent()).contains("Shield FX Tablet 25 mg (10 Tablets)");
+            assertThat(r.getContent()).doesNotContain("| 25.0 mg (10 Tablets)");
+        }
+
+        @Test
+        void vialHeaderIncludesSpecSuffix() {
+            when(inventoryRepository.findAllNonZeroForValuation())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            assertThat(r.getContent()).contains("Shield FX Vial 10 ml | 10.0 mg/ml");
+        }
+
+        @Test
         void emptyInventoryShowsZeroTotal() {
             when(inventoryRepository.findAllNonZeroForValuation())
                     .thenReturn(List.of());
