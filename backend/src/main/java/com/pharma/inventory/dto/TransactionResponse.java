@@ -17,6 +17,7 @@ public class TransactionResponse {
     private String medicineName;
     private String medicineType;
     private Double specification;
+    private Double concentrationMgPerMl;
     private String pharmaName;
     private Long pharmaId;
     private Integer quantity;
@@ -64,6 +65,9 @@ public class TransactionResponse {
 
     public Double getSpecification() { return specification; }
     public void setSpecification(Double specification) { this.specification = specification; }
+
+    public Double getConcentrationMgPerMl() { return concentrationMgPerMl; }
+    public void setConcentrationMgPerMl(Double concentrationMgPerMl) { this.concentrationMgPerMl = concentrationMgPerMl; }
 
     public String getPharmaName() { return pharmaName; }
     public void setPharmaName(String pharmaName) { this.pharmaName = pharmaName; }

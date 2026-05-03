@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import AdminInventory from '../../../pages/admin/AdminInventory';
 import * as api from '../../../api/api';
@@ -12,7 +13,8 @@ const makeItem = (overrides = {}) => ({
   medicineName: 'Shield FX Vial 10 ml',
   medicineType: 'VIAL',
   specification: 10.0,
-  specUnit: 'mg/ml',
+  concentrationMgPerMl: 20.0,
+  specUnit: 'ml',
   price: 4000,
   pharmaName: 'Shield FX',
   quantity: 50,
@@ -85,5 +87,52 @@ describe('AdminInventory — zero quantity filtering', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText(/shield fx vial 10 ml/i)).toBeInTheDocument());
     expect(screen.getByText('5')).toBeInTheDocument();
+  });
+});
+
+describe('AdminInventory — sort toggle', () => {
+  const alpha = makeItem({ id: 1, medicineName: 'Alpha Med', username: 'zara.jones', quantity: 3 });
+  const beta  = makeItem({ id: 2, medicineName: 'Beta Med',  username: 'alice.wang', quantity: 7 });
+
+  test('"By Spec" tab is active by default', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [alpha, beta] });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Alpha Med')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /by spec/i })).toHaveClass('active');
+    expect(screen.getByRole('button', { name: /by user/i })).not.toHaveClass('active');
+  });
+
+  test('default sort orders rows by medicine name', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [beta, alpha] });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Alpha Med')).toBeInTheDocument());
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('Alpha Med');
+    expect(rows[1]).toHaveTextContent('Beta Med');
+  });
+
+  test('"By User" tab reorders rows by username', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [alpha, beta] });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Alpha Med')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /by user/i }));
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('alice.wang');
+    expect(rows[1]).toHaveTextContent('zara.jones');
+  });
+
+  test('clicking "By Spec" after "By User" restores medicine-name order', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [beta, alpha] });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Alpha Med')).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole('button', { name: /by user/i }));
+    await userEvent.click(screen.getByRole('button', { name: /by spec/i }));
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('Alpha Med');
+    expect(rows[1]).toHaveTextContent('Beta Med');
   });
 });

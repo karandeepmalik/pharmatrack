@@ -21,11 +21,18 @@ public class DataInitializer {
     public CommandLineRunner seed() {
         return args -> {
             if (medicines.existsByName("Shield FX Tablet 50 mg (10 Tablets)")) {
-                log.info("Data already seeded with full Shield FX catalogue (10 Tablets), skipping.");
+                log.info("Data already seeded — patching vial concentrations if missing.");
+                patchVialConcentration();
                 return;
             }
             reseed();
         };
+    }
+
+    private void patchVialConcentration() {
+        medicines.findAll().stream()
+            .filter(m -> m.getType() == Medicine.MedicineType.VIAL && m.getConcentrationMgPerMl() == null)
+            .forEach(m -> { m.setConcentrationMgPerMl(20.0); medicines.save(m); });
     }
 
     public void reseed() {
@@ -51,11 +58,11 @@ public class DataInitializer {
         PharmaCompany shieldFx = pharmas.save(PharmaCompany.builder().name("Shield FX")
             .description("Shield FX treatment specialist").active(true).build());
 
-        // ── Medicines — VIAL: 5 mg/ml, 10 mg/ml | Tablet: 12, 25, 50 mg (10 Tablets) ──
+        // ── Medicines — VIAL: 5 ml / 10 ml at 20 mg/ml | Tablet: 12, 25, 50 mg (10 Tablets) ──
         medicines.save(Medicine.builder().name("Shield FX Vial 5 ml")
-            .type(Medicine.MedicineType.VIAL).specification(5.0).price(2000).pharmaCompany(shieldFx).active(true).build());
+            .type(Medicine.MedicineType.VIAL).specification(5.0).concentrationMgPerMl(20.0).price(2000).pharmaCompany(shieldFx).active(true).build());
         medicines.save(Medicine.builder().name("Shield FX Vial 10 ml")
-            .type(Medicine.MedicineType.VIAL).specification(10.0).price(4000).pharmaCompany(shieldFx).active(true).build());
+            .type(Medicine.MedicineType.VIAL).specification(10.0).concentrationMgPerMl(20.0).price(4000).pharmaCompany(shieldFx).active(true).build());
         medicines.save(Medicine.builder().name("Shield FX Tablet 12 mg (10 Tablets)")
             .type(Medicine.MedicineType.TABLET).specification(12.0).price(1750).pharmaCompany(shieldFx).active(true).build());
         medicines.save(Medicine.builder().name("Shield FX Tablet 25 mg (10 Tablets)")

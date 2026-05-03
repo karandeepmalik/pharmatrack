@@ -18,7 +18,7 @@ export default function TransactionPreview({ item, quantity, notes, screenshotFi
       <h3>Preview</h3>
       <p>
         <strong>Medicine:</strong>{' '}
-        {item.medicineName} ({item.medicineType}, {item.specification} mg)
+        {item.medicineName} ({item.medicineType}, {item.medicineType==='VIAL'?`${item.concentrationMgPerMl??item.specification} mg/ml`:`${item.specification} mg (10 Tablets)`})
       </p>
       <p>
         <strong>Quantity:</strong> {quantity}

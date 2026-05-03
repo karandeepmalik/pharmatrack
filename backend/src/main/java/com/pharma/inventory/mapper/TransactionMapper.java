@@ -35,6 +35,7 @@ public class TransactionMapper {
         r.setMedicineName(t.getMedicine().getName());
         r.setMedicineType(t.getMedicine().getType().name());
         r.setSpecification(t.getMedicine().getSpecification());
+        r.setConcentrationMgPerMl(t.getMedicine().getConcentrationMgPerMl());
 
         // Pharma fields (navigated through medicine → pharmaCompany)
         r.setPharmaName(t.getMedicine().getPharmaCompany().getName());

@@ -2,10 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 
+const specDisplay = (item) =>
+    item.medicineType === 'VIAL'
+        ? `${item.concentrationMgPerMl ?? item.specification} mg/ml`
+        : `${item.specification} ${item.specUnit}`;
+
 export default function AdminInventory() {
     const [inventory, setInventory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [sortBy, setSortBy] = useState('spec');
 
     useEffect(() => {
         api.getAdminInventory()
@@ -13,6 +19,18 @@ export default function AdminInventory() {
             .catch(() => setError('Failed to load inventory'))
             .finally(() => setLoading(false));
     }, []);
+
+    const items = inventory
+        .filter(item => item.quantity > 0)
+        .slice()
+        .sort((a, b) => {
+            if (sortBy === 'spec') {
+                return a.medicineName.localeCompare(b.medicineName)
+                    || a.username.localeCompare(b.username);
+            }
+            return a.username.localeCompare(b.username)
+                || a.medicineName.localeCompare(b.medicineName);
+        });
 
     if (loading) return <div className="loading">Loading inventory…</div>;
 
@@ -25,7 +43,22 @@ export default function AdminInventory() {
 
             {error && <div role="alert" className="alert alert-error">{error}</div>}
 
-            {inventory.filter(item => item.quantity > 0).length === 0 ? (
+            <div className="filter-tabs" role="group" aria-label="Sort inventory by">
+                <button
+                    type="button"
+                    className={`filter-tab ${sortBy === 'spec' ? 'active' : ''}`}
+                    onClick={() => setSortBy('spec')}>
+                    By Spec
+                </button>
+                <button
+                    type="button"
+                    className={`filter-tab ${sortBy === 'user' ? 'active' : ''}`}
+                    onClick={() => setSortBy('user')}>
+                    By User
+                </button>
+            </div>
+
+            {items.length === 0 ? (
                 <p className="empty-message">No inventory records found.</p>
             ) : (
                 <div className="table-wrapper">
@@ -42,12 +75,12 @@ export default function AdminInventory() {
                             </tr>
                         </thead>
                         <tbody>
-                            {inventory.filter(item => item.quantity > 0).map(item => (
+                            {items.map(item => (
                                 <tr key={item.id}>
                                     <td>{item.username}</td>
                                     <td>{item.medicineName}</td>
                                     <td>{item.medicineType}</td>
-                                    <td>{item.specification} {item.specUnit}</td>
+                                    <td>{specDisplay(item)}</td>
                                     <td>Rs {item.price?.toLocaleString('en-IN')}</td>
                                     <td>{item.pharmaName}</td>
                                     <td><span className="qty-badge">{item.quantity}</span></td>

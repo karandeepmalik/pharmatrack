@@ -41,7 +41,7 @@ const fillValidForm = async () => {
   await waitFor(() => screen.getByLabelText(/pharma company/i));
   await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
   await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
-  await userEvent.selectOptions(screen.getByLabelText(/specification/i), '10');
+  await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
   await userEvent.type(screen.getByLabelText(/quantity/i), '5');
   await userEvent.type(screen.getByLabelText(/adjustment note/i),
     'Dispatched to clinic B for FIP treatment');
@@ -73,7 +73,7 @@ describe('Initial render', () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/pharma company/i));
     expect(screen.getByLabelText(/medicine type/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/specification/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/volume \(ml\)|specification/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/quantity/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/adjustment note/i)).toBeInTheDocument();
   });
@@ -103,8 +103,8 @@ describe('Cascading select behaviour', () => {
 
   test('spec select is disabled until type is selected', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/specification/i));
-    expect(screen.getByLabelText(/specification/i)).toBeDisabled();
+    await waitFor(() => screen.getByLabelText(/volume \(ml\)|specification/i));
+    expect(screen.getByLabelText(/volume \(ml\)|specification/i)).toBeDisabled();
   });
 
   test('quantity input is disabled until spec is selected', async () => {
@@ -129,10 +129,10 @@ describe('Cascading select behaviour', () => {
     await waitFor(() => screen.getByLabelText(/pharma company/i));
     await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
-    await userEvent.selectOptions(screen.getByLabelText(/specification/i), '10');
+    await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
 
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'TABLET');
-    expect(screen.getByLabelText(/specification/i)).toHaveValue('');
+    expect(screen.getByLabelText(/volume \(ml\)|specification/i)).toHaveValue('');
   });
 
   test('shows max quantity hint when item is selected', async () => {
@@ -140,7 +140,7 @@ describe('Cascading select behaviour', () => {
     await waitFor(() => screen.getByLabelText(/pharma company/i));
     await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
-    await userEvent.selectOptions(screen.getByLabelText(/specification/i), '10');
+    await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
     expect(screen.getByText(/max 50/i)).toBeInTheDocument();
   });
 
@@ -184,7 +184,7 @@ describe('Screenshot upload section — mandatory', () => {
     await waitFor(() => screen.getByLabelText(/pharma company/i));
     await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
-    await userEvent.selectOptions(screen.getByLabelText(/specification/i), '10');
+    await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
     await userEvent.type(screen.getByLabelText(/quantity/i), '5');
     await userEvent.type(screen.getByLabelText(/adjustment note/i),
       'Dispatched to clinic B for FIP treatment');
