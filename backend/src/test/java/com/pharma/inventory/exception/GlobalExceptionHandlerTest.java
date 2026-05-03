@@ -1,6 +1,10 @@
 package com.pharma.inventory.exception;
 
 import com.pharma.inventory.controller.TransactionController;
+import com.pharma.inventory.config.AppConfig;
+import com.pharma.inventory.config.SecurityConfig;
+import com.pharma.inventory.repository.UserRepository;
+import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.service.ScreenshotProcessor;
 import com.pharma.inventory.service.TransactionService;
 import org.junit.jupiter.api.DisplayName;
@@ -9,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -20,12 +25,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(TransactionController.class)
+@Import({SecurityConfig.class, AppConfig.class})
 @DisplayName("GlobalExceptionHandler HTTP status mapping")
 class GlobalExceptionHandlerTest {
 
     @Autowired MockMvc mockMvc;
     @MockBean  TransactionService transactionService;
     @MockBean  ScreenshotProcessor screenshotProcessor;
+    @MockBean  JwtService jwtService;
+    @MockBean  UserRepository userRepository;
 
     @Nested @DisplayName("404 Not Found")
     class NotFound {

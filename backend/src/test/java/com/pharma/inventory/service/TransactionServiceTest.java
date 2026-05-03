@@ -193,7 +193,6 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException when notes are blank")
         void submit_blankNotes_throwsIllegalArgument() {
             TransactionRequest req = buildReq("  ");
-            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
 
             assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -203,7 +202,6 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException when notes are too short")
         void submit_notesTooShort_throwsIllegalArgument() {
             TransactionRequest req = buildReq("Hi");
-            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
 
             assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
                     .isInstanceOf(IllegalArgumentException.class)
@@ -213,7 +211,6 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException when notes exceed 500 chars")
         void submit_notesTooLong_throwsIllegalArgument() {
             TransactionRequest req = buildReq("x".repeat(501));
-            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
 
             assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
                     .isInstanceOf(IllegalArgumentException.class)

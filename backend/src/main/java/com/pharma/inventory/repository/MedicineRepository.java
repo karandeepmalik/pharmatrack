@@ -5,4 +5,5 @@ import java.util.List;
 public interface MedicineRepository extends JpaRepository<Medicine,Long> {
     List<Medicine> findByActiveTrue();
     List<Medicine> findByPharmaCompanyIdAndActiveTrue(Long pharmaId);
+    boolean existsByName(String name);
 }

@@ -2,6 +2,12 @@ package com.pharma.inventory.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pharma.inventory.dto.TransactionResponse;
+import com.pharma.inventory.config.AppConfig;
+import com.pharma.inventory.config.SecurityConfig;
+import com.pharma.inventory.exception.InvalidScreenshotException;
+import com.pharma.inventory.repository.UserRepository;
+import com.pharma.inventory.security.JwtService;
+import com.pharma.inventory.service.ScreenshotProcessor;
 import com.pharma.inventory.service.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -28,11 +35,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(TransactionController.class)
+@Import({SecurityConfig.class, AppConfig.class})
 class TransactionControllerTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @MockBean TransactionService transactionService;
+    @MockBean ScreenshotProcessor screenshotProcessor;
+    @MockBean JwtService jwtService;
+    @MockBean UserRepository userRepository;
 
     private TransactionResponse sampleResponse;
 
@@ -126,6 +137,10 @@ class TransactionControllerTest {
             MockMultipartFile badFile = new MockMultipartFile(
                     "screenshot", "payment.pdf", "application/pdf", "pdf-content".getBytes());
 
+            when(screenshotProcessor.hasScreenshot(any())).thenReturn(true);
+            when(screenshotProcessor.encodeToBase64(any()))
+                    .thenThrow(new InvalidScreenshotException("Must be an image file"));
+
             mockMvc.perform(multipart("/api/transactions")
                     .file(badFile)
                     .param("medicineId", "1")
@@ -150,6 +165,9 @@ class TransactionControllerTest {
         @WithMockUser(username = "john.doe", roles = "USER")
         @DisplayName("submit with notes too short returns 400")
         void submit_notesTooShort_400() throws Exception {
+            when(transactionService.submit(any(), anyString()))
+                    .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
+
             mockMvc.perform(multipart("/api/transactions")
                     .param("medicineId", "1")
                     .param("quantity", "10")

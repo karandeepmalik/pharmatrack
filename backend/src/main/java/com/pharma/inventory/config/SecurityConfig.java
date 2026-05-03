@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.*;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -16,6 +18,8 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.web.cors.*;
 import java.util.Arrays;
 import java.util.List;
@@ -31,7 +35,19 @@ public class SecurityConfig {
             .sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a->a
                 .requestMatchers("/api/auth/**","/actuator/health").permitAll()
+                // User-only endpoints (ADMIN is forbidden — must fetch via admin endpoints)
+                .requestMatchers(HttpMethod.GET,  "/api/inventory/available").hasRole("USER")
+                .requestMatchers(HttpMethod.GET,  "/api/transactions/my").hasRole("USER")
+                .requestMatchers(HttpMethod.POST, "/api/transactions").hasRole("USER")
+                // Self-service endpoints accessible by any authenticated user
+                .requestMatchers(HttpMethod.GET,  "/api/users/me").authenticated()
+                .requestMatchers(HttpMethod.PUT,  "/api/users/me/password").authenticated()
+                // Admin-only endpoints
+                .requestMatchers("/api/inventory/**").hasRole("ADMIN")
+                .requestMatchers("/api/transactions/**").hasRole("ADMIN")
+                .requestMatchers("/api/users/**").hasRole("ADMIN")
                 .anyRequest().authenticated())
+            .exceptionHandling(e->e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .authenticationProvider(authProvider())
             .addFilterBefore(jwtAuthFilter,UsernamePasswordAuthenticationFilter.class)
             .build();
