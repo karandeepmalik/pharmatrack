@@ -35,21 +35,13 @@ public class ReportService {
     public ReportResponse inventoryByUser() {
         List<Inventory> records = inventoryRepository.findAllNonZeroOrderByMedicineAndUser();
 
-        // Pre-fetch all approved transactions, keyed by userId+medicineId
-        List<Transaction> allApproved = transactionRepository.findAllByOrderBySubmittedAtDesc().stream()
-                .filter(t -> t.getStatus() == Transaction.TransactionStatus.APPROVED
-                        && t.getNotes() != null && !t.getNotes().isBlank())
-                .toList();
-        Map<String, List<Transaction>> txByUserMed = new LinkedHashMap<>();
-        for (Transaction t : allApproved) {
-            String key = t.getSubmittedBy().getId() + "_" + t.getMedicine().getId();
-            txByUserMed.computeIfAbsent(key, k -> new ArrayList<>()).add(t);
-        }
-
-        // Group by medicine name + spec
+        // Group by medicine — tablets use name only, vials append mg/ml spec
         LinkedHashMap<String, List<Inventory>> bySpec = new LinkedHashMap<>();
         for (Inventory inv : records) {
-            String key = inv.getMedicine().getName() + " | " + specLabel(inv.getMedicine());
+            Medicine m = inv.getMedicine();
+            String key = m.getType() == Medicine.MedicineType.VIAL
+                    ? m.getName() + " | " + m.getSpecification() + " mg/ml"
+                    : m.getName();
             bySpec.computeIfAbsent(key, k -> new ArrayList<>()).add(inv);
         }
 
@@ -63,15 +55,8 @@ public class ReportService {
             sb.append("-".repeat(35)).append("\n");
             int total = 0;
             for (Inventory inv : entry.getValue()) {
-                sb.append("  ").append(inv.getUser().getFullName())
+                sb.append("  ").append(inv.getUser().getUsername())
                   .append(": ").append(inv.getQuantity()).append(" units\n");
-                if (inv.getLastNote() != null && !inv.getLastNote().isBlank()) {
-                    sb.append("    [Admin note: ").append(inv.getLastNote()).append("]\n");
-                }
-                String txKey = inv.getUser().getId() + "_" + inv.getMedicine().getId();
-                List<Transaction> userTxNotes = txByUserMed.getOrDefault(txKey, List.of());
-                userTxNotes.stream().limit(3).forEach(t ->
-                        sb.append("    [User note: ").append(t.getNotes()).append("]\n"));
                 total += inv.getQuantity();
             }
             sb.append("  TOTAL: ").append(total).append(" units\n\n");
