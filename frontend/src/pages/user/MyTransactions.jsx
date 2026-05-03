@@ -22,7 +22,7 @@ export default function MyTransactions(){
             <div className="transactions-list">{filtered.map(tx=>(
                 <div key={tx.id} className={`transaction-card status-${tx.status.toLowerCase()}`}>
                     <div className="tx-header"><span>#{tx.id}</span><span className={`badge badge-${tx.status.toLowerCase()}`}>{tx.status}</span></div>
-                    <p><strong>Medicine:</strong> {tx.medicineName} ({tx.medicineType}, {tx.specification} {tx.medicineType==='VIAL'?'mg/ml':'mg (10 Tablets)'})</p>
+                    <p><strong>Medicine:</strong> {tx.medicineName} ({tx.medicineType}, {tx.medicineType==='VIAL'?`${tx.concentrationMgPerMl??tx.specification} mg/ml`:`${tx.specification} mg (10 Tablets)`})</p>
                     <p><strong>Quantity:</strong> {tx.quantity}</p>
                     <p><strong>Note:</strong> {tx.notes}</p>
                     <p><strong>Submitted:</strong> {new Date(tx.submittedAt).toLocaleString()}</p>

@@ -3,6 +3,7 @@ public class InventoryResponse {
     private Long id,userId,medicineId,pharmaId;
     private String username,medicineName,medicineType,pharmaName,specUnit;
     private Double specification;
+    private Double concentrationMgPerMl;
     private Integer quantity;
     private Integer price;
     private String lastNote;
@@ -13,6 +14,7 @@ public class InventoryResponse {
     public String getMedicineName(){return medicineName;} public void setMedicineName(String n){this.medicineName=n;}
     public String getMedicineType(){return medicineType;} public void setMedicineType(String t){this.medicineType=t;}
     public Double getSpecification(){return specification;} public void setSpecification(Double s){this.specification=s;}
+    public Double getConcentrationMgPerMl(){return concentrationMgPerMl;} public void setConcentrationMgPerMl(Double c){this.concentrationMgPerMl=c;}
     public String getSpecUnit(){return specUnit;} public void setSpecUnit(String s){this.specUnit=s;}
     public Long getPharmaId(){return pharmaId;} public void setPharmaId(Long p){this.pharmaId=p;}
     public String getPharmaName(){return pharmaName;} public void setPharmaName(String p){this.pharmaName=p;}

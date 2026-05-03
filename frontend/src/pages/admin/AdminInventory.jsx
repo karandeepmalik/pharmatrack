@@ -47,7 +47,7 @@ export default function AdminInventory() {
                                     <td>{item.username}</td>
                                     <td>{item.medicineName}</td>
                                     <td>{item.medicineType}</td>
-                                    <td>{item.specification} {item.specUnit}</td>
+                                    <td>{item.medicineType === 'VIAL' ? `${item.concentrationMgPerMl ?? item.specification} mg/ml` : `${item.specification} ${item.specUnit}`}</td>
                                     <td>Rs {item.price?.toLocaleString('en-IN')}</td>
                                     <td>{item.pharmaName}</td>
                                     <td><span className="qty-badge">{item.quantity}</span></td>

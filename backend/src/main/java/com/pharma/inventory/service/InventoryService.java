@@ -48,7 +48,8 @@ public class InventoryService {
         r.setMedicineId(i.getMedicine().getId()); r.setMedicineName(i.getMedicine().getName());
         r.setMedicineType(i.getMedicine().getType().name());
         r.setSpecification(i.getMedicine().getSpecification());
-        r.setSpecUnit(i.getMedicine().getType() == Medicine.MedicineType.VIAL ? "mg/ml" : "mg (10 Tablets)");
+        r.setConcentrationMgPerMl(i.getMedicine().getConcentrationMgPerMl());
+        r.setSpecUnit(i.getMedicine().getType() == Medicine.MedicineType.VIAL ? "ml" : "mg (10 Tablets)");
         r.setPharmaId(i.getMedicine().getPharmaCompany().getId());
         r.setPharmaName(i.getMedicine().getPharmaCompany().getName());
         r.setQuantity(i.getQuantity());

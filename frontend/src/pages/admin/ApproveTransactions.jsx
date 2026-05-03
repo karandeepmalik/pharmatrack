@@ -146,7 +146,7 @@ export default function ApproveTransactions() {
               <div className="tx-body">
                 <div className="tx-fields">
                   <p><strong>Submitted by:</strong> {tx.submittedByFullName} ({tx.submittedByUsername})</p>
-                  <p><strong>Medicine:</strong> {tx.medicineName} — {tx.medicineType}, {tx.specification} mg</p>
+                  <p><strong>Medicine:</strong> {tx.medicineName} — {tx.medicineType === 'VIAL' ? `${tx.concentrationMgPerMl ?? tx.specification} mg/ml` : `${tx.specification} mg (10 Tablets)`}</p>
                   <p><strong>Pharma:</strong> {tx.pharmaName}</p>
                   <p><strong>Quantity:</strong> {tx.quantity}</p>
                   <p><strong>Submitted:</strong>{' '}

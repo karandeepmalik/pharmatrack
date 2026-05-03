@@ -25,22 +25,22 @@ public class ReportService {
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
-    private String specLabel(Medicine m) {
-        return m.getType() == Medicine.MedicineType.VIAL
-                ? m.getSpecification() + " mg/ml"
-                : m.getSpecification() + " mg (10 Tablets)";
+    private String vialConc(Medicine m) {
+        Double c = m.getConcentrationMgPerMl();
+        if (c == null) return "20";
+        return c % 1 == 0 ? String.valueOf(c.intValue()) : String.valueOf(c);
     }
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryByUser() {
         List<Inventory> records = inventoryRepository.findAllNonZeroOrderByMedicineAndUser();
 
-        // Group by medicine — tablets use name only, vials append mg/ml spec
+        // Group by medicine — tablets use name only, vials append concentration
         LinkedHashMap<String, List<Inventory>> bySpec = new LinkedHashMap<>();
         for (Inventory inv : records) {
             Medicine m = inv.getMedicine();
             String key = m.getType() == Medicine.MedicineType.VIAL
-                    ? m.getName() + " | " + m.getSpecification() + " mg/ml"
+                    ? m.getName() + " | " + vialConc(m) + " mg/ml"
                     : m.getName();
             bySpec.computeIfAbsent(key, k -> new ArrayList<>()).add(inv);
         }
@@ -92,7 +92,7 @@ public class ReportService {
             grandTotal += valuation;
 
             String header = med.getType() == Medicine.MedicineType.VIAL
-                    ? med.getName() + " | " + med.getSpecification() + " mg/ml"
+                    ? med.getName() + " | " + vialConc(med) + " mg/ml"
                     : med.getName();
             sb.append(header).append("\n");
             sb.append("  Qty: ").append(totalQty)
@@ -142,7 +142,7 @@ public class ReportService {
                 Medicine med = tx.getMedicine();
                 long amount = (long) tx.getQuantity() * med.getPrice();
                 userTotal += amount;
-                sb.append("  ").append(med.getName()).append(" | ").append(specLabel(med))
+                sb.append("  ").append(med.getName())
                   .append("\n    Qty: ").append(tx.getQuantity())
                   .append("  Amount: Rs ").append(String.format("%,d", amount)).append("\n");
                 if (tx.getNotes() != null && !tx.getNotes().isBlank()) {

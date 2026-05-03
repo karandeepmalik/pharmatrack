@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 
-const specLabel = (type, spec) =>
-    type === 'VIAL' ? `${spec} mg/ml` : `${spec} mg (10 Tablets)`;
+const specLabel = (type, spec, concentration) =>
+    type === 'VIAL' ? `${concentration ?? spec} mg/ml` : `${spec} mg (10 Tablets)`;
 
 export default function ModifyInventory() {
     const [users, setUsers]         = useState([]);
@@ -95,7 +95,7 @@ export default function ModifyInventory() {
                             <option value="">-- Select Medicine --</option>
                             {medicines.map(m => (
                                 <option key={m.id} value={m.id}>
-                                    {m.name} – {specLabel(m.type, m.specification)} — Rs {m.price?.toLocaleString('en-IN')}
+                                    {m.name} – {specLabel(m.type, m.specification, m.concentrationMgPerMl)} — Rs {m.price?.toLocaleString('en-IN')}
                                 </option>
                             ))}
                         </select>
@@ -173,7 +173,7 @@ export default function ModifyInventory() {
                                         <td>{i.username}</td>
                                         <td>{i.medicineName}</td>
                                         <td>{i.medicineType}</td>
-                                        <td>{i.specification} {i.specUnit}</td>
+                                        <td>{i.medicineType === 'VIAL' ? `${i.concentrationMgPerMl ?? i.specification} mg/ml` : `${i.specification} ${i.specUnit}`}</td>
                                         <td>Rs {i.price?.toLocaleString('en-IN')}</td>
                                         <td><span className="qty-badge">{i.quantity}</span></td>
                                     </tr>

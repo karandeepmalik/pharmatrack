@@ -14,7 +14,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,6 +43,7 @@ class ReportServiceTest {
         vial = new Medicine();
         vial.setId(1L); vial.setName("Shield FX Vial 10 ml");
         vial.setType(Medicine.MedicineType.VIAL); vial.setSpecification(10.0);
+        vial.setConcentrationMgPerMl(20.0);
         vial.setPrice(4000); vial.setPharmaCompany(pharma);
 
         tablet = new Medicine();
@@ -124,13 +124,14 @@ class ReportServiceTest {
         }
 
         @Test
-        void vialSectionHeaderIncludesSpecSuffix() {
+        void vialSectionHeaderShowsConcentration() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
 
             ReportResponse r = reportService.inventoryByUser();
 
-            assertThat(r.getContent()).contains("Shield FX Vial 10 ml | 10.0 mg/ml");
+            assertThat(r.getContent()).contains("Shield FX Vial 10 ml | 20 mg/ml");
+            assertThat(r.getContent()).doesNotContain("10.0 mg/ml");
         }
 
         @Test
@@ -200,13 +201,14 @@ class ReportServiceTest {
         }
 
         @Test
-        void vialHeaderIncludesSpecSuffix() {
+        void vialHeaderShowsConcentration() {
             when(inventoryRepository.findAllNonZeroForValuation())
                     .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
 
             ReportResponse r = reportService.inventoryValuation();
 
-            assertThat(r.getContent()).contains("Shield FX Vial 10 ml | 10.0 mg/ml");
+            assertThat(r.getContent()).contains("Shield FX Vial 10 ml | 20 mg/ml");
+            assertThat(r.getContent()).doesNotContain("10.0 mg/ml");
         }
 
         @Test

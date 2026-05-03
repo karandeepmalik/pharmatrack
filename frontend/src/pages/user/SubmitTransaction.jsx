@@ -165,15 +165,15 @@ export default function SubmitTransaction() {
         {/* Specification */}
         <div className="form-group">
           <label htmlFor="spec-select">
-            Specification ({selectedType === 'VIAL' ? 'mg/ml' : 'mg (10 Tablets)'})
+            {selectedType === 'VIAL' ? 'Volume (ml)' : 'Specification (mg (10 Tablets))'}
           </label>
           <select id="spec-select" value={selectedSpec}
             disabled={!selectedType}
             onChange={(e) => { setSelectedSpec(e.target.value); setQuantity(''); }}>
             <option value="">-- Select Specification --</option>
             {specOptions.map((s) => {
-              const unit = selectedType === 'VIAL' ? 'mg/ml' : 'mg (10 Tablets)';
-              return <option key={s} value={String(s)}>{s} {unit}</option>;
+              const label = selectedType === 'VIAL' ? `${s} ml` : `${s} mg (10 Tablets)`;
+              return <option key={s} value={String(s)}>{label}</option>;
             })}
           </select>
         </div>
