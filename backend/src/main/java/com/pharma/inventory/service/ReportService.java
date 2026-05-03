@@ -91,7 +91,10 @@ public class ReportService {
             long valuation = (long) totalQty * med.getPrice();
             grandTotal += valuation;
 
-            sb.append(med.getName()).append(" | ").append(specLabel(med)).append("\n");
+            String header = med.getType() == Medicine.MedicineType.VIAL
+                    ? med.getName() + " | " + med.getSpecification() + " mg/ml"
+                    : med.getName();
+            sb.append(header).append("\n");
             sb.append("  Qty: ").append(totalQty)
               .append("  |  Price: Rs ").append(String.format("%,d", med.getPrice()))
               .append("  |  Value: Rs ").append(String.format("%,d", valuation)).append("\n\n");
