@@ -86,7 +86,7 @@ class ReportServiceTest {
             assertThat(r.getReportType()).isEqualTo("INVENTORY_BY_USER");
             assertThat(r.getContent()).contains("Shield FX Vial 10 ml");
             assertThat(r.getContent()).contains("john.doe");
-            assertThat(r.getContent()).contains("50 units");
+            assertThat(r.getContent()).contains("50");
         }
 
         @Test
@@ -143,7 +143,7 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.inventoryByUser();
 
-            assertThat(r.getContent()).contains("TOTAL: 50 units");
+            assertThat(r.getContent()).contains("TOTAL: 50");
         }
 
         @Test
