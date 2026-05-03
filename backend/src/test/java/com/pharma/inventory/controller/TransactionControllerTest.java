@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pharma.inventory.dto.TransactionResponse;
 import com.pharma.inventory.config.AppConfig;
 import com.pharma.inventory.config.SecurityConfig;
+import com.pharma.inventory.exception.InvalidScreenshotException;
 import com.pharma.inventory.repository.UserRepository;
 import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.service.ScreenshotProcessor;
@@ -136,6 +137,10 @@ class TransactionControllerTest {
             MockMultipartFile badFile = new MockMultipartFile(
                     "screenshot", "payment.pdf", "application/pdf", "pdf-content".getBytes());
 
+            when(screenshotProcessor.hasScreenshot(any())).thenReturn(true);
+            when(screenshotProcessor.encodeToBase64(any()))
+                    .thenThrow(new InvalidScreenshotException("Must be an image file"));
+
             mockMvc.perform(multipart("/api/transactions")
                     .file(badFile)
                     .param("medicineId", "1")
@@ -160,6 +165,9 @@ class TransactionControllerTest {
         @WithMockUser(username = "john.doe", roles = "USER")
         @DisplayName("submit with notes too short returns 400")
         void submit_notesTooShort_400() throws Exception {
+            when(transactionService.submit(any(), anyString()))
+                    .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
+
             mockMvc.perform(multipart("/api/transactions")
                     .param("medicineId", "1")
                     .param("quantity", "10")
