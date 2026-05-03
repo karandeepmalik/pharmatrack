@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import { TRANSACTION_STATUSES } from '../../constants';
 
@@ -109,8 +110,11 @@ export default function ApproveTransactions() {
   if (loading) return <div className="loading">Loading transactions…</div>;
 
   return (
-    <div className="approve-transactions-page">
-      <h1>Review Adjustments</h1>
+    <div className="page">
+      <div className="page-header">
+        <h1>Review Adjustments</h1>
+        <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
+      </div>
 
       {errorMessage && (
         <div role="alert" className="alert alert-error">{errorMessage}</div>

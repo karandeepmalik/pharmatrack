@@ -575,6 +575,77 @@ async function run() {
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
+  // ── Admin: Modify own (admin) inventory ──────────────────────────────
+  console.log('\n-- Admin: Modify Own Inventory');
+
+  // Resolve the admin user's id from the users list
+  let adminUserId;
+  await test('Admin user appears in users list', async () => {
+    const r = await apiGet(`${API}/users`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const adminUser = r.data.find(u => u.username === 'admin');
+    assert(adminUser, 'Expected to find admin user in users list');
+    adminUserId = adminUser.id;
+  });
+
+  let adminInvMedicineId;
+  let adminQtyBefore = 0;
+  await test('Record admin current inventory level before test', async () => {
+    assert(adminUserId, 'No adminUserId — previous test must have passed');
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    // Use the same medicine as the john.doe adjust tests
+    const med = r.data.find(i => i.userId === adminUserId);
+    // If admin already has inventory use that medicine, otherwise fall back to adjustMedicineId
+    adminInvMedicineId = med ? med.medicineId : adjustMedicineId;
+    const existing = r.data.find(i => i.userId === adminUserId && i.medicineId === adminInvMedicineId);
+    adminQtyBefore = existing ? existing.quantity : 0;
+  });
+
+  await test('Admin can add inventory to own account', async () => {
+    assert(adminUserId, 'No adminUserId');
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: adminUserId,
+      medicineId: adminInvMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 3,
+      note: 'E2E test — admin adding inventory to own account',
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('Admin inventory quantity increased after ADD', async () => {
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    const inv = r.data.find(i => i.userId === adminUserId && i.medicineId === adminInvMedicineId);
+    const newQty = inv ? inv.quantity : 0;
+    assert(newQty === adminQtyBefore + 3,
+      `Expected ${adminQtyBefore + 3}, got ${newQty}`);
+  });
+
+  // ── TEARDOWN: Restore admin inventory ───────────────────────────────
+  await test('[TEARDOWN] Restore admin inventory to pre-test level', async () => {
+    const currentR = await apiGet(`${API}/inventory`, adminToken);
+    const current = currentR.data.find(i => i.userId === adminUserId && i.medicineId === adminInvMedicineId);
+    const currentQty = current ? current.quantity : 0;
+    if (currentQty === adminQtyBefore) return;
+    const diff = currentQty - adminQtyBefore;
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: adminUserId,
+      medicineId: adminInvMedicineId,
+      adjustmentType: diff > 0 ? 'REDUCE' : 'ADD',
+      quantity: Math.abs(diff),
+      note: 'E2E test teardown — restoring admin inventory level',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[VERIFY TEARDOWN] Admin inventory restored to original', async () => {
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    const inv = r.data.find(i => i.userId === adminUserId && i.medicineId === adminInvMedicineId);
+    const restored = inv ? inv.quantity : 0;
+    assert(restored === adminQtyBefore, `Expected ${adminQtyBefore}, got ${restored}`);
+  });
+
   // ── Admin: Reports ────────────────────────────────────────────────────
   console.log('\n-- Admin: Reports');
 
