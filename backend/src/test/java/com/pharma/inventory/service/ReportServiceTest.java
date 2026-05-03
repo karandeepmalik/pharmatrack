@@ -80,16 +80,57 @@ class ReportServiceTest {
         void reportContainsMedicineNameAndUserQuantity() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
                     .thenReturn(List.of(makeInv(1L, john, vial, 50, "Restocked Ward 3")));
-            when(transactionRepository.findAllByOrderBySubmittedAtDesc())
-                    .thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryByUser();
 
             assertThat(r.getReportType()).isEqualTo("INVENTORY_BY_USER");
             assertThat(r.getContent()).contains("Shield FX Vial 10 ml");
-            assertThat(r.getContent()).contains("John Doe");
+            assertThat(r.getContent()).contains("john.doe");
             assertThat(r.getContent()).contains("50 units");
-            assertThat(r.getContent()).contains("Restocked Ward 3");
+        }
+
+        @Test
+        void reportUsesUsernameNotFullName() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+
+            ReportResponse r = reportService.inventoryByUser();
+
+            assertThat(r.getContent()).contains("john.doe");
+            assertThat(r.getContent()).doesNotContain("John Doe");
+        }
+
+        @Test
+        void reportDoesNotShowNotes() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, "Restocked Ward 3")));
+
+            ReportResponse r = reportService.inventoryByUser();
+
+            assertThat(r.getContent()).doesNotContain("Restocked Ward 3");
+            assertThat(r.getContent()).doesNotContain("Admin note");
+            assertThat(r.getContent()).doesNotContain("User note");
+        }
+
+        @Test
+        void tabletSectionHeaderHasNoSpecSuffix() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, john, tablet, 20, null)));
+
+            ReportResponse r = reportService.inventoryByUser();
+
+            assertThat(r.getContent()).contains("Shield FX Tablet 25 mg (10 Tablets)");
+            assertThat(r.getContent()).doesNotContain("| 25.0 mg (10 Tablets)");
+        }
+
+        @Test
+        void vialSectionHeaderIncludesSpecSuffix() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+
+            ReportResponse r = reportService.inventoryByUser();
+
+            assertThat(r.getContent()).contains("Shield FX Vial 10 ml | 10.0 mg/ml");
         }
 
         @Test
@@ -98,8 +139,6 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 30, null),
                             makeInv(2L, jane, vial, 20, null)));
-            when(transactionRepository.findAllByOrderBySubmittedAtDesc())
-                    .thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryByUser();
 
@@ -107,24 +146,8 @@ class ReportServiceTest {
         }
 
         @Test
-        void reportIncludesApprovedTransactionNotes() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
-                    .thenReturn(List.of(makeInv(1L, john, vial, 40, null)));
-            Transaction approved = makeTx(10L, john, vial, 5,
-                    Transaction.TransactionStatus.APPROVED, "Dispatched to Clinic B");
-            when(transactionRepository.findAllByOrderBySubmittedAtDesc())
-                    .thenReturn(List.of(approved));
-
-            ReportResponse r = reportService.inventoryByUser();
-
-            assertThat(r.getContent()).contains("Dispatched to Clinic B");
-        }
-
-        @Test
         void emptyInventoryProducesEmptyReport() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
-                    .thenReturn(List.of());
-            when(transactionRepository.findAllByOrderBySubmittedAtDesc())
                     .thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryByUser();
