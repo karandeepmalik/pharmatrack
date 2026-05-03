@@ -56,10 +56,10 @@ public class ReportService {
             int total = 0;
             for (Inventory inv : entry.getValue()) {
                 sb.append("  ").append(inv.getUser().getUsername())
-                  .append(": ").append(inv.getQuantity()).append(" units\n");
+                  .append(": ").append(inv.getQuantity()).append("\n");
                 total += inv.getQuantity();
             }
-            sb.append("  TOTAL: ").append(total).append(" units\n\n");
+            sb.append("  TOTAL: ").append(total).append("\n\n");
         }
 
         return new ReportResponse("INVENTORY_BY_USER",
