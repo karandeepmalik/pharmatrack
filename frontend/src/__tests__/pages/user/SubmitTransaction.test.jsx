@@ -59,7 +59,7 @@ describe('Initial render', () => {
 
   test('renders page heading as Submit Inventory Adjustment', async () => {
     renderPage();
-    await waitFor(() => screen.getByText(/submit inventory adjustment/i));
+    await waitFor(() => screen.getByRole('heading', { name: /submit inventory adjustment/i }));
     expect(screen.getByRole('heading', { name: /submit inventory adjustment/i })).toBeInTheDocument();
   });
 
@@ -149,7 +149,7 @@ describe('Cascading select behaviour', () => {
     await waitFor(() => screen.getByLabelText(/pharma company/i));
     await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'TABLET');
-    expect(screen.getByText(/mg \(10 tablets\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/specification.*mg \(10 tablets\)/i)).toBeInTheDocument();
   });
 });
 
@@ -237,8 +237,8 @@ describe('Preview card', () => {
 
   test('preview shows screenshot filename when file attached', async () => {
     await fillValidForm();
-    await waitFor(() => screen.getByText(/pay\.png/));
-    expect(screen.getByText(/pay\.png/)).toBeInTheDocument();
+    await waitFor(() => screen.getByText(/pay\.png attached/i));
+    expect(screen.getByText(/pay\.png attached/i)).toBeInTheDocument();
   });
 });
 
