@@ -2,6 +2,10 @@ package com.pharma.inventory.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pharma.inventory.dto.TransactionResponse;
+import com.pharma.inventory.repository.UserRepository;
+import com.pharma.inventory.security.JwtAuthenticationFilter;
+import com.pharma.inventory.security.JwtService;
+import com.pharma.inventory.service.ScreenshotProcessor;
 import com.pharma.inventory.service.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +37,10 @@ class TransactionControllerTest {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @MockBean TransactionService transactionService;
+    @MockBean ScreenshotProcessor screenshotProcessor;
+    @MockBean JwtAuthenticationFilter jwtAuthFilter;
+    @MockBean JwtService jwtService;
+    @MockBean UserRepository userRepository;
 
     private TransactionResponse sampleResponse;
 

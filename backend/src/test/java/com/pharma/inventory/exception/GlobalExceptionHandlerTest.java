@@ -1,6 +1,9 @@
 package com.pharma.inventory.exception;
 
 import com.pharma.inventory.controller.TransactionController;
+import com.pharma.inventory.repository.UserRepository;
+import com.pharma.inventory.security.JwtAuthenticationFilter;
+import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.service.ScreenshotProcessor;
 import com.pharma.inventory.service.TransactionService;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +29,9 @@ class GlobalExceptionHandlerTest {
     @Autowired MockMvc mockMvc;
     @MockBean  TransactionService transactionService;
     @MockBean  ScreenshotProcessor screenshotProcessor;
+    @MockBean  JwtAuthenticationFilter jwtAuthFilter;
+    @MockBean  JwtService jwtService;
+    @MockBean  UserRepository userRepository;
 
     @Nested @DisplayName("404 Not Found")
     class NotFound {

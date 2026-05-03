@@ -2,6 +2,9 @@ package com.pharma.inventory.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pharma.inventory.entity.User;
+import com.pharma.inventory.repository.UserRepository;
+import com.pharma.inventory.security.JwtAuthenticationFilter;
+import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,6 +33,9 @@ class UserControllerTest {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @MockBean UserService userService;
+    @MockBean JwtAuthenticationFilter jwtAuthFilter;
+    @MockBean JwtService jwtService;
+    @MockBean UserRepository userRepository;
 
     private User adminUser;
     private User regularUser;

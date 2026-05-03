@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.*;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -31,6 +32,17 @@ public class SecurityConfig {
             .sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a->a
                 .requestMatchers("/api/auth/**","/actuator/health").permitAll()
+                // User-only endpoints (ADMIN is forbidden — must fetch via admin endpoints)
+                .requestMatchers(HttpMethod.GET,  "/api/inventory/available").hasRole("USER")
+                .requestMatchers(HttpMethod.GET,  "/api/transactions/my").hasRole("USER")
+                .requestMatchers(HttpMethod.POST, "/api/transactions").hasRole("USER")
+                // Self-service endpoints accessible by any authenticated user
+                .requestMatchers(HttpMethod.GET,  "/api/users/me").authenticated()
+                .requestMatchers(HttpMethod.PUT,  "/api/users/me/password").authenticated()
+                // Admin-only endpoints
+                .requestMatchers("/api/inventory/**").hasRole("ADMIN")
+                .requestMatchers("/api/transactions/**").hasRole("ADMIN")
+                .requestMatchers("/api/users/**").hasRole("ADMIN")
                 .anyRequest().authenticated())
             .authenticationProvider(authProvider())
             .addFilterBefore(jwtAuthFilter,UsernamePasswordAuthenticationFilter.class)

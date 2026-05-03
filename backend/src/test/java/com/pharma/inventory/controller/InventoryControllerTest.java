@@ -6,6 +6,9 @@ import com.pharma.inventory.dto.InventoryResponse;
 import com.pharma.inventory.dto.SystemInventoryRequest;
 import com.pharma.inventory.exception.InsufficientInventoryException;
 import com.pharma.inventory.entity.User;
+import com.pharma.inventory.repository.UserRepository;
+import com.pharma.inventory.security.JwtAuthenticationFilter;
+import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.service.InventoryService;
 import com.pharma.inventory.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +37,9 @@ class InventoryControllerTest {
     @Autowired ObjectMapper objectMapper;
     @MockBean InventoryService inventoryService;
     @MockBean UserService userService;
+    @MockBean JwtAuthenticationFilter jwtAuthFilter;
+    @MockBean JwtService jwtService;
+    @MockBean UserRepository userRepository;
 
     private InventoryResponse sampleResponse;
     private User mockUser;
@@ -45,12 +51,12 @@ class InventoryControllerTest {
         sampleResponse.setUserId(2L);
         sampleResponse.setUsername("john.doe");
         sampleResponse.setMedicineId(1L);
-        sampleResponse.setMedicineName("FIP Vial 10mg/ml");
+        sampleResponse.setMedicineName("Shield FX Vial 10 ml");
         sampleResponse.setMedicineType("VIAL");
         sampleResponse.setSpecification(10.0);
         sampleResponse.setSpecUnit("mg/ml");
         sampleResponse.setPharmaId(1L);
-        sampleResponse.setPharmaName("FIP Shield");
+        sampleResponse.setPharmaName("Shield FX");
         sampleResponse.setQuantity(100);
 
         mockUser = User.builder().id(2L).username("john.doe").role(User.Role.USER).active(true)
