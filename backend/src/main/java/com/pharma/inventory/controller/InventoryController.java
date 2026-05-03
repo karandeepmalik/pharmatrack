@@ -39,6 +39,20 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.addSystemInventory(req));
     }
 
+    @PutMapping("/system/{medicineId}/reduce")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<InventoryResponse> reduceSystemInventory(
+            @PathVariable Long medicineId,
+            @Valid @RequestBody SystemInventoryReduceRequest req) {
+        return ResponseEntity.ok(inventoryService.reduceSystemInventory(medicineId, req));
+    }
+
+    @DeleteMapping("/system/{medicineId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<InventoryResponse> clearSystemInventory(@PathVariable Long medicineId) {
+        return ResponseEntity.ok(inventoryService.clearSystemInventory(medicineId));
+    }
+
     @PostMapping("/allocate")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<InventoryResponse> allocate(@Valid @RequestBody InventoryRequest req) {

@@ -36,9 +36,9 @@ class MedicineSpecValidationTest {
     @Nested @DisplayName("Medicine catalogue")
     class Catalogue {
 
-        @Test @DisplayName("Exactly 4 medicines are seeded")
-        void exactlyFourMedicines() {
-            assertThat(medicineRepository.findAll()).hasSize(4);
+        @Test @DisplayName("Exactly 5 medicines are seeded")
+        void exactlyFiveMedicines() {
+            assertThat(medicineRepository.findAll()).hasSize(5);
         }
 
         @Test @DisplayName("All medicines belong to Shield FX pharma")
@@ -66,13 +66,14 @@ class MedicineSpecValidationTest {
             assertThat(all).noneMatch(m -> m.getName().contains("MediCure"));
         }
 
-        @Test @DisplayName("Expected medicine names are present")
+        @Test @DisplayName("All 5 expected medicine names are present")
         void expectedMedicineNamesPresent() {
             Set<String> names = Set.of(
                 "Shield FX Vial 5 ml",
                 "Shield FX Vial 10 ml",
                 "Shield FX Tablet 12 mg",
-                "Shield FX Tablet 25 mg"
+                "Shield FX Tablet 25 mg",
+                "Shield FX Tablet 50 mg"
             );
             List<String> actualNames = medicineRepository.findAll().stream()
                 .map(Medicine::getName).toList();
@@ -121,27 +122,20 @@ class MedicineSpecValidationTest {
     @Nested @DisplayName("TABLET specifications")
     class TabletSpecs {
 
-        @Test @DisplayName("TABLET count is 2")
+        @Test @DisplayName("TABLET count is 3")
         void tabletCount() {
             long count = medicineRepository.findAll().stream()
                 .filter(m -> m.getType() == MedicineType.TABLET).count();
-            assertThat(count).isEqualTo(2);
+            assertThat(count).isEqualTo(3);
         }
 
-        @Test @DisplayName("TABLET specification is 12 or 25 mg only")
-        void tabletSpecIs12Or25() {
+        @Test @DisplayName("TABLET specification is 12, 25, or 50 mg")
+        void tabletSpecIs12Or25Or50() {
             medicineRepository.findAll().stream()
                 .filter(m -> m.getType() == MedicineType.TABLET)
                 .forEach(m -> assertThat(m.getSpecification())
                     .as("TABLET spec for %s", m.getName())
-                    .isIn(12.0, 25.0));
-        }
-
-        @Test @DisplayName("No 50 mg tablet exists")
-        void no50MgTablet() {
-            boolean has50 = medicineRepository.findAll().stream()
-                .anyMatch(m -> m.getType() == MedicineType.TABLET && m.getSpecification() == 50.0);
-            assertThat(has50).isFalse();
+                    .isIn(12.0, 25.0, 50.0));
         }
 
         @Test @DisplayName("Shield FX Tablet 12 mg has specification 12.0")
@@ -161,15 +155,24 @@ class MedicineSpecValidationTest {
             assertThat(tab.getSpecification()).isEqualTo(25.0);
             assertThat(tab.getType()).isEqualTo(MedicineType.TABLET);
         }
+
+        @Test @DisplayName("Shield FX Tablet 50 mg has specification 50.0")
+        void tablet50HasSpec50() {
+            Medicine tab = medicineRepository.findAll().stream()
+                .filter(m -> m.getName().equals("Shield FX Tablet 50 mg"))
+                .findFirst().orElseThrow(() -> new AssertionError("Shield FX Tablet 50 mg not found"));
+            assertThat(tab.getSpecification()).isEqualTo(50.0);
+            assertThat(tab.getType()).isEqualTo(MedicineType.TABLET);
+        }
     }
 
     @Nested @DisplayName("System inventory")
     class SystemInventory {
 
-        @Test @DisplayName("All 4 medicines have a system inventory record at 0")
+        @Test @DisplayName("All 5 medicines have a system inventory record at 0")
         void allMedicinesHaveZeroSystemInventory() {
             List<Medicine> all = medicineRepository.findAll();
-            assertThat(all).hasSize(4);
+            assertThat(all).hasSize(5);
             all.forEach(m -> {
                 boolean hasRecord = inventoryRepository.findAll().stream()
                     .anyMatch(i -> i.getMedicine().getId().equals(m.getId())

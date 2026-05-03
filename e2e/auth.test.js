@@ -32,6 +32,24 @@ async function apiGet(url, token) {
   return { status: res.status, data };
 }
 
+async function apiPut(url, body, token) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(body) });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  return { status: res.status, data };
+}
+
+async function apiDelete(url, token) {
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { method: 'DELETE', headers });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  return { status: res.status, data };
+}
+
 async function run() {
   console.log('\nPharmaTrack E2E Tests\n');
 
@@ -310,11 +328,11 @@ async function run() {
   // Medicine Specifications (Shield FX catalogue)
   console.log('\n-- Medicine Specifications (Shield FX)');
   let sysInvForSpec;
-  await test('System has exactly 4 Shield FX medicines', async () => {
+  await test('System has exactly 5 Shield FX medicines', async () => {
     const r = await apiGet(`${API}/inventory/system`, adminToken);
     sysInvForSpec = r.data;
     const uniqueMeds = new Set(r.data.map(i => i.medicineId));
-    assert(uniqueMeds.size === 4, `Expected 4 medicines, got ${uniqueMeds.size}`);
+    assert(uniqueMeds.size === 5, `Expected 5 medicines, got ${uniqueMeds.size}`);
   });
   await test('All medicine names start with Shield FX', async () => {
     sysInvForSpec.forEach(item => {
@@ -342,34 +360,77 @@ async function run() {
     const vials = sysInvForSpec.filter(i => i.medicineType === 'VIAL');
     assert(vials.length === 2, `Expected 2 VIAL medicines, got ${vials.length}`);
   });
-  await test('All TABLET medicines have specification 12 or 25 mg (not 50)', async () => {
+  await test('All TABLET medicines have specification 12, 25, or 50 mg', async () => {
     const tablets = sysInvForSpec.filter(i => i.medicineType === 'TABLET');
     assert(tablets.length > 0, 'Expected at least one TABLET');
     tablets.forEach(t => {
-      assert(t.specification === 12 || t.specification === 25,
-        `TABLET specification must be 12 or 25 mg, got: ${t.specification}`);
+      assert(t.specification === 12 || t.specification === 25 || t.specification === 50,
+        `TABLET specification must be 12, 25, or 50 mg, got: ${t.specification}`);
     });
   });
-  await test('Exactly 2 TABLET medicines exist', async () => {
+  await test('Exactly 3 TABLET medicines exist', async () => {
     const tablets = sysInvForSpec.filter(i => i.medicineType === 'TABLET');
-    assert(tablets.length === 2, `Expected 2 TABLET medicines, got ${tablets.length}`);
+    assert(tablets.length === 3, `Expected 3 TABLET medicines, got ${tablets.length}`);
   });
   await test('Shield FX Vial 5 ml and Shield FX Vial 10 ml both present', async () => {
     const names = sysInvForSpec.map(i => i.medicineName);
     assert(names.includes('Shield FX Vial 5 ml'), 'Shield FX Vial 5 ml not found in system inventory');
     assert(names.includes('Shield FX Vial 10 ml'), 'Shield FX Vial 10 ml not found in system inventory');
   });
-  await test('Shield FX Tablet 12 mg and Shield FX Tablet 25 mg both present', async () => {
+  await test('Shield FX Tablet 12 mg, 25 mg, and 50 mg all present', async () => {
     const names = sysInvForSpec.map(i => i.medicineName);
     assert(names.includes('Shield FX Tablet 12 mg'), 'Shield FX Tablet 12 mg not found in system inventory');
     assert(names.includes('Shield FX Tablet 25 mg'), 'Shield FX Tablet 25 mg not found in system inventory');
+    assert(names.includes('Shield FX Tablet 50 mg'), 'Shield FX Tablet 50 mg not found in system inventory');
   });
-  await test('All system inventory quantities start at 0 after reseed', async () => {
-    // After reseed, all inventory should be 0 (tests may have added 10 to first medicine)
-    // We verify by checking that the type and spec of each match the catalogue
+  await test('Shield FX Tablet 50 mg has specification 50', async () => {
+    const tab50 = sysInvForSpec.find(i => i.medicineName === 'Shield FX Tablet 50 mg');
+    assert(tab50, 'Shield FX Tablet 50 mg not found');
+    assert(tab50.specification === 50, `Expected 50, got ${tab50.specification}`);
+    assert(tab50.specUnit === 'mg', `Expected mg, got ${tab50.specUnit}`);
+  });
+  await test('All system inventory quantities are non-negative', async () => {
     sysInvForSpec.forEach(item => {
       assert(item.quantity >= 0, `Quantity must be non-negative, got: ${item.quantity}`);
     });
+  });
+
+  // Admin: Reduce and Clear System Inventory
+  console.log('\n-- Admin: Reduce / Clear System Inventory');
+  let tab50Id;
+  await test('Admin can add stock to Tab 50 mg for reduce tests', async () => {
+    const item = sysInvForSpec.find(i => i.medicineName === 'Shield FX Tablet 50 mg');
+    assert(item, 'Shield FX Tablet 50 mg not found');
+    tab50Id = item.medicineId;
+    const r = await apiPost(`${API}/inventory/system`, { medicineId: tab50Id, quantity: 100 }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.quantity >= 100, `Expected >= 100, got ${r.data.quantity}`);
+  });
+  await test('Admin can reduce system inventory', async () => {
+    const r = await apiPut(`${API}/inventory/system/${tab50Id}/reduce`, { quantity: 30 }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.quantity >= 70, `Expected quantity reduced, got ${r.data.quantity}`);
+  });
+  await test('Reducing more than available returns 409', async () => {
+    const r = await apiPut(`${API}/inventory/system/${tab50Id}/reduce`, { quantity: 999999 }, adminToken);
+    assert(r.status === 409, `Expected 409, got ${r.status}`);
+  });
+  await test('Reducing with quantity 0 returns 400', async () => {
+    const r = await apiPut(`${API}/inventory/system/${tab50Id}/reduce`, { quantity: 0 }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}`);
+  });
+  await test('Non-admin cannot reduce system inventory (401/403)', async () => {
+    const r = await apiPut(`${API}/inventory/system/${tab50Id}/reduce`, { quantity: 1 }, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+  await test('Admin can clear (zero out) system inventory', async () => {
+    const r = await apiDelete(`${API}/inventory/system/${tab50Id}`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.quantity === 0, `Expected quantity 0 after clear, got ${r.data.quantity}`);
+  });
+  await test('Non-admin cannot clear system inventory (401/403)', async () => {
+    const r = await apiDelete(`${API}/inventory/system/${tab50Id}`, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
   // Summary

@@ -6,6 +6,7 @@ import Login from './components/Login';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AddInventory from './pages/admin/AddInventory';
 import AddSystemInventory from './pages/admin/AddSystemInventory';
+import ReduceSystemInventory from './pages/admin/ReduceSystemInventory';
 import ApproveTransactions from './pages/admin/ApproveTransactions';
 import AdminInventory from './pages/admin/AdminInventory';
 import ManageUsers from './pages/admin/ManageUsers';
@@ -18,6 +19,7 @@ export default function App(){
         <Route path="/login" element={<Login/>}/>
         <Route path="/admin/dashboard" element={<ProtectedRoute adminOnly><AdminDashboard/></ProtectedRoute>}/>
         <Route path="/admin/add-system-inventory" element={<ProtectedRoute adminOnly><AddSystemInventory/></ProtectedRoute>}/>
+        <Route path="/admin/reduce-system-inventory" element={<ProtectedRoute adminOnly><ReduceSystemInventory/></ProtectedRoute>}/>
         <Route path="/admin/add-inventory" element={<ProtectedRoute adminOnly><AddInventory/></ProtectedRoute>}/>
         <Route path="/admin/transactions" element={<ProtectedRoute adminOnly><ApproveTransactions/></ProtectedRoute>}/>
         <Route path="/admin/inventory" element={<ProtectedRoute adminOnly><AdminInventory/></ProtectedRoute>}/>

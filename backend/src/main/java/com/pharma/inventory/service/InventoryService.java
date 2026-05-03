@@ -27,6 +27,32 @@ public class InventoryService {
     }
 
     @Transactional
+    public InventoryResponse reduceSystemInventory(Long medicineId, SystemInventoryReduceRequest req) {
+        User system = userRepository.findByUsername(SYSTEM_USER)
+            .orElseThrow(() -> new ResourceNotFoundException("System user", SYSTEM_USER));
+        Medicine medicine = medicineRepository.findById(medicineId)
+            .orElseThrow(() -> new ResourceNotFoundException("Medicine", medicineId));
+        Inventory inv = inventoryRepository.findByUserIdAndMedicineId(system.getId(), medicine.getId())
+            .orElseThrow(() -> new InsufficientInventoryException(0, req.getQuantity()));
+        if (inv.getQuantity() < req.getQuantity())
+            throw new InsufficientInventoryException(inv.getQuantity(), req.getQuantity());
+        inv.setQuantity(inv.getQuantity() - req.getQuantity());
+        return toResponse(inventoryRepository.save(inv));
+    }
+
+    @Transactional
+    public InventoryResponse clearSystemInventory(Long medicineId) {
+        User system = userRepository.findByUsername(SYSTEM_USER)
+            .orElseThrow(() -> new ResourceNotFoundException("System user", SYSTEM_USER));
+        Medicine medicine = medicineRepository.findById(medicineId)
+            .orElseThrow(() -> new ResourceNotFoundException("Medicine", medicineId));
+        Inventory inv = inventoryRepository.findByUserIdAndMedicineId(system.getId(), medicine.getId())
+            .orElseThrow(() -> new ResourceNotFoundException("System inventory for medicine", medicineId));
+        inv.setQuantity(0);
+        return toResponse(inventoryRepository.save(inv));
+    }
+
+    @Transactional
     public InventoryResponse allocateToUser(InventoryRequest req) {
         User system = userRepository.findByUsername(SYSTEM_USER)
             .orElseThrow(() -> new ResourceNotFoundException("System user", SYSTEM_USER));

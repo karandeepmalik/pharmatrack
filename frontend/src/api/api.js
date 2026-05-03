@@ -35,8 +35,10 @@ export const getAvailableInventory = () => api.get('/inventory/available');
 // ── Inventory — admin ─────────────────────────────────────────────────
 export const getAdminInventory   = ()     => api.get('/inventory');
 export const getSystemInventory  = ()     => api.get('/inventory/system');
-export const addSystemInventory  = (data) => api.post('/inventory/system', data);
-export const allocateInventory   = (data) => api.post('/inventory/allocate', data);
+export const addSystemInventory    = (data)           => api.post('/inventory/system', data);
+export const reduceSystemInventory = (medicineId, data) => api.put(`/inventory/system/${medicineId}/reduce`, data);
+export const clearSystemInventory  = (medicineId)       => api.delete(`/inventory/system/${medicineId}`);
+export const allocateInventory     = (data)             => api.post('/inventory/allocate', data);
 
 // ── Medicines ──────────────────────────────────────────────────────────
 export const getMedicines    = ()     => api.get('/medicines');

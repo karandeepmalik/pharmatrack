@@ -1,13 +1,14 @@
 package com.pharma.inventory.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pharma.inventory.config.AppConfig;
+import com.pharma.inventory.config.SecurityConfig;
 import com.pharma.inventory.dto.InventoryRequest;
 import com.pharma.inventory.dto.InventoryResponse;
+import com.pharma.inventory.dto.SystemInventoryReduceRequest;
 import com.pharma.inventory.dto.SystemInventoryRequest;
 import com.pharma.inventory.exception.InsufficientInventoryException;
 import com.pharma.inventory.entity.User;
-import com.pharma.inventory.config.AppConfig;
-import com.pharma.inventory.config.SecurityConfig;
 import com.pharma.inventory.repository.UserRepository;
 import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.service.InventoryService;
@@ -27,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -161,6 +163,86 @@ class InventoryControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isForbidden());
+        }
+    }
+
+    // ── PUT /api/inventory/system/{id}/reduce ─────────────────────────
+
+    @Nested @DisplayName("PUT /api/inventory/system/{medicineId}/reduce — reduce system inventory")
+    class ReduceSystem {
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanReduce() throws Exception {
+            InventoryResponse reduced = new InventoryResponse();
+            reduced.setQuantity(50);
+            SystemInventoryReduceRequest req = new SystemInventoryReduceRequest();
+            req.setQuantity(50);
+            when(inventoryService.reduceSystemInventory(eq(1L), any())).thenReturn(reduced);
+            mockMvc.perform(put("/api/inventory/system/1/reduce").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.quantity").value(50));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void returnsConflictWhenInsufficientStock() throws Exception {
+            SystemInventoryReduceRequest req = new SystemInventoryReduceRequest();
+            req.setQuantity(9999);
+            when(inventoryService.reduceSystemInventory(eq(1L), any()))
+                    .thenThrow(new InsufficientInventoryException(10, 9999));
+            mockMvc.perform(put("/api/inventory/system/1/reduce").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isConflict());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsZeroQuantity() throws Exception {
+            SystemInventoryReduceRequest req = new SystemInventoryReduceRequest();
+            req.setQuantity(0);
+            mockMvc.perform(put("/api/inventory/system/1/reduce").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userCannotReduce() throws Exception {
+            SystemInventoryReduceRequest req = new SystemInventoryReduceRequest();
+            req.setQuantity(10);
+            mockMvc.perform(put("/api/inventory/system/1/reduce").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    // ── DELETE /api/inventory/system/{id} ─────────────────────────────
+
+    @Nested @DisplayName("DELETE /api/inventory/system/{medicineId} — clear system inventory")
+    class ClearSystem {
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanClear() throws Exception {
+            InventoryResponse cleared = new InventoryResponse();
+            cleared.setQuantity(0);
+            when(inventoryService.clearSystemInventory(1L)).thenReturn(cleared);
+            mockMvc.perform(delete("/api/inventory/system/1").with(csrf()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.quantity").value(0));
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userCannotClear() throws Exception {
+            mockMvc.perform(delete("/api/inventory/system/1").with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedCannotClear() throws Exception {
+            mockMvc.perform(delete("/api/inventory/system/1").with(csrf()))
+                    .andExpect(status().isUnauthorized());
         }
     }
 
