@@ -41,6 +41,13 @@ async function apiPut(url, body, token) {
   return { status: res.status, data };
 }
 
+async function apiDelete(url, token) {
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { method: 'DELETE', headers });
+  return { status: res.status };
+}
+
 async function run() {
   console.log('\nPharmaTrack E2E Tests\n');
 
@@ -490,6 +497,123 @@ async function run() {
   await test('[VERIFY TEARDOWN] john.doe can log in with original password', async () => {
     const r = await apiPost(`${API}/auth/login`, { username: 'john.doe', password: 'User@123' });
     assert(r.status === 200, `Expected 200, got ${r.status}`);
+  });
+
+  // ── TEARDOWN: Delete the e2e test user created in User Management ─────
+  console.log('\n-- Cleanup: Delete e2e test user');
+  await test('[TEARDOWN] Delete e2e test user created earlier', async () => {
+    if (!createdUserId) return; // skip if create test failed
+    const r = await apiDelete(`${API}/users/${createdUserId}`, adminToken);
+    assert(r.status === 204, `Expected 204, got ${r.status}`);
+  });
+  await test('[VERIFY TEARDOWN] Deleted e2e user no longer exists', async () => {
+    if (!createdUserId) return;
+    const r = await apiGet(`${API}/users`, adminToken);
+    const found = r.data.find(u => u.id === createdUserId);
+    assert(!found, `Expected user ${createdUserId} to be deleted`);
+  });
+
+  // ── Admin: Delete User ────────────────────────────────────────────────
+  console.log('\n-- Admin: Delete User');
+  const deleteTestUsername = `e2e_del_${Date.now()}`;
+  let deleteTestUserId;
+
+  await test('Admin can create a user for deletion test', async () => {
+    const r = await apiPost(`${API}/users`, {
+      username: deleteTestUsername,
+      email: `${deleteTestUsername}@e2e.test`,
+      fullName: 'E2E Delete Test',
+      password: 'TestPass1!',
+      role: 'USER',
+    }, adminToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    deleteTestUserId = r.data.id;
+  });
+
+  await test('Admin can add inventory to user before deletion (for cascade test)', async () => {
+    if (!deleteTestUserId || !adjustMedicineId) return;
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: deleteTestUserId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 5,
+      note: 'E2E test inventory for delete cascade test',
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('Admin can delete a user', async () => {
+    assert(deleteTestUserId, 'No deleteTestUserId — create test must have passed');
+    const r = await apiDelete(`${API}/users/${deleteTestUserId}`, adminToken);
+    assert(r.status === 204, `Expected 204, got ${r.status}`);
+  });
+
+  await test('Deleted user no longer appears in user list', async () => {
+    const r = await apiGet(`${API}/users`, adminToken);
+    const found = r.data.find(u => u.id === deleteTestUserId);
+    assert(!found, `Expected user ${deleteTestUserId} to be deleted, but still found`);
+  });
+
+  await test('Deleted user cannot log in', async () => {
+    const r = await apiPost(`${API}/auth/login`, { username: deleteTestUsername, password: 'TestPass1!' });
+    assert(r.status === 401, `Expected 401 for deleted user, got ${r.status}`);
+  });
+
+  await test('Deleted user inventory is also removed (cascade)', async () => {
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    const found = r.data.find(i => i.userId === deleteTestUserId);
+    assert(!found, `Expected inventory for deleted user to be removed`);
+  });
+
+  await test('Delete non-existent user returns 404', async () => {
+    const r = await apiDelete(`${API}/users/999999`, adminToken);
+    assert(r.status === 404, `Expected 404, got ${r.status}`);
+  });
+
+  await test('Non-admin cannot delete a user (401/403)', async () => {
+    const r = await apiDelete(`${API}/users/${johnId}`, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  // ── Admin: Reports ────────────────────────────────────────────────────
+  console.log('\n-- Admin: Reports');
+
+  await test('Admin can access inventory-by-user report', async () => {
+    const r = await apiGet(`${API}/reports/inventory-by-user`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.reportType === 'INVENTORY_BY_USER', `Expected INVENTORY_BY_USER, got ${r.data.reportType}`);
+    assert(typeof r.data.content === 'string' && r.data.content.length > 0, 'Expected non-empty content');
+    assert(r.data.content.includes('CURRENT INVENTORY LEVEL BY USER'), 'Expected report header');
+  });
+
+  await test('Admin can access inventory-valuation report', async () => {
+    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.reportType === 'INVENTORY_VALUATION', `Expected INVENTORY_VALUATION, got ${r.data.reportType}`);
+    assert(r.data.content.includes('CURRENT INVENTORY VALUATION'), 'Expected report header');
+    assert(r.data.content.includes('TOTAL VALUATION'), 'Expected total valuation line');
+  });
+
+  await test("Admin can access today-sales report", async () => {
+    const r = await apiGet(`${API}/reports/today-sales`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.reportType === 'TODAY_SALES', `Expected TODAY_SALES, got ${r.data.reportType}`);
+    assert(typeof r.data.content === 'string' && r.data.content.length > 0, 'Expected non-empty content');
+  });
+
+  await test('Reports include generatedAt timestamp', async () => {
+    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+    assert(r.data.generatedAt && r.data.generatedAt.length > 0, 'Expected generatedAt timestamp');
+  });
+
+  await test('Non-admin cannot access reports (401/403)', async () => {
+    const r = await apiGet(`${API}/reports/inventory-by-user`, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  await test('Unauthenticated cannot access reports (401)', async () => {
+    const r = await apiGet(`${API}/reports/inventory-valuation`);
+    assert(r.status === 401 || r.status === 403, `Expected 401, got ${r.status}`);
   });
 
   // ── Summary ───────────────────────────────────────────────────────────

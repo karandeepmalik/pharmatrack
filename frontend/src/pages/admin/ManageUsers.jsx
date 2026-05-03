@@ -12,6 +12,7 @@ export default function ManageUsers() {
     const [form, setForm] = useState(EMPTY_FORM);
     const [submitting, setSubmitting] = useState(false);
     const [togglingId, setTogglingId] = useState(null);
+    const [deletingId, setDeletingId] = useState(null);
 
     // Password change state — keyed by user id
     const [pwForm, setPwForm] = useState({});   // { [id]: newPassword }
@@ -51,6 +52,20 @@ export default function ManageUsers() {
             setError('Failed to update user status');
         } finally {
             setTogglingId(null);
+        }
+    };
+
+    const handleDelete = async (id, username) => {
+        if (!window.confirm(`Permanently delete user "${username}"? This will also remove all their inventory and transactions. This cannot be undone.`)) return;
+        setError(''); setDeletingId(id);
+        try {
+            await api.deleteUser(id);
+            setSuccess(`User "${username}" deleted successfully.`);
+            fetchUsers();
+        } catch (ex) {
+            setError(ex.response?.data?.message || 'Failed to delete user');
+        } finally {
+            setDeletingId(null);
         }
     };
 
@@ -154,6 +169,13 @@ export default function ManageUsers() {
                                                     className="btn btn-sm btn-secondary"
                                                     onClick={() => setPwExpanded(pwExpanded === u.id ? null : u.id)}>
                                                     {pwExpanded === u.id ? 'Cancel' : 'Change Password'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-delete"
+                                                    disabled={deletingId === u.id}
+                                                    onClick={() => handleDelete(u.id, u.username)}>
+                                                    {deletingId === u.id ? '…' : 'Delete'}
                                                 </button>
                                             </td>
                                         </tr>

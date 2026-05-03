@@ -19,6 +19,7 @@ public class UserController {
     @GetMapping @PreAuthorize("hasRole('ADMIN')") public ResponseEntity<List<User>> all(){ return ResponseEntity.ok(userService.getAll()); }
     @PostMapping @PreAuthorize("hasRole('ADMIN')") public ResponseEntity<User> create(@Valid @RequestBody RegisterRequest req){ return ResponseEntity.status(HttpStatus.CREATED).body(userService.register(req)); }
     @PostMapping("/{id}/toggle") @PreAuthorize("hasRole('ADMIN')") public ResponseEntity<User> toggle(@PathVariable Long id){ return ResponseEntity.ok(userService.toggleActive(id)); }
+    @DeleteMapping("/{id}") @PreAuthorize("hasRole('ADMIN')") public ResponseEntity<Void> delete(@PathVariable Long id){ userService.deleteUser(id); return ResponseEntity.noContent().build(); }
     @PutMapping("/me/password") public ResponseEntity<Void> changePassword(@AuthenticationPrincipal UserDetails ud, @RequestBody Map<String,String> body){
         userService.changePassword(ud.getUsername(),body.get("currentPassword"),body.get("newPassword")); return ResponseEntity.ok().build();
     }

@@ -28,6 +28,7 @@ public class InventoryService {
         } else {
             inv.setQuantity(inv.getQuantity() + req.getQuantity());
         }
+        inv.setLastNote(req.getNote());
         return toResponse(inventoryRepository.save(inv));
     }
 
@@ -52,6 +53,7 @@ public class InventoryService {
         r.setPharmaName(i.getMedicine().getPharmaCompany().getName());
         r.setQuantity(i.getQuantity());
         r.setPrice(i.getMedicine().getPrice());
+        r.setLastNote(i.getLastNote());
         return r;
     }
 }

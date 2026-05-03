@@ -2,6 +2,8 @@ package com.pharma.inventory.service;
 import com.pharma.inventory.dto.*;
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.exception.ResourceNotFoundException;
+import com.pharma.inventory.repository.InventoryRepository;
+import com.pharma.inventory.repository.TransactionRepository;
 import com.pharma.inventory.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,6 +13,8 @@ import java.util.List;
 @Service @RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
+    private final InventoryRepository inventoryRepository;
+    private final TransactionRepository transactionRepository;
     private final PasswordEncoder passwordEncoder;
     @Transactional
     public User register(RegisterRequest req){
@@ -36,6 +40,14 @@ public class UserService {
         User u=getByUsername(username);
         if(!passwordEncoder.matches(oldPw,u.getPassword())) throw new IllegalArgumentException("Current password is incorrect");
         u.setPassword(passwordEncoder.encode(newPw)); userRepository.save(u);
+    }
+    @Transactional
+    public void deleteUser(Long id){
+        User u=userRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("User",id));
+        transactionRepository.nullifyApprovedBy(id);
+        transactionRepository.deleteBySubmittedById(id);
+        inventoryRepository.deleteByUserId(id);
+        userRepository.delete(u);
     }
     @Transactional
     public void adminChangePassword(Long userId, String newPassword){

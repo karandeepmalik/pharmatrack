@@ -25,7 +25,7 @@ export default function AdminInventory() {
 
             {error && <div role="alert" className="alert alert-error">{error}</div>}
 
-            {inventory.length === 0 ? (
+            {inventory.filter(item => item.quantity > 0).length === 0 ? (
                 <p className="empty-message">No inventory records found.</p>
             ) : (
                 <div className="table-wrapper">
@@ -42,7 +42,7 @@ export default function AdminInventory() {
                             </tr>
                         </thead>
                         <tbody>
-                            {inventory.map(item => (
+                            {inventory.filter(item => item.quantity > 0).map(item => (
                                 <tr key={item.id}>
                                     <td>{item.username}</td>
                                     <td>{item.medicineName}</td>

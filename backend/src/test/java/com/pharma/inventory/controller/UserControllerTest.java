@@ -22,6 +22,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.Map;
 
+import com.pharma.inventory.exception.ResourceNotFoundException;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -206,6 +208,43 @@ class UserControllerTest {
         @Test
         void unauthenticatedCannotGetMe() throws Exception {
             mockMvc.perform(get("/api/users/me"))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    // ── DELETE /api/users/{id} — admin deletes user ────────────────────
+
+    @Nested
+    @DisplayName("DELETE /api/users/{id} — admin deletes a user")
+    class DeleteUser {
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        void adminCanDeleteUser() throws Exception {
+            doNothing().when(userService).deleteUser(2L);
+            mockMvc.perform(delete("/api/users/2").with(csrf()))
+                    .andExpect(status().isNoContent());
+            verify(userService).deleteUser(2L);
+        }
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        void deleteNonExistentUserReturns404() throws Exception {
+            doThrow(new ResourceNotFoundException("User", 999L)).when(userService).deleteUser(999L);
+            mockMvc.perform(delete("/api/users/999").with(csrf()))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        @WithMockUser(roles = "USER")
+        void regularUserCannotDelete() throws Exception {
+            mockMvc.perform(delete("/api/users/2").with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedCannotDelete() throws Exception {
+            mockMvc.perform(delete("/api/users/2").with(csrf()))
                     .andExpect(status().isUnauthorized());
         }
     }
