@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import ApproveTransactions from '../../../pages/admin/ApproveTransactions';
 import * as api from '../../../api/api';
 
@@ -27,7 +28,12 @@ const makeTx = (overrides = {}) => ({
   ...overrides,
 });
 
-const renderPage = () => render(<ApproveTransactions />);
+const renderPage = () =>
+  render(
+    <MemoryRouter>
+      <ApproveTransactions />
+    </MemoryRouter>
+  );
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -56,6 +62,21 @@ describe('ApproveTransactions — loading & empty states', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/failed to load/i)
     );
+  });
+});
+
+// ── Navigation ────────────────────────────────────────────────────────────
+
+describe('ApproveTransactions — navigation', () => {
+  test('renders a Back link pointing to /admin/dashboard', async () => {
+    api.getAllTransactions.mockResolvedValue({ data: [] });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
+    );
+    const backLink = screen.getByRole('link', { name: /← back/i });
+    expect(backLink).toBeInTheDocument();
+    expect(backLink).toHaveAttribute('href', '/admin/dashboard');
   });
 });
 

@@ -83,8 +83,8 @@ export default function ModifyInventory() {
                         <label htmlFor="user-select">User</label>
                         <select id="user-select" value={form.userId} onChange={set('userId')} required>
                             <option value="">-- Select User --</option>
-                            {users.filter(u => u.role === 'USER' && u.active)
-                                .map(u => <option key={u.id} value={u.id}>{u.fullName} ({u.username})</option>)}
+                            {users.filter(u => u.active)
+                                .map(u => <option key={u.id} value={u.id}>{u.fullName} ({u.username}){u.role === 'ADMIN' ? ' — Admin' : ''}</option>)}
                         </select>
                     </div>
 

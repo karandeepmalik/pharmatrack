@@ -156,7 +156,7 @@ export default function ManageUsers() {
                                             <td>{u.email}</td>
                                             <td><span className={`role-badge role-${u.role.toLowerCase()}`}>{u.role}</span></td>
                                             <td><span className={`status-badge ${u.active ? 'active' : 'inactive'}`}>{u.active ? 'Active' : 'Inactive'}</span></td>
-                                            <td style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            <td className="actions-cell">
                                                 <button
                                                     type="button"
                                                     className={`btn btn-sm ${u.active ? 'btn-reject' : 'btn-approve'}`}
