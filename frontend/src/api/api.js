@@ -33,12 +33,8 @@ export const getMe    = ()            => api.get('/users/me');
 export const getAvailableInventory = () => api.get('/inventory/available');
 
 // ── Inventory — admin ─────────────────────────────────────────────────
-export const getAdminInventory   = ()     => api.get('/inventory');
-export const getSystemInventory  = ()     => api.get('/inventory/system');
-export const addSystemInventory    = (data)           => api.post('/inventory/system', data);
-export const reduceSystemInventory = (medicineId, data) => api.put(`/inventory/system/${medicineId}/reduce`, data);
-export const clearSystemInventory  = (medicineId)       => api.delete(`/inventory/system/${medicineId}`);
-export const allocateInventory     = (data)             => api.post('/inventory/allocate', data);
+export const getAdminInventory = ()     => api.get('/inventory');
+export const adjustInventory   = (data) => api.post('/inventory/adjust', data);
 
 // ── Medicines ──────────────────────────────────────────────────────────
 export const getMedicines    = ()     => api.get('/medicines');
@@ -48,12 +44,12 @@ export const createMedicine  = (data) => api.post('/medicines', data);
 export const getPharmaCompanies = () => api.get('/pharma');
 
 // ── Transactions ───────────────────────────────────────────────────────
-export const submitTransaction = ({ medicineId, quantity, notes, screenshotFile = null }) => {
+export const submitTransaction = ({ medicineId, quantity, notes, screenshotFile }) => {
   const form = new FormData();
   form.append('medicineId', String(medicineId));
   form.append('quantity',   String(quantity));
   form.append('notes',      notes);
-  if (screenshotFile) form.append('screenshot', screenshotFile);
+  form.append('screenshot', screenshotFile);
   return api.post('/transactions', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
@@ -64,10 +60,11 @@ export const getAllTransactions  = ()           => api.get('/transactions');
 export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/approve`, data);
 
 // ── Users ──────────────────────────────────────────────────────────────
-export const getUsers       = ()           => api.get('/users');
-export const createUser     = (data)       => api.post('/users', data);
-export const toggleUser     = (id)         => api.post(`/users/${id}/toggle`);
-export const updateUser     = (id, data)   => api.put(`/users/${id}`, data);
-export const changePassword = (data)       => api.put('/users/me/password', data);
+export const getUsers            = ()           => api.get('/users');
+export const createUser          = (data)       => api.post('/users', data);
+export const toggleUser          = (id)         => api.post(`/users/${id}/toggle`);
+export const updateUser          = (id, data)   => api.put(`/users/${id}`, data);
+export const changePassword      = (data)       => api.put('/users/me/password', data);
+export const adminChangePassword = (id, data)   => api.put(`/users/${id}/password`, data);
 
 export default api;

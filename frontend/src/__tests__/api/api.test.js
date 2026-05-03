@@ -164,20 +164,17 @@ describe('api.js', () => {
       expect(appendSpy).toHaveBeenCalledWith('screenshot', file);
     });
 
-    test('does NOT append screenshot key when screenshotFile is null', async () => {
-      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFile: null });
+    test('screenshot is always appended (mandatory field)', async () => {
+      const file = new File(['x'], 'proof.png', { type: 'image/png' });
+      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFile: file });
       const screenshotCalls = appendSpy.mock.calls.filter(([k]) => k === 'screenshot');
-      expect(screenshotCalls).toHaveLength(0);
-    });
-
-    test('does NOT append screenshot key when screenshotFile is undefined', async () => {
-      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note' });
-      const screenshotCalls = appendSpy.mock.calls.filter(([k]) => k === 'screenshot');
-      expect(screenshotCalls).toHaveLength(0);
+      expect(screenshotCalls).toHaveLength(1);
+      expect(screenshotCalls[0][1]).toBe(file);
     });
 
     test('posts to /transactions endpoint', async () => {
-      await submitTransaction({ medicineId: 1, quantity: 1, notes: 'Note' });
+      const file = new File(['x'], 'pay.png', { type: 'image/png' });
+      await submitTransaction({ medicineId: 1, quantity: 1, notes: 'Note', screenshotFile: file });
       expect(mockPost).toHaveBeenCalledWith(
         '/transactions',
         expect.any(FormData),

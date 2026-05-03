@@ -3,10 +3,8 @@ package com.pharma.inventory.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pharma.inventory.config.AppConfig;
 import com.pharma.inventory.config.SecurityConfig;
-import com.pharma.inventory.dto.InventoryRequest;
+import com.pharma.inventory.dto.AdjustInventoryRequest;
 import com.pharma.inventory.dto.InventoryResponse;
-import com.pharma.inventory.dto.SystemInventoryReduceRequest;
-import com.pharma.inventory.dto.SystemInventoryRequest;
 import com.pharma.inventory.exception.InsufficientInventoryException;
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.UserRepository;
@@ -28,7 +26,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -62,6 +59,7 @@ class InventoryControllerTest {
         sampleResponse.setPharmaId(1L);
         sampleResponse.setPharmaName("Shield FX");
         sampleResponse.setQuantity(100);
+        sampleResponse.setPrice(4000);
 
         mockUser = User.builder().id(2L).username("john.doe").role(User.Role.USER).active(true)
                 .email("j@j.com").fullName("John Doe").password("h").build();
@@ -78,7 +76,8 @@ class InventoryControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(1))
                     .andExpect(jsonPath("$[0].username").value("john.doe"))
-                    .andExpect(jsonPath("$[0].specUnit").value("mg/ml"));
+                    .andExpect(jsonPath("$[0].specUnit").value("mg/ml"))
+                    .andExpect(jsonPath("$[0].price").value(4000));
         }
 
         @Test @WithMockUser(roles = "USER")
@@ -88,217 +87,9 @@ class InventoryControllerTest {
         }
 
         @Test
-        void unauthenticatedForbidden() throws Exception {
+        void unauthenticatedUnauthorized() throws Exception {
             mockMvc.perform(get("/api/inventory"))
                     .andExpect(status().isUnauthorized());
-        }
-    }
-
-    // ── GET /api/inventory/system ─────────────────────────────────────
-
-    @Nested @DisplayName("GET /api/inventory/system — system inventory")
-    class GetSystem {
-        @Test @WithMockUser(roles = "ADMIN")
-        void adminCanGetSystem() throws Exception {
-            InventoryResponse sysResp = new InventoryResponse();
-            sysResp.setUsername("lostinventory");
-            sysResp.setQuantity(400);
-            when(inventoryService.getSystemInventory()).thenReturn(List.of(sysResp));
-            mockMvc.perform(get("/api/inventory/system"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].username").value("lostinventory"))
-                    .andExpect(jsonPath("$[0].quantity").value(400));
-        }
-
-        @Test @WithMockUser(roles = "USER")
-        void userForbiddenSystem() throws Exception {
-            mockMvc.perform(get("/api/inventory/system"))
-                    .andExpect(status().isForbidden());
-        }
-    }
-
-    // ── POST /api/inventory/system ────────────────────────────────────
-
-    @Nested @DisplayName("POST /api/inventory/system — add system inventory")
-    class AddSystem {
-        @Test @WithMockUser(roles = "ADMIN")
-        void adminCanAddSystemInventory() throws Exception {
-            SystemInventoryRequest req = new SystemInventoryRequest();
-            req.setMedicineId(1L);
-            req.setQuantity(100);
-            when(inventoryService.addSystemInventory(any())).thenReturn(sampleResponse);
-            mockMvc.perform(post("/api/inventory/system").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isOk());
-        }
-
-        @Test @WithMockUser(roles = "ADMIN")
-        void rejectsZeroQuantity() throws Exception {
-            SystemInventoryRequest req = new SystemInventoryRequest();
-            req.setMedicineId(1L);
-            req.setQuantity(0);
-            mockMvc.perform(post("/api/inventory/system").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isBadRequest());
-        }
-
-        @Test @WithMockUser(roles = "ADMIN")
-        void rejectsMissingMedicineId() throws Exception {
-            SystemInventoryRequest req = new SystemInventoryRequest();
-            req.setQuantity(10);
-            mockMvc.perform(post("/api/inventory/system").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isBadRequest());
-        }
-
-        @Test @WithMockUser(roles = "USER")
-        void userCannotAddSystemInventory() throws Exception {
-            SystemInventoryRequest req = new SystemInventoryRequest();
-            req.setMedicineId(1L);
-            req.setQuantity(100);
-            mockMvc.perform(post("/api/inventory/system").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isForbidden());
-        }
-    }
-
-    // ── PUT /api/inventory/system/{id}/reduce ─────────────────────────
-
-    @Nested @DisplayName("PUT /api/inventory/system/{medicineId}/reduce — reduce system inventory")
-    class ReduceSystem {
-
-        @Test @WithMockUser(roles = "ADMIN")
-        void adminCanReduce() throws Exception {
-            InventoryResponse reduced = new InventoryResponse();
-            reduced.setQuantity(50);
-            SystemInventoryReduceRequest req = new SystemInventoryReduceRequest();
-            req.setQuantity(50);
-            when(inventoryService.reduceSystemInventory(eq(1L), any())).thenReturn(reduced);
-            mockMvc.perform(put("/api/inventory/system/1/reduce").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.quantity").value(50));
-        }
-
-        @Test @WithMockUser(roles = "ADMIN")
-        void returnsConflictWhenInsufficientStock() throws Exception {
-            SystemInventoryReduceRequest req = new SystemInventoryReduceRequest();
-            req.setQuantity(9999);
-            when(inventoryService.reduceSystemInventory(eq(1L), any()))
-                    .thenThrow(new InsufficientInventoryException(10, 9999));
-            mockMvc.perform(put("/api/inventory/system/1/reduce").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isConflict());
-        }
-
-        @Test @WithMockUser(roles = "ADMIN")
-        void rejectsZeroQuantity() throws Exception {
-            SystemInventoryReduceRequest req = new SystemInventoryReduceRequest();
-            req.setQuantity(0);
-            mockMvc.perform(put("/api/inventory/system/1/reduce").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isBadRequest());
-        }
-
-        @Test @WithMockUser(roles = "USER")
-        void userCannotReduce() throws Exception {
-            SystemInventoryReduceRequest req = new SystemInventoryReduceRequest();
-            req.setQuantity(10);
-            mockMvc.perform(put("/api/inventory/system/1/reduce").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isForbidden());
-        }
-    }
-
-    // ── DELETE /api/inventory/system/{id} ─────────────────────────────
-
-    @Nested @DisplayName("DELETE /api/inventory/system/{medicineId} — clear system inventory")
-    class ClearSystem {
-
-        @Test @WithMockUser(roles = "ADMIN")
-        void adminCanClear() throws Exception {
-            InventoryResponse cleared = new InventoryResponse();
-            cleared.setQuantity(0);
-            when(inventoryService.clearSystemInventory(1L)).thenReturn(cleared);
-            mockMvc.perform(delete("/api/inventory/system/1").with(csrf()))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.quantity").value(0));
-        }
-
-        @Test @WithMockUser(roles = "USER")
-        void userCannotClear() throws Exception {
-            mockMvc.perform(delete("/api/inventory/system/1").with(csrf()))
-                    .andExpect(status().isForbidden());
-        }
-
-        @Test
-        void unauthenticatedCannotClear() throws Exception {
-            mockMvc.perform(delete("/api/inventory/system/1").with(csrf()))
-                    .andExpect(status().isUnauthorized());
-        }
-    }
-
-    // ── POST /api/inventory/allocate ──────────────────────────────────
-
-    @Nested @DisplayName("POST /api/inventory/allocate — allocate to user")
-    class Allocate {
-        @Test @WithMockUser(roles = "ADMIN")
-        void adminCanAllocate() throws Exception {
-            InventoryRequest req = new InventoryRequest();
-            req.setUserId(2L);
-            req.setMedicineId(1L);
-            req.setQuantity(50);
-            when(inventoryService.allocateToUser(any())).thenReturn(sampleResponse);
-            mockMvc.perform(post("/api/inventory/allocate").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.username").value("john.doe"));
-        }
-
-        @Test @WithMockUser(roles = "ADMIN")
-        void returnsConflictWhenInsufficientSystemInventory() throws Exception {
-            InventoryRequest req = new InventoryRequest();
-            req.setUserId(2L);
-            req.setMedicineId(1L);
-            req.setQuantity(9999);
-            when(inventoryService.allocateToUser(any()))
-                    .thenThrow(new InsufficientInventoryException(100, 9999));
-            mockMvc.perform(post("/api/inventory/allocate").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isConflict());
-        }
-
-        @Test @WithMockUser(roles = "ADMIN")
-        void rejectsMissingUserId() throws Exception {
-            InventoryRequest req = new InventoryRequest();
-            req.setMedicineId(1L);
-            req.setQuantity(50);
-            mockMvc.perform(post("/api/inventory/allocate").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isBadRequest());
-        }
-
-        @Test @WithMockUser(roles = "USER")
-        void userCannotAllocate() throws Exception {
-            InventoryRequest req = new InventoryRequest();
-            req.setUserId(2L);
-            req.setMedicineId(1L);
-            req.setQuantity(10);
-            mockMvc.perform(post("/api/inventory/allocate").with(csrf())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isForbidden());
         }
     }
 
@@ -312,13 +103,140 @@ class InventoryControllerTest {
             when(inventoryService.getAvailableForUser(2L)).thenReturn(List.of(sampleResponse));
             mockMvc.perform(get("/api/inventory/available"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.length()").value(1));
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].price").value(4000));
         }
 
         @Test @WithMockUser(roles = "ADMIN")
-        void adminCannotUseAvailableEndpoint() throws Exception {
+        void adminForbidden() throws Exception {
             mockMvc.perform(get("/api/inventory/available"))
                     .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedUnauthorized() throws Exception {
+            mockMvc.perform(get("/api/inventory/available"))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    // ── POST /api/inventory/adjust ────────────────────────────────────
+
+    @Nested @DisplayName("POST /api/inventory/adjust — admin adjusts user inventory")
+    class Adjust {
+
+        private AdjustInventoryRequest validAddReq() {
+            AdjustInventoryRequest r = new AdjustInventoryRequest();
+            r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(10);
+            r.setAdjustmentType("ADD"); r.setNote("Restocking for Ward 3");
+            return r;
+        }
+
+        private AdjustInventoryRequest validReduceReq() {
+            AdjustInventoryRequest r = new AdjustInventoryRequest();
+            r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(5);
+            r.setAdjustmentType("REDUCE"); r.setNote("Returned expired stock");
+            return r;
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanAddInventory() throws Exception {
+            InventoryResponse added = new InventoryResponse();
+            added.setQuantity(110); added.setUsername("john.doe");
+            when(inventoryService.adjustInventory(any())).thenReturn(added);
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validAddReq())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.quantity").value(110));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanReduceInventory() throws Exception {
+            InventoryResponse reduced = new InventoryResponse();
+            reduced.setQuantity(45); reduced.setUsername("john.doe");
+            when(inventoryService.adjustInventory(any())).thenReturn(reduced);
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validReduceReq())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.quantity").value(45));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void returnsConflictWhenInsufficientStock() throws Exception {
+            when(inventoryService.adjustInventory(any()))
+                    .thenThrow(new InsufficientInventoryException(3, 5));
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validReduceReq())))
+                    .andExpect(status().isConflict());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsZeroQuantity() throws Exception {
+            AdjustInventoryRequest req = validAddReq();
+            req.setQuantity(0);
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsMissingNote() throws Exception {
+            AdjustInventoryRequest req = validAddReq();
+            req.setNote(null);
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsNoteTooShort() throws Exception {
+            AdjustInventoryRequest req = validAddReq();
+            req.setNote("ok");
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsInvalidAdjustmentType() throws Exception {
+            AdjustInventoryRequest req = validAddReq();
+            req.setAdjustmentType("INVALID");
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsMissingUserId() throws Exception {
+            AdjustInventoryRequest req = validAddReq();
+            req.setUserId(null);
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userCannotAdjust() throws Exception {
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validAddReq())))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedCannotAdjust() throws Exception {
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validAddReq())))
+                    .andExpect(status().isUnauthorized());
         }
     }
 }

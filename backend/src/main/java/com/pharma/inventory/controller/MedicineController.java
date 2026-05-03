@@ -13,7 +13,7 @@ public class MedicineController {
     public List<Map<String,Object>> getAll() {
         return medicineRepo.findAll().stream().map(m -> {
             Map<String,Object> map=new LinkedHashMap<>();
-            map.put("id",m.getId());map.put("name",m.getName());map.put("type",m.getType());map.put("specification",m.getSpecification());
+            map.put("id",m.getId());map.put("name",m.getName());map.put("type",m.getType());map.put("specification",m.getSpecification());map.put("price",m.getPrice());
             if(m.getPharmaCompany()!=null){Map<String,Object> co=new LinkedHashMap<>();co.put("id",m.getPharmaCompany().getId());co.put("name",m.getPharmaCompany().getName());map.put("pharmaCompany",co);}
             return map;
         }).collect(Collectors.toList());

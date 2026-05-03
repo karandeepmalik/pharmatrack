@@ -77,6 +77,14 @@ steps:
       - --platform=managed
     waitFor: [frontend-push]
 
+  # ── 8. E2E tests against production Cloud Run services ───────────────
+  - name: 'node:20-alpine'
+    id: e2e-test
+    dir: e2e
+    entrypoint: node
+    args: ['auth.test.js']
+    waitFor: [backend-deploy, frontend-deploy]
+
 options:
   logging: LEGACY
   machineType: E2_HIGHCPU_8

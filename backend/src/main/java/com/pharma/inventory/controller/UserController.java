@@ -22,4 +22,7 @@ public class UserController {
     @PutMapping("/me/password") public ResponseEntity<Void> changePassword(@AuthenticationPrincipal UserDetails ud, @RequestBody Map<String,String> body){
         userService.changePassword(ud.getUsername(),body.get("currentPassword"),body.get("newPassword")); return ResponseEntity.ok().build();
     }
+    @PutMapping("/{id}/password") @PreAuthorize("hasRole('ADMIN')") public ResponseEntity<Void> adminChangePassword(@PathVariable Long id, @RequestBody Map<String,String> body){
+        userService.adminChangePassword(id, body.get("newPassword")); return ResponseEntity.ok().build();
+    }
 }

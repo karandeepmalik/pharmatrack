@@ -70,18 +70,14 @@ class TransactionControllerTest {
 
         @Test
         @WithMockUser(username = "john.doe", roles = "USER")
-        @DisplayName("submit without screenshot returns 200 and transaction response")
-        void submit_noScreenshot_200() throws Exception {
-            when(transactionService.submit(any(), eq("john.doe"))).thenReturn(sampleResponse);
-
+        @DisplayName("submit without screenshot returns 400 — screenshot is mandatory")
+        void submit_noScreenshot_400() throws Exception {
             mockMvc.perform(multipart("/api/transactions")
                     .param("medicineId", "1")
                     .param("quantity", "10")
                     .param("notes", "Dispatched to clinic B for FIP treatment")
                     .with(csrf()))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.status").value("PENDING"))
-                    .andExpect(jsonPath("$.notes").value("Dispatched to clinic B for FIP treatment"));
+                    .andExpect(status().isBadRequest());
         }
 
         @Test
@@ -165,10 +161,13 @@ class TransactionControllerTest {
         @WithMockUser(username = "john.doe", roles = "USER")
         @DisplayName("submit with notes too short returns 400")
         void submit_notesTooShort_400() throws Exception {
+            MockMultipartFile screenshot = new MockMultipartFile(
+                    "screenshot", "pay.png", "image/png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
             when(transactionService.submit(any(), anyString()))
                     .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
 
             mockMvc.perform(multipart("/api/transactions")
+                    .file(screenshot)
                     .param("medicineId", "1")
                     .param("quantity", "10")
                     .param("notes", "Hi") // < 5 chars
