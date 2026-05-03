@@ -37,4 +37,10 @@ public class UserService {
         if(!passwordEncoder.matches(oldPw,u.getPassword())) throw new IllegalArgumentException("Current password is incorrect");
         u.setPassword(passwordEncoder.encode(newPw)); userRepository.save(u);
     }
+    @Transactional
+    public void adminChangePassword(Long userId, String newPassword){
+        User u=userRepository.findById(userId).orElseThrow(()->new ResourceNotFoundException("User",userId));
+        if(newPassword==null||newPassword.length()<8) throw new IllegalArgumentException("Password must be at least 8 characters");
+        u.setPassword(passwordEncoder.encode(newPassword)); userRepository.save(u);
+    }
 }

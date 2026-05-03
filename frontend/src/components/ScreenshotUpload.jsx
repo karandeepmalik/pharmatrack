@@ -22,12 +22,15 @@ export default function ScreenshotUpload({
   screenshotFile,
   onFileChange,
   onRemove,
+  required = false,
 }) {
   return (
     <div className="form-group screenshot-upload">
       <label htmlFor="screenshot-input">
         Payment Screenshot{' '}
-        <span className="optional">(optional)</span>
+        {required
+          ? <span className="required">*</span>
+          : <span className="optional">(optional)</span>}
       </label>
 
       <p className="field-hint">

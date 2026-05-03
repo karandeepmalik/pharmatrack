@@ -4,6 +4,7 @@ import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Medicine.MedicineType;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.MedicineRepository;
+import com.pharma.inventory.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -27,6 +28,7 @@ class MedicineSpecValidationTest {
     @Autowired DataInitializer dataInitializer;
     @Autowired MedicineRepository medicineRepository;
     @Autowired InventoryRepository inventoryRepository;
+    @Autowired UserRepository userRepository;
 
     @BeforeEach
     void setup() {
@@ -66,18 +68,36 @@ class MedicineSpecValidationTest {
             assertThat(all).noneMatch(m -> m.getName().contains("MediCure"));
         }
 
-        @Test @DisplayName("All 5 expected medicine names are present")
+        @Test @DisplayName("All 5 expected medicine names are present with updated tablet names")
         void expectedMedicineNamesPresent() {
             Set<String> names = Set.of(
                 "Shield FX Vial 5 ml",
                 "Shield FX Vial 10 ml",
-                "Shield FX Tablet 12 mg",
-                "Shield FX Tablet 25 mg",
-                "Shield FX Tablet 50 mg"
+                "Shield FX Tablet 12 mg (10 Tablets)",
+                "Shield FX Tablet 25 mg (10 Tablets)",
+                "Shield FX Tablet 50 mg (10 Tablets)"
             );
             List<String> actualNames = medicineRepository.findAll().stream()
                 .map(Medicine::getName).toList();
             assertThat(actualNames).containsExactlyInAnyOrderElementsOf(names);
+        }
+
+        @Test @DisplayName("Old tablet names without (10 Tablets) do not exist")
+        void oldTabletNamesAbsent() {
+            List<Medicine> all = medicineRepository.findAll();
+            assertThat(all).noneMatch(m -> m.getName().equals("Shield FX Tablet 12 mg"));
+            assertThat(all).noneMatch(m -> m.getName().equals("Shield FX Tablet 25 mg"));
+            assertThat(all).noneMatch(m -> m.getName().equals("Shield FX Tablet 50 mg"));
+        }
+
+        @Test @DisplayName("All medicines have a positive price")
+        void allMedicinesHavePrice() {
+            medicineRepository.findAll().forEach(m ->
+                assertThat(m.getPrice())
+                    .as("Price for %s", m.getName())
+                    .isNotNull()
+                    .isPositive()
+            );
         }
     }
 
@@ -100,22 +120,24 @@ class MedicineSpecValidationTest {
                     .isIn(5.0, 10.0));
         }
 
-        @Test @DisplayName("Shield FX Vial 5 ml has specification 5.0")
+        @Test @DisplayName("Shield FX Vial 5 ml has specification 5.0 and price 2000")
         void vial5mlHasSpec5() {
             Medicine vial = medicineRepository.findAll().stream()
                 .filter(m -> m.getName().equals("Shield FX Vial 5 ml"))
                 .findFirst().orElseThrow(() -> new AssertionError("Shield FX Vial 5 ml not found"));
             assertThat(vial.getSpecification()).isEqualTo(5.0);
             assertThat(vial.getType()).isEqualTo(MedicineType.VIAL);
+            assertThat(vial.getPrice()).isEqualTo(2000);
         }
 
-        @Test @DisplayName("Shield FX Vial 10 ml has specification 10.0")
+        @Test @DisplayName("Shield FX Vial 10 ml has specification 10.0 and price 4000")
         void vial10mlHasSpec10() {
             Medicine vial = medicineRepository.findAll().stream()
                 .filter(m -> m.getName().equals("Shield FX Vial 10 ml"))
                 .findFirst().orElseThrow(() -> new AssertionError("Shield FX Vial 10 ml not found"));
             assertThat(vial.getSpecification()).isEqualTo(10.0);
             assertThat(vial.getType()).isEqualTo(MedicineType.VIAL);
+            assertThat(vial.getPrice()).isEqualTo(4000);
         }
     }
 
@@ -138,58 +160,55 @@ class MedicineSpecValidationTest {
                     .isIn(12.0, 25.0, 50.0));
         }
 
-        @Test @DisplayName("Shield FX Tablet 12 mg has specification 12.0")
+        @Test @DisplayName("Shield FX Tablet 12 mg (10 Tablets) has spec 12.0 and price 1750")
         void tablet12HasSpec12() {
             Medicine tab = medicineRepository.findAll().stream()
-                .filter(m -> m.getName().equals("Shield FX Tablet 12 mg"))
-                .findFirst().orElseThrow(() -> new AssertionError("Shield FX Tablet 12 mg not found"));
+                .filter(m -> m.getName().equals("Shield FX Tablet 12 mg (10 Tablets)"))
+                .findFirst().orElseThrow(() -> new AssertionError("Shield FX Tablet 12 mg (10 Tablets) not found"));
             assertThat(tab.getSpecification()).isEqualTo(12.0);
             assertThat(tab.getType()).isEqualTo(MedicineType.TABLET);
+            assertThat(tab.getPrice()).isEqualTo(1750);
         }
 
-        @Test @DisplayName("Shield FX Tablet 25 mg has specification 25.0")
+        @Test @DisplayName("Shield FX Tablet 25 mg (10 Tablets) has spec 25.0 and price 4000")
         void tablet25HasSpec25() {
             Medicine tab = medicineRepository.findAll().stream()
-                .filter(m -> m.getName().equals("Shield FX Tablet 25 mg"))
-                .findFirst().orElseThrow(() -> new AssertionError("Shield FX Tablet 25 mg not found"));
+                .filter(m -> m.getName().equals("Shield FX Tablet 25 mg (10 Tablets)"))
+                .findFirst().orElseThrow(() -> new AssertionError("Shield FX Tablet 25 mg (10 Tablets) not found"));
             assertThat(tab.getSpecification()).isEqualTo(25.0);
             assertThat(tab.getType()).isEqualTo(MedicineType.TABLET);
+            assertThat(tab.getPrice()).isEqualTo(4000);
         }
 
-        @Test @DisplayName("Shield FX Tablet 50 mg has specification 50.0")
+        @Test @DisplayName("Shield FX Tablet 50 mg (10 Tablets) has spec 50.0 and price 8000")
         void tablet50HasSpec50() {
             Medicine tab = medicineRepository.findAll().stream()
-                .filter(m -> m.getName().equals("Shield FX Tablet 50 mg"))
-                .findFirst().orElseThrow(() -> new AssertionError("Shield FX Tablet 50 mg not found"));
+                .filter(m -> m.getName().equals("Shield FX Tablet 50 mg (10 Tablets)"))
+                .findFirst().orElseThrow(() -> new AssertionError("Shield FX Tablet 50 mg (10 Tablets) not found"));
             assertThat(tab.getSpecification()).isEqualTo(50.0);
             assertThat(tab.getType()).isEqualTo(MedicineType.TABLET);
+            assertThat(tab.getPrice()).isEqualTo(8000);
         }
     }
 
-    @Nested @DisplayName("System inventory")
-    class SystemInventory {
+    @Nested @DisplayName("Seed state — no system user")
+    class SeedState {
 
-        @Test @DisplayName("All 5 medicines have a system inventory record at 0")
-        void allMedicinesHaveZeroSystemInventory() {
-            List<Medicine> all = medicineRepository.findAll();
-            assertThat(all).hasSize(5);
-            all.forEach(m -> {
-                boolean hasRecord = inventoryRepository.findAll().stream()
-                    .anyMatch(i -> i.getMedicine().getId().equals(m.getId())
-                        && i.getUser().getUsername().equals("lostinventory")
-                        && i.getQuantity() == 0);
-                assertThat(hasRecord)
-                    .as("System inventory record at 0 for %s", m.getName())
-                    .isTrue();
-            });
+        @Test @DisplayName("No lostinventory system user exists after seed")
+        void noSystemUserAfterSeed() {
+            boolean exists = userRepository.findByUsername("lostinventory").isPresent();
+            assertThat(exists).as("lostinventory system user should not exist").isFalse();
         }
 
-        @Test @DisplayName("No user inventory records exist after seed")
-        void noUserInventoryAfterSeed() {
-            long userRecords = inventoryRepository.findAll().stream()
-                .filter(i -> !i.getUser().getUsername().equals("lostinventory"))
-                .count();
-            assertThat(userRecords).isZero();
+        @Test @DisplayName("Exactly 3 active users are seeded")
+        void exactlyThreeUsers() {
+            long active = userRepository.findAll().stream().filter(u -> u.isActive()).count();
+            assertThat(active).isEqualTo(3);
+        }
+
+        @Test @DisplayName("No inventory records exist after seed (no system inventory)")
+        void noInventoryAfterSeed() {
+            assertThat(inventoryRepository.findAll()).isEmpty();
         }
     }
 }

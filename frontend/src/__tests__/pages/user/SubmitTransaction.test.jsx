@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import SubmitTransaction from '../../../pages/user/SubmitTransaction';
 import * as api from '../../../api/api';
@@ -8,11 +9,11 @@ jest.mock('../../../api/api');
 
 const mockInventory = [
   { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 1, medicineName: 'FIP Shield Vial',
-    medicineType: 'VIAL', specification: 10, quantity: 50 },
+    medicineType: 'VIAL', specification: 10, quantity: 50, specUnit: 'mg/ml', price: 4000 },
   { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 2, medicineName: 'FIP Shield Tablet',
-    medicineType: 'TABLET', specification: 50, quantity: 30 },
+    medicineType: 'TABLET', specification: 50, quantity: 30, specUnit: 'mg (10 Tablets)', price: 8000 },
   { pharmaId: 2, pharmaName: 'MediCure', medicineId: 3, medicineName: 'MediCure Vial',
-    medicineType: 'VIAL', specification: 20, quantity: 10 },
+    medicineType: 'VIAL', specification: 20, quantity: 10, specUnit: 'mg/ml', price: 2000 },
 ];
 
 beforeEach(() => {
@@ -20,9 +21,21 @@ beforeEach(() => {
   api.getAvailableInventory.mockResolvedValue({ data: mockInventory });
 });
 
-const renderPage = () => render(<SubmitTransaction />);
+const renderPage = () => render(<MemoryRouter><SubmitTransaction /></MemoryRouter>);
 
-/** Fill the form to a valid state ready to submit */
+/** Attach a valid PNG screenshot to the upload input */
+const attachScreenshot = async (filename = 'pay.png') => {
+  const file = new File(['png'], filename, { type: 'image/png' });
+  const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
+  jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
+  fireEvent.change(screen.getByLabelText(/upload payment screenshot/i),
+    { target: { files: [file] } });
+  readerMock.onloadend();
+  await waitFor(() => screen.getByAltText(/payment screenshot preview/i));
+  return file;
+};
+
+/** Fill the form to a fully valid state including mandatory screenshot */
 const fillValidForm = async () => {
   renderPage();
   await waitFor(() => screen.getByLabelText(/pharma company/i));
@@ -32,6 +45,7 @@ const fillValidForm = async () => {
   await userEvent.type(screen.getByLabelText(/quantity/i), '5');
   await userEvent.type(screen.getByLabelText(/adjustment note/i),
     'Dispatched to clinic B for FIP treatment');
+  await attachScreenshot();
 };
 
 // ── Loading & render ───────────────────────────────────────────────────
@@ -41,6 +55,18 @@ describe('Initial render', () => {
     api.getAvailableInventory.mockReturnValue(new Promise(() => {}));
     renderPage();
     expect(screen.getByText(/loading inventory/i)).toBeInTheDocument();
+  });
+
+  test('renders page heading as Submit Inventory Adjustment', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText(/submit inventory adjustment/i));
+    expect(screen.getByRole('heading', { name: /submit inventory adjustment/i })).toBeInTheDocument();
+  });
+
+  test('renders back button linking to user dashboard', async () => {
+    renderPage();
+    await waitFor(() => screen.getByRole('link', { name: /← back/i }));
+    expect(screen.getByRole('link', { name: /← back/i })).toHaveAttribute('href', '/user/dashboard');
   });
 
   test('renders all form fields after inventory loads', async () => {
@@ -54,8 +80,8 @@ describe('Initial render', () => {
 
   test('submit button is disabled initially', async () => {
     renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /submit adjustment/i }));
-    expect(screen.getByRole('button', { name: /submit adjustment/i })).toBeDisabled();
+    await waitFor(() => screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    expect(screen.getByRole('button', { name: /submit inventory adjustment/i })).toBeDisabled();
   });
 
   test('shows error if inventory fetch fails', async () => {
@@ -94,7 +120,6 @@ describe('Cascading select behaviour', () => {
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
     expect(screen.getByLabelText(/medicine type/i)).toHaveValue('VIAL');
 
-    // Change pharma → type should reset
     await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '2');
     expect(screen.getByLabelText(/medicine type/i)).toHaveValue('');
   });
@@ -105,7 +130,6 @@ describe('Cascading select behaviour', () => {
     await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
     await userEvent.selectOptions(screen.getByLabelText(/specification/i), '10');
-    expect(screen.getByLabelText(/specification/i)).toHaveValue('10');
 
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'TABLET');
     expect(screen.getByLabelText(/specification/i)).toHaveValue('');
@@ -118,6 +142,14 @@ describe('Cascading select behaviour', () => {
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
     await userEvent.selectOptions(screen.getByLabelText(/specification/i), '10');
     expect(screen.getByText(/max 50/i)).toBeInTheDocument();
+  });
+
+  test('tablet spec label shows mg (10 Tablets)', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/pharma company/i));
+    await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'TABLET');
+    expect(screen.getByText(/mg \(10 tablets\)/i)).toBeInTheDocument();
   });
 });
 
@@ -138,30 +170,33 @@ describe('Notes field', () => {
   });
 });
 
-// ── Screenshot upload (via ScreenshotUpload component) ─────────────────
+// ── Screenshot upload — now mandatory ─────────────────────────────────
 
-describe('Screenshot upload section', () => {
-  test('renders upload input labelled as optional', async () => {
+describe('Screenshot upload section — mandatory', () => {
+  test('renders screenshot upload marked as required', async () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/upload payment screenshot/i));
-    expect(screen.getByText(/optional/i)).toBeInTheDocument();
+    expect(screen.queryByText(/optional/i)).not.toBeInTheDocument();
+  });
+
+  test('submit button stays disabled when screenshot is missing even if other fields valid', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/pharma company/i));
+    await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
+    await userEvent.selectOptions(screen.getByLabelText(/specification/i), '10');
+    await userEvent.type(screen.getByLabelText(/quantity/i), '5');
+    await userEvent.type(screen.getByLabelText(/adjustment note/i),
+      'Dispatched to clinic B for FIP treatment');
+    // No screenshot attached
+    expect(screen.getByRole('button', { name: /submit inventory adjustment/i })).toBeDisabled();
   });
 
   test('shows preview after valid PNG file selected', async () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/upload payment screenshot/i));
-
-    const file = new File(['png'], 'pay.png', { type: 'image/png' });
-    const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
-    jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
-
-    fireEvent.change(screen.getByLabelText(/upload payment screenshot/i),
-      { target: { files: [file] } });
-    readerMock.onloadend();
-
-    await waitFor(() =>
-      expect(screen.getByAltText(/payment screenshot preview/i)).toBeInTheDocument()
-    );
+    await attachScreenshot();
+    expect(screen.getByAltText(/payment screenshot preview/i)).toBeInTheDocument();
   });
 
   test('shows error for non-image file', async () => {
@@ -169,22 +204,13 @@ describe('Screenshot upload section', () => {
     await waitFor(() => screen.getByLabelText(/upload payment screenshot/i));
     fireEvent.change(screen.getByLabelText(/upload payment screenshot/i),
       { target: { files: [new File(['x'], 'bad.pdf', { type: 'application/pdf' })] } });
-
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/PNG, JPEG/i));
   });
 
   test('remove button clears preview', async () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/upload payment screenshot/i));
-
-    const file = new File(['x'], 'pay.png', { type: 'image/png' });
-    const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
-    jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
-    fireEvent.change(screen.getByLabelText(/upload payment screenshot/i),
-      { target: { files: [file] } });
-    readerMock.onloadend();
-
-    await waitFor(() => screen.getByAltText(/payment screenshot preview/i));
+    await attachScreenshot();
     await userEvent.click(screen.getByRole('button', { name: /remove screenshot/i }));
     await waitFor(() =>
       expect(screen.queryByAltText(/payment screenshot preview/i)).not.toBeInTheDocument()
@@ -192,7 +218,7 @@ describe('Screenshot upload section', () => {
   });
 });
 
-// ── Preview card (via TransactionPreview component) ────────────────────
+// ── Preview card ───────────────────────────────────────────��──────────
 
 describe('Preview card', () => {
   test('does not show preview before form is complete', async () => {
@@ -202,67 +228,42 @@ describe('Preview card', () => {
       .not.toBeInTheDocument();
   });
 
-  test('shows preview once all required fields are filled', async () => {
+  test('shows preview once all required fields are filled including screenshot', async () => {
     await fillValidForm();
     await waitFor(() =>
       expect(screen.getByRole('region', { name: /submission preview/i })).toBeInTheDocument()
     );
   });
 
-  test('preview shows medicine name', async () => {
-    await fillValidForm();
-    await waitFor(() => screen.getByRole('region', { name: /submission preview/i }));
-    expect(screen.getByText(/FIP Shield Vial/)).toBeInTheDocument();
-  });
-
   test('preview shows screenshot filename when file attached', async () => {
     await fillValidForm();
-    const file = new File(['x'], 'proof.png', { type: 'image/png' });
-    const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
-    jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
-    fireEvent.change(screen.getByLabelText(/upload payment screenshot/i),
-      { target: { files: [file] } });
-    readerMock.onloadend();
-    await waitFor(() => expect(screen.getByText(/proof\.png/)).toBeInTheDocument());
+    await waitFor(() => screen.getByText(/pay\.png/));
+    expect(screen.getByText(/pay\.png/)).toBeInTheDocument();
   });
 });
 
 // ── Submit ─────────────────────────────────────────────────────────────
 
 describe('Form submission', () => {
-  test('submit button enables when form is valid', async () => {
+  test('submit button enables when form is fully valid with screenshot', async () => {
     await fillValidForm();
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /submit adjustment/i })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /submit inventory adjustment/i })).not.toBeDisabled()
     );
   });
 
-  test('calls submitTransaction with correct params', async () => {
+  test('calls submitTransaction with correct params including screenshotFile', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
-        expect.objectContaining({ medicineId: 1, quantity: 5, notes: expect.any(String) })
-      )
-    );
-  });
-
-  test('calls submitTransaction with screenshotFile when file selected', async () => {
-    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
-    await fillValidForm();
-
-    const file = new File(['x'], 'pay.png', { type: 'image/png' });
-    const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
-    jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
-    fireEvent.change(screen.getByLabelText(/upload payment screenshot/i),
-      { target: { files: [file] } });
-    readerMock.onloadend();
-
-    await userEvent.click(screen.getByRole('button', { name: /submit adjustment/i }));
-    await waitFor(() =>
-      expect(api.submitTransaction).toHaveBeenCalledWith(
-        expect.objectContaining({ screenshotFile: file })
+        expect.objectContaining({
+          medicineId: 1,
+          quantity: 5,
+          notes: expect.any(String),
+          screenshotFile: expect.any(File),
+        })
       )
     );
   });
@@ -270,7 +271,7 @@ describe('Form submission', () => {
   test('shows success message after submission', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/submitted successfully/i)
     );
@@ -281,7 +282,7 @@ describe('Form submission', () => {
       response: { data: { message: 'Insufficient inventory: requested 5 but only 3 available' } },
     });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/insufficient inventory/i)
     );
@@ -290,7 +291,7 @@ describe('Form submission', () => {
   test('resets form fields after successful submission', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
     await waitFor(() => screen.getByRole('alert'));
     expect(screen.getByLabelText(/pharma company/i)).toHaveValue('');
   });

@@ -1,25 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import { NOTES_CONSTRAINTS } from '../../constants';
 import useScreenshot from '../../hooks/useScreenshot';
 import ScreenshotUpload from '../../components/ScreenshotUpload';
 import TransactionPreview from '../../components/TransactionPreview';
 
-/**
- * Page component for submitting an inventory adjustment request.
- *
- * Responsibilities (page layer only):
- *  - Load inventory data on mount
- *  - Manage cascading select state (pharma → type → spec → qty)
- *  - Manage notes state
- *  - Compute form validity
- *  - Call the API on submit
- *  - Render child components (ScreenshotUpload, TransactionPreview)
- *
- * Screenshot logic lives in useScreenshot hook.
- * Upload UI lives in ScreenshotUpload component.
- * Preview UI lives in TransactionPreview component.
- */
 export default function SubmitTransaction() {
   // ── Server data ──────────────────────────────────────────────────────
   const [inventory, setInventory] = useState([]);
@@ -88,6 +74,7 @@ export default function SubmitTransaction() {
     Number(quantity) >= 1 &&
     Number(quantity) <= maxQty &&
     notes.trim().length >= NOTES_CONSTRAINTS.MIN_LENGTH &&
+    Boolean(screenshot.screenshotFile) &&
     !screenshot.screenshotError;
 
   // ── Handlers ─────────────────────────────────────────────────────────
@@ -120,7 +107,7 @@ export default function SubmitTransaction() {
         screenshotFile: screenshot.screenshotFile,
       });
 
-      setSuccessMessage('Adjustment submitted successfully and is pending admin approval.');
+      setSuccessMessage('Inventory adjustment submitted successfully and is pending admin approval.');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
       setQuantity(''); setNotes('');
       screenshot.handleRemoveScreenshot();
@@ -141,7 +128,10 @@ export default function SubmitTransaction() {
 
   return (
     <div className="page submit-transaction-page">
-      <h1>Submit Adjustment</h1>
+      <div className="page-header">
+        <h1>Submit Inventory Adjustment</h1>
+        <Link to="/user/dashboard" className="btn btn-secondary">← Back</Link>
+      </div>
 
       {successMessage && (
         <div role="alert" className="alert alert-success">{successMessage}</div>
@@ -175,14 +165,14 @@ export default function SubmitTransaction() {
         {/* Specification */}
         <div className="form-group">
           <label htmlFor="spec-select">
-            Specification ({selectedType === 'VIAL' ? 'mg/ml' : 'mg'})
+            Specification ({selectedType === 'VIAL' ? 'mg/ml' : 'mg (10 Tablets)'})
           </label>
           <select id="spec-select" value={selectedSpec}
             disabled={!selectedType}
             onChange={(e) => { setSelectedSpec(e.target.value); setQuantity(''); }}>
             <option value="">-- Select Specification --</option>
             {specOptions.map((s) => {
-              const unit = selectedType === 'VIAL' ? 'mg/ml' : 'mg';
+              const unit = selectedType === 'VIAL' ? 'mg/ml' : 'mg (10 Tablets)';
               return <option key={s} value={String(s)}>{s} {unit}</option>;
             })}
           </select>
@@ -213,7 +203,7 @@ export default function SubmitTransaction() {
           </small>
         </div>
 
-        {/* Screenshot upload — delegated to component */}
+        {/* Screenshot upload — mandatory */}
         <ScreenshotUpload
           fileInputRef={screenshot.fileInputRef}
           screenshotPreview={screenshot.screenshotPreview}
@@ -221,6 +211,7 @@ export default function SubmitTransaction() {
           screenshotFile={screenshot.screenshotFile}
           onFileChange={screenshot.handleScreenshotChange}
           onRemove={screenshot.handleRemoveScreenshot}
+          required
         />
 
         {/* Preview — delegated to component */}
@@ -232,7 +223,7 @@ export default function SubmitTransaction() {
         />
 
         <button type="submit" disabled={!isFormValid || submitting} className="btn btn-primary">
-          {submitting ? 'Submitting…' : 'Submit Adjustment'}
+          {submitting ? 'Submitting…' : 'Submit Inventory Adjustment'}
         </button>
       </form>
     </div>

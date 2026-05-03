@@ -20,8 +20,8 @@ public class DataInitializer {
     @Bean @Profile("!test")
     public CommandLineRunner seed() {
         return args -> {
-            if (medicines.existsByName("Shield FX Tablet 50 mg")) {
-                log.info("Data already seeded with full Shield FX catalogue, skipping.");
+            if (medicines.existsByName("Shield FX Tablet 50 mg (10 Tablets)")) {
+                log.info("Data already seeded with full Shield FX catalogue (10 Tablets), skipping.");
                 return;
             }
             reseed();
@@ -46,35 +46,23 @@ public class DataInitializer {
         users.save(User.builder().username("jane.smith").email("jane@pharma.com")
             .fullName("Jane Smith").password(encoder.encode("User@123"))
             .role(User.Role.USER).active(true).build());
-        // System inventory holder — inactive (cannot log in)
-        User lost = users.save(User.builder().username("lostinventory")
-            .email("lostinventory@system.internal").fullName("System Inventory")
-            .password(encoder.encode("NoLogin@System999!"))
-            .role(User.Role.USER).active(false).build());
 
         // ── Pharma company ────────────────────────────────────────────
         PharmaCompany shieldFx = pharmas.save(PharmaCompany.builder().name("Shield FX")
             .description("Shield FX treatment specialist").active(true).build());
 
-        // ── Medicines — VIAL: 5 mg/ml, 10 mg/ml | Tablet: 12 mg, 25 mg, 50 mg ──
-        Medicine vial5  = medicines.save(Medicine.builder().name("Shield FX Vial 5 ml")
-            .type(Medicine.MedicineType.VIAL).specification(5.0).pharmaCompany(shieldFx).active(true).build());
-        Medicine vial10 = medicines.save(Medicine.builder().name("Shield FX Vial 10 ml")
-            .type(Medicine.MedicineType.VIAL).specification(10.0).pharmaCompany(shieldFx).active(true).build());
-        Medicine tab12  = medicines.save(Medicine.builder().name("Shield FX Tablet 12 mg")
-            .type(Medicine.MedicineType.TABLET).specification(12.0).pharmaCompany(shieldFx).active(true).build());
-        Medicine tab25  = medicines.save(Medicine.builder().name("Shield FX Tablet 25 mg")
-            .type(Medicine.MedicineType.TABLET).specification(25.0).pharmaCompany(shieldFx).active(true).build());
-        Medicine tab50  = medicines.save(Medicine.builder().name("Shield FX Tablet 50 mg")
-            .type(Medicine.MedicineType.TABLET).specification(50.0).pharmaCompany(shieldFx).active(true).build());
+        // ── Medicines — VIAL: 5 mg/ml, 10 mg/ml | Tablet: 12, 25, 50 mg (10 Tablets) ──
+        medicines.save(Medicine.builder().name("Shield FX Vial 5 ml")
+            .type(Medicine.MedicineType.VIAL).specification(5.0).price(2000).pharmaCompany(shieldFx).active(true).build());
+        medicines.save(Medicine.builder().name("Shield FX Vial 10 ml")
+            .type(Medicine.MedicineType.VIAL).specification(10.0).price(4000).pharmaCompany(shieldFx).active(true).build());
+        medicines.save(Medicine.builder().name("Shield FX Tablet 12 mg (10 Tablets)")
+            .type(Medicine.MedicineType.TABLET).specification(12.0).price(1750).pharmaCompany(shieldFx).active(true).build());
+        medicines.save(Medicine.builder().name("Shield FX Tablet 25 mg (10 Tablets)")
+            .type(Medicine.MedicineType.TABLET).specification(25.0).price(4000).pharmaCompany(shieldFx).active(true).build());
+        medicines.save(Medicine.builder().name("Shield FX Tablet 50 mg (10 Tablets)")
+            .type(Medicine.MedicineType.TABLET).specification(50.0).price(8000).pharmaCompany(shieldFx).active(true).build());
 
-        // ── System inventory — all medicines start at 0 ───────────────
-        inventory.save(Inventory.builder().user(lost).medicine(vial5).quantity(0).build());
-        inventory.save(Inventory.builder().user(lost).medicine(vial10).quantity(0).build());
-        inventory.save(Inventory.builder().user(lost).medicine(tab12).quantity(0).build());
-        inventory.save(Inventory.builder().user(lost).medicine(tab25).quantity(0).build());
-        inventory.save(Inventory.builder().user(lost).medicine(tab50).quantity(0).build());
-
-        log.info("Seeded: 4 users (incl. lostinventory), 1 pharma (Shield FX), 5 medicines, all inventory at 0.");
+        log.info("Seeded: 3 users (admin, john.doe, jane.smith), 1 pharma (Shield FX), 5 medicines with prices.");
     }
 }

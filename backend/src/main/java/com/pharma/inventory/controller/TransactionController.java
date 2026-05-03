@@ -42,7 +42,7 @@ public class TransactionController {
             @RequestParam("medicineId") Long medicineId,
             @RequestParam("quantity") Integer quantity,
             @RequestParam("notes") String notes,
-            @RequestParam(value = "screenshot", required = false) MultipartFile screenshot,
+            @RequestParam("screenshot") MultipartFile screenshot,
             @AuthenticationPrincipal UserDetails userDetails) throws IOException {
 
         TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshot);

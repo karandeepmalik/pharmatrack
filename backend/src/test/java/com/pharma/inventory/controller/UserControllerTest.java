@@ -209,4 +209,50 @@ class UserControllerTest {
                     .andExpect(status().isUnauthorized());
         }
     }
+
+    // ── PUT /api/users/{id}/password — admin changes user password ─────
+
+    @Nested
+    @DisplayName("PUT /api/users/{id}/password — admin changes any user's password")
+    class AdminChangePassword {
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        void adminCanChangeUserPassword() throws Exception {
+            doNothing().when(userService).adminChangePassword(eq(2L), eq("NewPass@123"));
+            mockMvc.perform(put("/api/users/2/password").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("newPassword", "NewPass@123"))))
+                    .andExpect(status().isOk());
+            verify(userService).adminChangePassword(2L, "NewPass@123");
+        }
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        void serviceThrownExceptionPropagates() throws Exception {
+            doThrow(new IllegalArgumentException("Password must be at least 8 characters"))
+                    .when(userService).adminChangePassword(eq(2L), any());
+            mockMvc.perform(put("/api/users/2/password").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("newPassword", "short"))))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @WithMockUser(roles = "USER")
+        void regularUserCannotChangeOtherUserPassword() throws Exception {
+            mockMvc.perform(put("/api/users/2/password").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("newPassword", "NewPass@123"))))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedCannotChangePassword() throws Exception {
+            mockMvc.perform(put("/api/users/2/password").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("newPassword", "NewPass@123"))))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
 }

@@ -13,6 +13,11 @@ export default function ManageUsers() {
     const [submitting, setSubmitting] = useState(false);
     const [togglingId, setTogglingId] = useState(null);
 
+    // Password change state — keyed by user id
+    const [pwForm, setPwForm] = useState({});   // { [id]: newPassword }
+    const [pwSubmitting, setPwSubmitting] = useState(null);
+    const [pwExpanded, setPwExpanded] = useState(null); // which row has pw form open
+
     const fetchUsers = useCallback(() => {
         api.getUsers()
             .then(r => setUsers(r.data))
@@ -46,6 +51,25 @@ export default function ManageUsers() {
             setError('Failed to update user status');
         } finally {
             setTogglingId(null);
+        }
+    };
+
+    const handlePasswordChange = async (userId, username) => {
+        const newPassword = pwForm[userId] || '';
+        if (newPassword.length < 8) {
+            setError('Password must be at least 8 characters.');
+            return;
+        }
+        setError(''); setPwSubmitting(userId);
+        try {
+            await api.adminChangePassword(userId, { newPassword });
+            setSuccess(`Password for "${username}" updated successfully.`);
+            setPwForm(f => ({ ...f, [userId]: '' }));
+            setPwExpanded(null);
+        } catch (ex) {
+            setError(ex.response?.data?.message || 'Failed to update password.');
+        } finally {
+            setPwSubmitting(null);
         }
     };
 
@@ -105,27 +129,59 @@ export default function ManageUsers() {
                                     <th>Email</th>
                                     <th>Role</th>
                                     <th>Status</th>
-                                    <th>Action</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {users.map(u => (
-                                    <tr key={u.id}>
-                                        <td>{u.username}</td>
-                                        <td>{u.fullName}</td>
-                                        <td>{u.email}</td>
-                                        <td><span className={`role-badge role-${u.role.toLowerCase()}`}>{u.role}</span></td>
-                                        <td><span className={`status-badge ${u.active ? 'active' : 'inactive'}`}>{u.active ? 'Active' : 'Inactive'}</span></td>
-                                        <td>
-                                            <button
-                                                type="button"
-                                                className={`btn btn-sm ${u.active ? 'btn-reject' : 'btn-approve'}`}
-                                                disabled={togglingId === u.id}
-                                                onClick={() => handleToggle(u.id)}>
-                                                {togglingId === u.id ? '…' : u.active ? 'Deactivate' : 'Activate'}
-                                            </button>
-                                        </td>
-                                    </tr>
+                                    <React.Fragment key={u.id}>
+                                        <tr>
+                                            <td>{u.username}</td>
+                                            <td>{u.fullName}</td>
+                                            <td>{u.email}</td>
+                                            <td><span className={`role-badge role-${u.role.toLowerCase()}`}>{u.role}</span></td>
+                                            <td><span className={`status-badge ${u.active ? 'active' : 'inactive'}`}>{u.active ? 'Active' : 'Inactive'}</span></td>
+                                            <td style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                <button
+                                                    type="button"
+                                                    className={`btn btn-sm ${u.active ? 'btn-reject' : 'btn-approve'}`}
+                                                    disabled={togglingId === u.id}
+                                                    onClick={() => handleToggle(u.id)}>
+                                                    {togglingId === u.id ? '…' : u.active ? 'Deactivate' : 'Activate'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-secondary"
+                                                    onClick={() => setPwExpanded(pwExpanded === u.id ? null : u.id)}>
+                                                    {pwExpanded === u.id ? 'Cancel' : 'Change Password'}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {pwExpanded === u.id && (
+                                            <tr>
+                                                <td colSpan={6}>
+                                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.5rem 0' }}>
+                                                        <input
+                                                            type="password"
+                                                            aria-label={`New password for ${u.username}`}
+                                                            placeholder="New password (min 8 chars)"
+                                                            value={pwForm[u.id] || ''}
+                                                            minLength={8}
+                                                            onChange={e => setPwForm(f => ({ ...f, [u.id]: e.target.value }))}
+                                                            style={{ flex: 1 }}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-primary btn-sm"
+                                                            disabled={pwSubmitting === u.id || (pwForm[u.id] || '').length < 8}
+                                                            onClick={() => handlePasswordChange(u.id, u.username)}>
+                                                            {pwSubmitting === u.id ? 'Saving…' : 'Set Password'}
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>

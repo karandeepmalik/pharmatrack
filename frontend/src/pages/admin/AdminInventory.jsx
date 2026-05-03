@@ -19,7 +19,7 @@ export default function AdminInventory() {
     return (
         <div className="page">
             <div className="page-header">
-                <h1>Inventory</h1>
+                <h1>View Available Inventory</h1>
                 <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
             </div>
 
@@ -36,6 +36,7 @@ export default function AdminInventory() {
                                 <th>Medicine</th>
                                 <th>Type</th>
                                 <th>Specification</th>
+                                <th>Price</th>
                                 <th>Pharma Company</th>
                                 <th>Quantity</th>
                             </tr>
@@ -47,6 +48,7 @@ export default function AdminInventory() {
                                     <td>{item.medicineName}</td>
                                     <td>{item.medicineType}</td>
                                     <td>{item.specification} {item.specUnit}</td>
+                                    <td>Rs {item.price?.toLocaleString('en-IN')}</td>
                                     <td>{item.pharmaName}</td>
                                     <td><span className="qty-badge">{item.quantity}</span></td>
                                 </tr>
