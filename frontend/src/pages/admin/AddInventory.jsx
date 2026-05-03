@@ -1,4 +1,5 @@
 import React, {useState, useEffect} from 'react';
+import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 
 const specLabel = (type, spec) => type === 'VIAL' ? `${spec} mg/ml` : `${spec} mg`;
@@ -43,7 +44,10 @@ export default function AddInventoryToUser() {
 
     return (
         <div className="page">
-            <h1>Add Inventory to User</h1>
+            <div className="page-header">
+                <h1>Add Inventory to User</h1>
+                <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
+            </div>
             <p className="page-subtitle">Allocate stock from system inventory to a user.</p>
 
             {msg && <div role="alert" className="alert alert-success">{msg}</div>}

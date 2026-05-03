@@ -1,4 +1,5 @@
 import React, {useState, useEffect} from 'react';
+import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 
 const specLabel = (type, spec) => type === 'VIAL' ? `${spec} mg/ml` : `${spec} mg`;
@@ -53,7 +54,10 @@ export default function ReduceSystemInventory() {
 
     return (
         <div className="page">
-            <h1>Modify System Inventory</h1>
+            <div className="page-header">
+                <h1>Modify System Inventory</h1>
+                <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
+            </div>
             <p className="page-subtitle">Reduce stock or zero-out system inventory for a medicine.</p>
 
             {msg && <div role="alert" className="alert alert-success">{msg}</div>}

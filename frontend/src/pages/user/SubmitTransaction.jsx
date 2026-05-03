@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import { NOTES_CONSTRAINTS } from '../../constants';
 import useScreenshot from '../../hooks/useScreenshot';
@@ -141,7 +142,10 @@ export default function SubmitTransaction() {
 
   return (
     <div className="page submit-transaction-page">
-      <h1>Submit Adjustment</h1>
+      <div className="page-header">
+        <h1>Submit Adjustment</h1>
+        <Link to="/user/dashboard" className="btn btn-secondary">← Back</Link>
+      </div>
 
       {successMessage && (
         <div role="alert" className="alert alert-success">{successMessage}</div>
