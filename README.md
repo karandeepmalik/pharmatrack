@@ -10,7 +10,7 @@ Pharmaceutical inventory management system  React 18 frontend + Spring Boot 3.2 
 ```
 
 ## Deployed URLs
-- **Frontend**: https://pharmatrack-frontend-558147403401.asia-south1.run.app
+- **Frontend**: https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app
 - **Backend**: https://pharmatrack-backend-xhlza2c2ua-el.a.run.app
 
 ## Demo Credentials
