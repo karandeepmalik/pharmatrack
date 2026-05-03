@@ -7,8 +7,12 @@ on:
     branches: [main]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/pharmatrack
+  PROJECT_ID: project-35eb97fa-dede-4ae8-ba6
+  REGION: asia-south1
+  REGISTRY: asia-south1-docker.pkg.dev
+  IMAGE_PREFIX: project-35eb97fa-dede-4ae8-ba6/pharmatrack-repo/pharmatrack
+  WIF_PROVIDER: projects/558147403401/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  WIF_SA: github-actions-sa@project-35eb97fa-dede-4ae8-ba6.iam.gserviceaccount.com
 
 jobs:
   # ════════════════════════════════════════════════════════════════════
@@ -89,6 +93,7 @@ jobs:
         run: npm run build
         env:
           CI: true
+          REACT_APP_API_URL: https://pharmatrack-backend-558147403401.asia-south1.run.app/api
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -98,119 +103,95 @@ jobs:
           retention-days: 1
 
   # ════════════════════════════════════════════════════════════════════
-  # JOB 3 — Build & push Docker images (main branch only)
+  # JOB 3 — Build & push Docker images to Artifact Registry (main only)
   # ════════════════════════════════════════════════════════════════════
   docker-build-push:
-    name: Docker — Build & Push
+    name: Docker — Build & Push to Artifact Registry
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: read
-      packages: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SA }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend
-            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest
-            type=ref,event=branch
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
 
-      # Backend image
       - name: Build & push backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:sha-${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          labels: ${{ steps.meta.outputs.labels }}
 
-      # Frontend image
       - name: Build & push frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:latest,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:sha-${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:latest
+          build-args: |
+            REACT_APP_API_URL=https://pharmatrack-backend-558147403401.asia-south1.run.app/api
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Output image digests
-        run: |
-          echo "Backend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:sha-${{ github.sha }}"
-          echo "Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:sha-${{ github.sha }}"
 
   # ════════════════════════════════════════════════════════════════════
-  # JOB 4a — Deploy to Railway (main branch only)
+  # JOB 4 — Deploy to Cloud Run (main only)
   # ════════════════════════════════════════════════════════════════════
-  deploy-railway:
-    name: Deploy → Railway
+  deploy-cloud-run:
+    name: Deploy → Cloud Run
     runs-on: ubuntu-latest
     needs: docker-build-push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      id-token: write
     environment:
-      name: production-railway
-      url: ${{ vars.RAILWAY_APP_URL }}
+      name: production
+      url: https://pharmatrack-frontend-558147403401.asia-south1.run.app
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SA }}
 
-      - name: Deploy backend service
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service backend --detach
+      - name: Deploy backend to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: pharmatrack-backend
+          region: ${{ env.REGION }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
 
-      - name: Deploy frontend service
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service frontend --detach
+      - name: Deploy frontend to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: pharmatrack-frontend
+          region: ${{ env.REGION }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
 
-  # ════════════════════════════════════════════════════════════════════
-  # JOB 4b — Deploy to a VPS via SSH (alternative to Railway)
-  # Uncomment and configure if you prefer self-hosted deployment.
-  # ════════════════════════════════════════════════════════════════════
-  # deploy-vps:
-  #   name: Deploy → VPS
-  #   runs-on: ubuntu-latest
-  #   needs: docker-build-push
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   environment:
-  #     name: production-vps
-  #     url: ${{ vars.APP_URL }}
-  #   steps:
-  #     - name: SSH deploy
-  #       uses: appleboy/ssh-action@v1
-  #       with:
-  #         host: ${{ secrets.VPS_HOST }}
-  #         username: ${{ secrets.VPS_USER }}
-  #         key: ${{ secrets.VPS_SSH_KEY }}
-  #         script: |
-  #           cd /opt/pharmatrack
-  #           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-  #           docker compose pull
-  #           docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
-  #           docker image prune -f
+      - name: Print deployed URLs
+        run: |
+          echo "Backend: https://pharmatrack-backend-558147403401.asia-south1.run.app"
+          echo "Frontend: https://pharmatrack-frontend-558147403401.asia-south1.run.app"
