@@ -195,3 +195,50 @@ jobs:
         run: |
           echo "Backend: https://pharmatrack-backend-558147403401.asia-south1.run.app"
           echo "Frontend: https://pharmatrack-frontend-558147403401.asia-south1.run.app"
+
+      - name: Send deployment success email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          secure: false
+          username: malikshopping@gmail.com
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "✅ PharmaTrack deployed to Cloud Run — ${{ github.sha && 'commit ' || '' }}${{ github.sha }}"
+          to: malikshopping@gmail.com
+          from: PharmaTrack CI <malikshopping@gmail.com>
+          body: |
+            Deployment completed successfully.
+
+            Commit : ${{ github.sha }}
+            Message: ${{ github.event.head_commit.message }}
+            Branch : ${{ github.ref_name }}
+            By     : ${{ github.actor }}
+
+            Frontend : https://pharmatrack-frontend-558147403401.asia-south1.run.app
+            Backend  : https://pharmatrack-backend-558147403401.asia-south1.run.app
+
+            View run : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Send deployment failure email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          secure: false
+          username: malikshopping@gmail.com
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "❌ PharmaTrack deployment failed — ${{ github.sha }}"
+          to: malikshopping@gmail.com
+          from: PharmaTrack CI <malikshopping@gmail.com>
+          body: |
+            Deployment to Cloud Run failed.
+
+            Commit : ${{ github.sha }}
+            Message: ${{ github.event.head_commit.message }}
+            Branch : ${{ github.ref_name }}
+            By     : ${{ github.actor }}
+
+            View run : ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
