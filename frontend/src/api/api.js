@@ -41,16 +41,18 @@ export const getMedicines    = ()     => api.get('/medicines');
 export const createMedicine  = (data) => api.post('/medicines', data);
 
 // ── Pharma companies ───────────────────────────────────────────────────
-export const getPharmaCompanies = () => api.get('/pharma');
+export const getPharmaCompanies    = ()     => api.get('/medicines/companies');
+export const createPharmaCompany   = (data) => api.post('/medicines/companies', data);
 
 // ── Transactions ───────────────────────────────────────────────────────
-export const submitTransaction = ({ medicineId, quantity, notes, screenshotFile, pricePerUnit }) => {
+export const submitTransaction = ({ medicineId, quantity, notes, screenshotFile, pricePerUnit, inventoryType }) => {
   const form = new FormData();
   form.append('medicineId', String(medicineId));
   form.append('quantity',   String(quantity));
   form.append('notes',      notes);
   form.append('screenshot', screenshotFile);
   if (pricePerUnit != null) form.append('pricePerUnit', String(pricePerUnit));
+  if (inventoryType) form.append('inventoryType', inventoryType);
   return api.post('/transactions', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });

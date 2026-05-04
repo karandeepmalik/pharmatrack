@@ -12,6 +12,7 @@ export default function AdminDashboard(){
             <Link to="/admin/reports" className="nav-card"><h2>📊 View Reports</h2><p>Inventory, valuation and sales reports</p></Link>
             <Link to="/admin/modify-inventory" className="nav-card"><h2>🔄 Modify Inventory</h2><p>Add or reduce user inventory</p></Link>
             <Link to="/admin/users" className="nav-card"><h2>👥 Manage Users</h2><p>Add users, manage access and passwords</p></Link>
+            <Link to="/admin/medicines" className="nav-card"><h2>💊 Manage Medicines</h2><p>Add pharma companies and medicines</p></Link>
         </div>
     </div>);
 }

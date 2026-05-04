@@ -44,6 +44,12 @@ public class TransactionRequest {
      */
     private Integer pricePerUnit;
 
+    /**
+     * The inventory bucket to deduct from: REGULAR or ADMIN_STOCK.
+     * Defaults to REGULAR if not provided.
+     */
+    private String inventoryType;
+
     // ── Getters & Setters ──────────────────────────────────────────────
 
     public Long getMedicineId() { return medicineId; }
@@ -67,4 +73,7 @@ public class TransactionRequest {
 
     public Integer getPricePerUnit() { return pricePerUnit; }
     public void setPricePerUnit(Integer pricePerUnit) { this.pricePerUnit = pricePerUnit; }
+
+    public String getInventoryType() { return inventoryType; }
+    public void setInventoryType(String inventoryType) { this.inventoryType = inventoryType; }
 }

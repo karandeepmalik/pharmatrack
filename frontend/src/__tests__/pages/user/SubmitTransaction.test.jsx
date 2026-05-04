@@ -9,11 +9,14 @@ jest.mock('../../../api/api');
 
 const mockInventory = [
   { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 1, medicineName: 'FIP Shield Vial',
-    medicineType: 'VIAL', specification: 10, quantity: 50, specUnit: 'mg/ml', price: 4000 },
+    medicineType: 'VIAL', specification: 10, quantity: 50, specUnit: 'mg/ml', price: 4000,
+    inventoryType: 'REGULAR' },
   { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 2, medicineName: 'FIP Shield Tablet',
-    medicineType: 'TABLET', specification: 50, quantity: 30, specUnit: 'mg (10 Tablets)', price: 8000 },
+    medicineType: 'TABLET', specification: 50, quantity: 30, specUnit: 'mg (10 Tablets)', price: 8000,
+    inventoryType: 'REGULAR' },
   { pharmaId: 2, pharmaName: 'MediCure', medicineId: 3, medicineName: 'MediCure Vial',
-    medicineType: 'VIAL', specification: 20, quantity: 10, specUnit: 'mg/ml', price: 2000 },
+    medicineType: 'VIAL', specification: 20, quantity: 10, specUnit: 'mg/ml', price: 2000,
+    inventoryType: 'REGULAR' },
 ];
 
 beforeEach(() => {
@@ -279,6 +282,68 @@ describe('Price override input', () => {
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
           pricePerUnit: 3500,
+        })
+      )
+    );
+  });
+});
+
+// ── Inventory type selector ────────────────────────────────────────────
+
+describe('Inventory type selector', () => {
+  test('renders inventory type select with Regular and Admin Stock options', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/inventory type/i));
+    const selector = screen.getByLabelText(/inventory type/i);
+    expect(selector).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /regular/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /admin stock/i })).toBeInTheDocument();
+  });
+
+  test('defaults to Regular inventory type', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/inventory type/i));
+    expect(screen.getByLabelText(/inventory type/i)).toHaveValue('REGULAR');
+  });
+
+  test('inventory type selector appears before pharma company selector', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/inventory type/i));
+    const invTypeSelect = screen.getByLabelText(/inventory type/i);
+    const pharmaSelect  = screen.getByLabelText(/pharma company/i);
+    const position = invTypeSelect.compareDocumentPosition(pharmaSelect);
+    // DOCUMENT_POSITION_FOLLOWING = 4, meaning pharmaSelect comes after invTypeSelect
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('changing inventory type resets pharma, type, spec and quantity', async () => {
+    const adminInventory = [
+      { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 1, medicineName: 'FIP Shield Vial',
+        medicineType: 'VIAL', specification: 10, quantity: 20, specUnit: 'mg/ml', price: 4000,
+        inventoryType: 'ADMIN_STOCK' },
+    ];
+    api.getAvailableInventory.mockResolvedValueOnce({ data: mockInventory });
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/pharma company/i));
+
+    await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
+    expect(screen.getByLabelText(/medicine type/i)).toHaveValue('VIAL');
+
+    // Switch to Admin Stock
+    api.getAvailableInventory.mockResolvedValue({ data: adminInventory });
+    await userEvent.selectOptions(screen.getByLabelText(/inventory type/i), 'ADMIN_STOCK');
+    expect(screen.getByLabelText(/pharma company/i)).toHaveValue('');
+  });
+
+  test('submit call includes inventoryType', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    await waitFor(() =>
+      expect(api.submitTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inventoryType: 'REGULAR',
         })
       )
     );

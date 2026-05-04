@@ -58,8 +58,42 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryByUser() {
-        List<Inventory> records = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR);
+        List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR);
+        List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_STOCK);
 
+        // Derive pharma name from whichever list is non-empty
+        String pharmaName = regularRecords.stream()
+                .map(i -> i.getMedicine().getPharmaCompany().getName())
+                .findFirst()
+                .orElseGet(() -> adminStockRecords.stream()
+                        .map(i -> i.getMedicine().getPharmaCompany().getName())
+                        .findFirst()
+                        .orElse("Shield FX"));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("CURRENT INVENTORY LEVEL BY USER\n");
+        sb.append("Generated: ").append(nowIST()).append("\n");
+        sb.append("=".repeat(40)).append("\n\n");
+
+        // ── REGULAR inventory section ─────────────────────────────────────
+        sb.append(pharmaName).append("\n");
+        sb.append("-".repeat(pharmaName.length())).append("\n");
+        appendInventoryByUserSection(sb, regularRecords);
+
+        // ── ADMIN INVENTORY section ───────────────────────────────────────
+        sb.append("\n").append("=".repeat(40)).append("\n");
+        sb.append("ADMIN INVENTORY\n");
+        sb.append("-".repeat(15)).append("\n");
+        appendInventoryByUserSection(sb, adminStockRecords);
+
+        return new ReportResponse("INVENTORY_BY_USER", nowIST(), sb.toString());
+    }
+
+    /**
+     * Appends per-spec, per-user inventory lines for the inventory-by-user report.
+     * Uses full medicine name as header; skips specs with no data.
+     */
+    private void appendInventoryByUserSection(StringBuilder sb, List<Inventory> records) {
         // Build maps: specKey → list of inventory records, specKey → full medicine name header
         Map<String, List<Inventory>> bySpec = new LinkedHashMap<>();
         Map<String, String> specKeyToHeader = new LinkedHashMap<>();
@@ -72,11 +106,6 @@ public class ReportService {
             bySpec.computeIfAbsent(key, k -> new ArrayList<>()).add(inv);
             specKeyToHeader.putIfAbsent(key, header);
         }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("CURRENT INVENTORY LEVEL BY USER\n");
-        sb.append("Generated: ").append(nowIST()).append("\n");
-        sb.append("=".repeat(40)).append("\n\n");
 
         // Iterate in fixed spec order, skip specs with no data
         for (String[] spec : DAILY_SPEC_ORDER) {
@@ -95,8 +124,6 @@ public class ReportService {
             }
             sb.append("  TOTAL: ").append(total).append("\n\n");
         }
-
-        return new ReportResponse("INVENTORY_BY_USER", nowIST(), sb.toString());
     }
 
     @Transactional(readOnly = true)
@@ -264,7 +291,7 @@ public class ReportService {
         sb.append("\n").append("=".repeat(40)).append("\n");
         sb.append("ADMIN INVENTORY\n");
         sb.append("-".repeat(15)).append("\n");
-        appendInventorySection(sb, adminStockRecords);
+        appendInventoryAdminSection(sb, adminStockRecords);
 
         // ── DAILY TRANSACTION SUMMARY ─────────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
@@ -327,6 +354,31 @@ public class ReportService {
                 }
                 sb.append("  TOTAL: ").append(total).append("\n");
             }
+        }
+    }
+
+    /**
+     * Appends per-spec, per-user admin inventory lines to the builder.
+     * Skips specs with no inventory (no (none) / TOTAL: 0 for empty specs).
+     * Used for the ADMIN INVENTORY section in the daily report.
+     */
+    private void appendInventoryAdminSection(StringBuilder sb, List<Inventory> records) {
+        Map<String, List<Inventory>> bySpec = new HashMap<>();
+        for (Inventory inv : records) {
+            bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
+        }
+        for (String[] spec : DAILY_SPEC_ORDER) {
+            String key = spec[0] + "|" + spec[1];
+            List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
+            if (entries.isEmpty()) continue; // skip zero-quantity specs
+            sb.append("\n").append(spec[2]).append("\n");
+            int total = 0;
+            for (Inventory inv : entries) {
+                sb.append("  ").append(inv.getUser().getUsername())
+                  .append(": ").append(inv.getQuantity()).append("\n");
+                total += inv.getQuantity();
+            }
+            sb.append("  TOTAL: ").append(total).append("\n");
         }
     }
 }

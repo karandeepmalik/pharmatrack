@@ -50,9 +50,15 @@ public class InventoryService {
 
     @Transactional(readOnly=true)
     public List<InventoryResponse> getAvailableForUser(Long userId) {
-        return inventoryRepository
-            .findAvailableByUserIdAndType(userId, Inventory.InventoryType.REGULAR)
-            .stream().map(this::toResponse).toList();
+        // Return both REGULAR and ADMIN_STOCK so the user can choose which bucket to draw from
+        List<Inventory> regular = inventoryRepository
+            .findAvailableByUserIdAndType(userId, Inventory.InventoryType.REGULAR);
+        List<Inventory> adminStock = inventoryRepository
+            .findAvailableByUserIdAndType(userId, Inventory.InventoryType.ADMIN_STOCK);
+        List<InventoryResponse> result = new java.util.ArrayList<>();
+        regular.stream().map(this::toResponse).forEach(result::add);
+        adminStock.stream().map(this::toResponse).forEach(result::add);
+        return result;
     }
 
     @Transactional(readOnly=true)
