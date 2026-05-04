@@ -181,5 +181,67 @@ describe('api.js', () => {
         expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'multipart/form-data' }) })
       );
     });
+
+    test('appends pricePerUnit when provided', async () => {
+      const file = new File(['x'], 'pay.png', { type: 'image/png' });
+      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFile: file, pricePerUnit: 3500 });
+      expect(appendSpy).toHaveBeenCalledWith('pricePerUnit', '3500');
+    });
+
+    test('does not append pricePerUnit when null', async () => {
+      const file = new File(['x'], 'pay.png', { type: 'image/png' });
+      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFile: file, pricePerUnit: null });
+      const priceCall = appendSpy.mock.calls.find(([k]) => k === 'pricePerUnit');
+      expect(priceCall).toBeUndefined();
+    });
+  });
+
+  // ── getTransactionHistory ───────────────────────────────────────────
+
+  describe('getTransactionHistory', () => {
+    const { getTransactionHistory } = require('../../api/api');
+
+    beforeEach(() => {
+      mockGet.mockResolvedValue({ data: [] });
+    });
+
+    test('calls GET /transactions/history with from/to/status params', async () => {
+      await getTransactionHistory('2026-05-01', '2026-05-07', 'APPROVED');
+      expect(mockGet).toHaveBeenCalledWith(
+        '/transactions/history',
+        { params: { from: '2026-05-01', to: '2026-05-07', status: 'APPROVED' } }
+      );
+    });
+
+    test('defaults status to ALL when not provided', async () => {
+      await getTransactionHistory('2026-05-01', '2026-05-07');
+      expect(mockGet).toHaveBeenCalledWith(
+        '/transactions/history',
+        { params: { from: '2026-05-01', to: '2026-05-07', status: 'ALL' } }
+      );
+    });
+  });
+
+  // ── getReportDaily ──────────────────────────────────────────────────
+
+  describe('getReportDaily', () => {
+    const { getReportDaily } = require('../../api/api');
+
+    beforeEach(() => {
+      mockGet.mockResolvedValue({ data: {} });
+    });
+
+    test('calls GET /reports/daily with date param when date provided', async () => {
+      await getReportDaily('2026-05-01');
+      expect(mockGet).toHaveBeenCalledWith(
+        '/reports/daily',
+        { params: { date: '2026-05-01' } }
+      );
+    });
+
+    test('calls GET /reports/daily without params when date is null', async () => {
+      await getReportDaily(null);
+      expect(mockGet).toHaveBeenCalledWith('/reports/daily', {});
+    });
   });
 });

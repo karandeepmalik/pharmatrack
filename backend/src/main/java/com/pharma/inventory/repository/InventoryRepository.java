@@ -3,19 +3,41 @@ import com.pharma.inventory.entity.Inventory;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+
 public interface InventoryRepository extends JpaRepository<Inventory,Long> {
+
     Optional<Inventory> findByUserIdAndMedicineId(Long userId, Long medicineId);
-    @Query("SELECT i FROM Inventory i JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany WHERE i.user.id=:userId AND i.quantity>0")
-    List<Inventory> findAvailableByUserId(Long userId);
+
+    Optional<Inventory> findByUserIdAndMedicineIdAndInventoryType(
+            Long userId, Long medicineId, Inventory.InventoryType inventoryType);
+
+    /** Available inventory for a user — only REGULAR type (used by SubmitTransaction). */
+    @Query("SELECT i FROM Inventory i JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
+           "WHERE i.user.id = :userId AND i.inventoryType = :type AND i.quantity > 0")
+    List<Inventory> findAvailableByUserIdAndType(
+            @Param("userId") Long userId,
+            @Param("type") Inventory.InventoryType type);
+
     List<Inventory> findByUserId(Long userId);
     void deleteByUserId(Long userId);
-    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany WHERE i.quantity > 0 ORDER BY m.name, m.specification, u.fullName")
+
+    /** All non-zero REGULAR inventory ordered by medicine then user — used by inventory-by-user report. */
+    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
+           "WHERE i.quantity > 0 AND i.inventoryType = com.pharma.inventory.entity.Inventory.InventoryType.REGULAR " +
+           "ORDER BY m.name, m.specification, u.fullName")
     List<Inventory> findAllNonZeroOrderByMedicineAndUser();
-    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany WHERE i.quantity > 0 AND u.role <> 'ADMIN' ORDER BY m.name, m.specification")
+
+    /** All non-zero REGULAR inventory — used by valuation report. */
+    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
+           "WHERE i.quantity > 0 AND i.inventoryType = com.pharma.inventory.entity.Inventory.InventoryType.REGULAR " +
+           "ORDER BY m.name, m.specification")
     List<Inventory> findAllNonZeroForValuation();
-    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany WHERE u.role = 'ADMIN' AND i.lastUpdated >= :start AND i.lastUpdated < :end AND i.lastNote IS NOT NULL AND i.lastNote <> ''")
-    List<Inventory> findAdminModificationsToday(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    /** All non-zero inventory of a given type — used by daily report (REGULAR + ADMIN_STOCK sections). */
+    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
+           "WHERE i.quantity > 0 AND i.inventoryType = :type " +
+           "ORDER BY m.name, m.specification, u.fullName")
+    List<Inventory> findAllNonZeroByInventoryType(@Param("type") Inventory.InventoryType type);
 }

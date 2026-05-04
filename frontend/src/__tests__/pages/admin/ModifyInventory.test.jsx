@@ -51,44 +51,7 @@ describe('ModifyInventory — user dropdown', () => {
     );
   });
 
-  test('shows active admin users in the dropdown', async () => {
-    api.getUsers.mockResolvedValue({
-      data: [
-        makeUser({ id: 1, username: 'admin', fullName: 'System Admin', role: 'ADMIN' }),
-      ],
-    });
-    renderPage();
-
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /system admin.*admin/i })).toBeInTheDocument()
-    );
-  });
-
-  test('admin users are labelled with — Admin suffix', async () => {
-    api.getUsers.mockResolvedValue({
-      data: [
-        makeUser({ id: 1, username: 'admin', fullName: 'System Admin', role: 'ADMIN' }),
-      ],
-    });
-    renderPage();
-
-    await waitFor(() => {
-      const option = screen.getByRole('option', { name: /system admin \(admin\) — admin/i });
-      expect(option).toBeInTheDocument();
-    });
-  });
-
-  test('regular users are not labelled with — Admin', async () => {
-    api.getUsers.mockResolvedValue({ data: [makeUser()] });
-    renderPage();
-
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /john doe/i })).toBeInTheDocument()
-    );
-    expect(screen.queryByRole('option', { name: /— admin/i })).not.toBeInTheDocument();
-  });
-
-  test('both admin and regular users appear together in the dropdown', async () => {
+  test('excludes admin users from the dropdown (admin cannot hold inventory)', async () => {
     api.getUsers.mockResolvedValue({
       data: [
         makeUser({ id: 1, username: 'admin', fullName: 'System Admin', role: 'ADMIN' }),
@@ -98,9 +61,34 @@ describe('ModifyInventory — user dropdown', () => {
     renderPage();
 
     await waitFor(() =>
-      expect(screen.getByRole('option', { name: /system admin/i })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /john doe/i })).toBeInTheDocument()
     );
-    expect(screen.getByRole('option', { name: /john doe/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /system admin/i })).not.toBeInTheDocument();
+  });
+
+  test('only non-admin users appear in the dropdown', async () => {
+    api.getUsers.mockResolvedValue({
+      data: [
+        makeUser({ id: 1, username: 'admin', fullName: 'System Admin', role: 'ADMIN' }),
+        makeUser({ id: 2, username: 'john.doe', fullName: 'John Doe', role: 'USER' }),
+      ],
+    });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: /john doe/i })).toBeInTheDocument()
+    );
+    expect(screen.queryByRole('option', { name: /system admin/i })).not.toBeInTheDocument();
+  });
+
+  test('regular users do not have — Admin label', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: /john doe/i })).toBeInTheDocument()
+    );
+    expect(screen.queryByRole('option', { name: /— admin/i })).not.toBeInTheDocument();
   });
 
   test('inactive users are excluded from the dropdown', async () => {
@@ -116,6 +104,31 @@ describe('ModifyInventory — user dropdown', () => {
       expect(screen.getByRole('option', { name: /john doe/i })).toBeInTheDocument()
     );
     expect(screen.queryByRole('option', { name: /inactive user/i })).not.toBeInTheDocument();
+  });
+});
+
+// ── Inventory type selector ───────────────────────────────────────────────
+
+describe('ModifyInventory — inventory type selector', () => {
+  test('shows inventory type selector with Regular and Admin Stock options', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/inventory type/i)).toBeInTheDocument()
+    );
+    expect(screen.getByRole('option', { name: /regular inventory/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /admin stock/i })).toBeInTheDocument();
+  });
+
+  test('defaults to Regular Inventory', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/inventory type/i)).toBeInTheDocument()
+    );
+    expect(screen.getByLabelText(/inventory type/i)).toHaveValue('REGULAR');
   });
 });
 

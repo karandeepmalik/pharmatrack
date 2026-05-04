@@ -60,6 +60,15 @@ export const getMyTransactions  = ()           => api.get('/transactions/my');
 export const getAllTransactions  = ()           => api.get('/transactions');
 export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/approve`, data);
 
+/**
+ * Fetch transaction history for a date range.
+ * @param {string} from   ISO date string YYYY-MM-DD (inclusive)
+ * @param {string} to     ISO date string YYYY-MM-DD (inclusive)
+ * @param {string} status ALL | APPROVED | REJECTED  (default ALL)
+ */
+export const getTransactionHistory = (from, to, status = 'ALL') =>
+  api.get('/transactions/history', { params: { from, to, status } });
+
 // ── Users ──────────────────────────────────────────────────────────────
 export const getUsers            = ()           => api.get('/users');
 export const createUser          = (data)       => api.post('/users', data);
@@ -70,9 +79,15 @@ export const changePassword      = (data)       => api.put('/users/me/password',
 export const adminChangePassword = (id, data)   => api.put(`/users/${id}/password`, data);
 
 // ── Reports ────────────────────────────────────────────────────────────
-export const getReportInventoryByUser  = () => api.get('/reports/inventory-by-user');
-export const getReportInventoryValuation = () => api.get('/reports/inventory-valuation');
-export const getReportTodaySales       = () => api.get('/reports/today-sales');
-export const getReportDaily            = () => api.get('/reports/daily');
+export const getReportInventoryByUser    = ()      => api.get('/reports/inventory-by-user');
+export const getReportInventoryValuation = ()      => api.get('/reports/inventory-valuation');
+export const getReportTodaySales         = ()      => api.get('/reports/today-sales');
+
+/**
+ * Fetch the daily report.
+ * @param {string|null} date  ISO date string YYYY-MM-DD, or null for today
+ */
+export const getReportDaily = (date) =>
+  api.get('/reports/daily', date ? { params: { date } } : {});
 
 export default api;

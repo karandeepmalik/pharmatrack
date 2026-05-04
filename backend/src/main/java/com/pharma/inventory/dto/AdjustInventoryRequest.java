@@ -9,6 +9,9 @@ public class AdjustInventoryRequest {
     @NotBlank @Size(min = 5, max = 500) private String note;
     @NotBlank @Pattern(regexp = "ADD|REDUCE", message = "adjustmentType must be ADD or REDUCE") private String adjustmentType;
 
+    /** Which bucket to adjust. Defaults to REGULAR if not provided. */
+    private String inventoryType = "REGULAR";
+
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
     public Long getMedicineId() { return medicineId; }
@@ -19,4 +22,6 @@ public class AdjustInventoryRequest {
     public void setNote(String note) { this.note = note; }
     public String getAdjustmentType() { return adjustmentType; }
     public void setAdjustmentType(String adjustmentType) { this.adjustmentType = adjustmentType; }
+    public String getInventoryType() { return inventoryType != null ? inventoryType : "REGULAR"; }
+    public void setInventoryType(String inventoryType) { this.inventoryType = inventoryType; }
 }

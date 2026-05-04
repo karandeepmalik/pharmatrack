@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
+
 @Service @RequiredArgsConstructor
 public class InventoryService {
     private final InventoryRepository inventoryRepository;
@@ -17,10 +18,25 @@ public class InventoryService {
     public InventoryResponse adjustInventory(AdjustInventoryRequest req) {
         User user = userRepository.findById(req.getUserId())
             .orElseThrow(() -> new ResourceNotFoundException("User", req.getUserId()));
+        if (user.getRole() == User.Role.ADMIN) {
+            throw new IllegalArgumentException("Admin user cannot hold inventory");
+        }
         Medicine medicine = medicineRepository.findById(req.getMedicineId())
             .orElseThrow(() -> new ResourceNotFoundException("Medicine", req.getMedicineId()));
-        Inventory inv = inventoryRepository.findByUserIdAndMedicineId(user.getId(), medicine.getId())
-            .orElse(Inventory.builder().user(user).medicine(medicine).quantity(0).build());
+
+        Inventory.InventoryType invType;
+        try {
+            invType = Inventory.InventoryType.valueOf(req.getInventoryType());
+        } catch (IllegalArgumentException e) {
+            invType = Inventory.InventoryType.REGULAR;
+        }
+
+        Inventory inv = inventoryRepository
+            .findByUserIdAndMedicineIdAndInventoryType(user.getId(), medicine.getId(), invType)
+            .orElse(Inventory.builder()
+                .user(user).medicine(medicine).quantity(0)
+                .inventoryType(invType).build());
+
         if ("REDUCE".equals(req.getAdjustmentType())) {
             if (inv.getQuantity() < req.getQuantity())
                 throw new InsufficientInventoryException(inv.getQuantity(), req.getQuantity());
@@ -34,7 +50,9 @@ public class InventoryService {
 
     @Transactional(readOnly=true)
     public List<InventoryResponse> getAvailableForUser(Long userId) {
-        return inventoryRepository.findAvailableByUserId(userId).stream().map(this::toResponse).toList();
+        return inventoryRepository
+            .findAvailableByUserIdAndType(userId, Inventory.InventoryType.REGULAR)
+            .stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly=true)
@@ -55,6 +73,7 @@ public class InventoryService {
         r.setQuantity(i.getQuantity());
         r.setPrice(i.getMedicine().getPrice());
         r.setLastNote(i.getLastNote());
+        r.setInventoryType(i.getInventoryType() != null ? i.getInventoryType().name() : "REGULAR");
         return r;
     }
 }

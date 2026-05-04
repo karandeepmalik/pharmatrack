@@ -111,7 +111,7 @@ describe('ViewReports — daily report', () => {
   test('generates daily report', async () => {
     api.getReportDaily.mockResolvedValue(
       sampleReport('DAILY_REPORT',
-        'DAILY REPORT - 04 May 2026\nShield FX\n---------\n\nVial 10 ml\n  john.doe: 30\n  TOTAL: 30\n\nADMIN INVENTORY\n---------------\nVial 10 ml: 5\nVial 5 ml: 0\n\nTODAY\'S TRANSACTIONS\n2 x 10 ml  Clinic B')
+        'DAILY REPORT - 04 May 2026\nShield FX\n---------\n\nVial 10 ml\n  john.doe: 30\n  TOTAL: 30\n\nADMIN INVENTORY\n---------------\nVial 10 ml\n  (none)\n  TOTAL: 0\n\nDAILY TRANSACTION SUMMARY\n2 x 10 ml  Clinic B')
     );
     renderPage();
 
@@ -128,6 +128,39 @@ describe('ViewReports — daily report', () => {
   test('daily report option appears in dropdown', () => {
     renderPage();
     expect(screen.getByRole('option', { name: /daily report/i })).toBeInTheDocument();
+  });
+
+  test('shows date picker when daily report is selected', async () => {
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'daily');
+
+    expect(screen.getByLabelText(/report date/i)).toBeInTheDocument();
+  });
+
+  test('date picker is not shown for other reports', async () => {
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-by-user');
+
+    expect(screen.queryByLabelText(/report date/i)).not.toBeInTheDocument();
+  });
+
+  test('calls getReportDaily with a date string when generate is clicked', async () => {
+    api.getReportDaily.mockResolvedValue(
+      sampleReport('DAILY_REPORT', 'DAILY REPORT - 05 May 2026')
+    );
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'daily');
+    await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
+
+    await waitFor(() =>
+      // The date input is initialised to today in YYYY-MM-DD format
+      expect(api.getReportDaily).toHaveBeenCalledWith(
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
+      )
+    );
   });
 });
 

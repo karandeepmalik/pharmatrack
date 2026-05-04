@@ -9,7 +9,10 @@ export default function ModifyInventory() {
     const [users, setUsers]         = useState([]);
     const [medicines, setMedicines] = useState([]);
     const [inventory, setInventory] = useState([]);
-    const [form, setForm]           = useState({ userId: '', medicineId: '', adjustmentType: 'ADD', quantity: '', note: '' });
+    const [form, setForm]           = useState({
+        userId: '', medicineId: '', adjustmentType: 'ADD',
+        quantity: '', note: '', inventoryType: 'REGULAR',
+    });
     const [msg, setMsg]             = useState('');
     const [err, setErr]             = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -25,10 +28,15 @@ export default function ModifyInventory() {
 
     const set = field => e => setForm(f => ({ ...f, [field]: e.target.value }));
 
+    // Only non-admin users can hold inventory
+    const eligibleUsers = users.filter(u => u.active && u.role !== 'ADMIN');
+
     const currentQty = (() => {
         if (!form.userId || !form.medicineId) return null;
         const found = inventory.find(
-            i => String(i.userId) === form.userId && String(i.medicineId) === form.medicineId
+            i => String(i.userId) === form.userId &&
+                 String(i.medicineId) === form.medicineId &&
+                 i.inventoryType === form.inventoryType
         );
         return found?.quantity ?? 0;
     })();
@@ -48,6 +56,7 @@ export default function ModifyInventory() {
                 adjustmentType: form.adjustmentType,
                 quantity:       Number(form.quantity),
                 note:           form.note.trim(),
+                inventoryType:  form.inventoryType,
             });
             setMsg(`Inventory ${form.adjustmentType === 'ADD' ? 'added' : 'reduced'} successfully.`);
             setForm(f => ({ ...f, quantity: '', note: '' }));
@@ -66,6 +75,46 @@ export default function ModifyInventory() {
 
     const selectedMedicine = medicines.find(m => String(m.id) === form.medicineId);
 
+    // Group inventory by type for display
+    const regularInventory   = inventory.filter(i => i.quantity > 0 && i.inventoryType === 'REGULAR');
+    const adminStockInventory = inventory.filter(i => i.quantity > 0 && i.inventoryType === 'ADMIN_STOCK');
+
+    const InventoryTable = ({ items, caption }) => (
+        items.length > 0 ? (
+            <div className="form-section" style={{ marginTop: '2rem' }}>
+                <h2>{caption}</h2>
+                <div className="table-wrapper">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Medicine</th>
+                                <th>Type</th>
+                                <th>Specification</th>
+                                <th>Price</th>
+                                <th>Quantity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {items.map(i => (
+                                <tr key={i.id}>
+                                    <td>{i.username}</td>
+                                    <td>{i.medicineName}</td>
+                                    <td>{i.medicineType}</td>
+                                    <td>{i.medicineType === 'VIAL'
+                                        ? `${i.concentrationMgPerMl ?? i.specification} mg/ml`
+                                        : `${i.specification} ${i.specUnit}`}</td>
+                                    <td>Rs {i.price?.toLocaleString('en-IN')}</td>
+                                    <td><span className="qty-badge">{i.quantity}</span></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        ) : null
+    );
+
     return (
         <div className="page">
             <div className="page-header">
@@ -83,8 +132,11 @@ export default function ModifyInventory() {
                         <label htmlFor="user-select">User</label>
                         <select id="user-select" value={form.userId} onChange={set('userId')} required>
                             <option value="">-- Select User --</option>
-                            {users.filter(u => u.active)
-                                .map(u => <option key={u.id} value={u.id}>{u.fullName} ({u.username}){u.role === 'ADMIN' ? ' — Admin' : ''}</option>)}
+                            {eligibleUsers.map(u => (
+                                <option key={u.id} value={u.id}>
+                                    {u.fullName} ({u.username})
+                                </option>
+                            ))}
                         </select>
                     </div>
 
@@ -101,9 +153,19 @@ export default function ModifyInventory() {
                         </select>
                     </div>
 
+                    <div className="form-group">
+                        <label htmlFor="inventory-type-select">Inventory Type</label>
+                        <select id="inventory-type-select" value={form.inventoryType}
+                            onChange={set('inventoryType')} required>
+                            <option value="REGULAR">Regular Inventory</option>
+                            <option value="ADMIN_STOCK">Admin Stock</option>
+                        </select>
+                    </div>
+
                     {form.userId && form.medicineId && (
                         <div className="availability-badge">
-                            Current quantity for user: <strong>{currentQty}</strong> units
+                            Current {form.inventoryType === 'ADMIN_STOCK' ? 'admin stock' : 'quantity'} for user:{' '}
+                            <strong>{currentQty}</strong> units
                             {selectedMedicine && (
                                 <span style={{ marginLeft: '1rem' }}>
                                     Price: <strong>Rs {selectedMedicine.price?.toLocaleString('en-IN')}</strong>
@@ -152,37 +214,8 @@ export default function ModifyInventory() {
                 </form>
             </div>
 
-            {inventory.filter(i => i.quantity > 0).length > 0 && (
-                <div className="form-section" style={{ marginTop: '2rem' }}>
-                    <h2>Current User Inventory</h2>
-                    <div className="table-wrapper">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>User</th>
-                                    <th>Medicine</th>
-                                    <th>Type</th>
-                                    <th>Specification</th>
-                                    <th>Price</th>
-                                    <th>Quantity</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {inventory.filter(i => i.quantity > 0).map(i => (
-                                    <tr key={i.id}>
-                                        <td>{i.username}</td>
-                                        <td>{i.medicineName}</td>
-                                        <td>{i.medicineType}</td>
-                                        <td>{i.medicineType === 'VIAL' ? `${i.concentrationMgPerMl ?? i.specification} mg/ml` : `${i.specification} ${i.specUnit}`}</td>
-                                        <td>Rs {i.price?.toLocaleString('en-IN')}</td>
-                                        <td><span className="qty-badge">{i.quantity}</span></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
+            <InventoryTable items={regularInventory} caption="Current Regular Inventory" />
+            <InventoryTable items={adminStockInventory} caption="Current Admin Stock" />
         </div>
     );
 }
