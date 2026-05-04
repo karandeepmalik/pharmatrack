@@ -58,7 +58,7 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryByUser() {
-        List<Inventory> records = inventoryRepository.findAllNonZeroOrderByMedicineAndUser();
+        List<Inventory> records = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR);
 
         // Build maps: specKey → list of inventory records, specKey → full medicine name header
         Map<String, List<Inventory>> bySpec = new LinkedHashMap<>();
@@ -101,7 +101,7 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryValuation() {
-        List<Inventory> records = inventoryRepository.findAllNonZeroForValuation();
+        List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR);
 
         // Group by pharmaId → then by specKey within each pharma
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();

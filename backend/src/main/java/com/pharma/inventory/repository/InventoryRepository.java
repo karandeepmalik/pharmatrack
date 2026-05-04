@@ -23,17 +23,17 @@ public interface InventoryRepository extends JpaRepository<Inventory,Long> {
     List<Inventory> findByUserId(Long userId);
     void deleteByUserId(Long userId);
 
-    /** All non-zero REGULAR inventory ordered by medicine then user — used by inventory-by-user report. */
+    /** All non-zero inventory of a given type ordered by medicine then user — used by inventory-by-user report. */
     @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE i.quantity > 0 AND i.inventoryType = com.pharma.inventory.entity.Inventory.InventoryType.REGULAR " +
+           "WHERE i.quantity > 0 AND i.inventoryType = :type " +
            "ORDER BY m.name, m.specification, u.fullName")
-    List<Inventory> findAllNonZeroOrderByMedicineAndUser();
+    List<Inventory> findAllNonZeroOrderByMedicineAndUser(@Param("type") Inventory.InventoryType type);
 
-    /** All non-zero REGULAR inventory — used by valuation report. */
+    /** All non-zero inventory of a given type — used by valuation report. */
     @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE i.quantity > 0 AND i.inventoryType = com.pharma.inventory.entity.Inventory.InventoryType.REGULAR " +
+           "WHERE i.quantity > 0 AND i.inventoryType = :type " +
            "ORDER BY m.name, m.specification")
-    List<Inventory> findAllNonZeroForValuation();
+    List<Inventory> findAllNonZeroForValuation(@Param("type") Inventory.InventoryType type);
 
     /** All non-zero inventory of a given type — used by daily report (REGULAR + ADMIN_STOCK sections). */
     @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
