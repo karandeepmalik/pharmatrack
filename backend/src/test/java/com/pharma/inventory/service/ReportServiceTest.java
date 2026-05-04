@@ -34,6 +34,7 @@ class ReportServiceTest {
     private Medicine tablet;
     private User john;
     private User jane;
+    private User adminUser;
 
     @BeforeEach
     void setUp() {
@@ -55,6 +56,8 @@ class ReportServiceTest {
                 .email("j@p.com").role(User.Role.USER).active(true).password("h").build();
         jane = User.builder().id(3L).username("jane.smith").fullName("Jane Smith")
                 .email("js@p.com").role(User.Role.USER).active(true).password("h").build();
+        adminUser = User.builder().id(1L).username("admin").fullName("Admin User")
+                .email("admin@p.com").role(User.Role.ADMIN).active(true).password("h").build();
     }
 
     private Inventory makeInv(Long id, User u, Medicine m, int qty, String note) {
@@ -416,6 +419,68 @@ class ReportServiceTest {
             assertThat(r.getContent()).contains("john.doe: 30");
             assertThat(r.getContent()).contains("jane.smith: 20");
             assertThat(r.getContent()).contains("TOTAL: 50");
+        }
+
+        @Test
+        void adminInventorySectionPresentBeforeTransactions() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("ADMIN INVENTORY");
+            int posAdmin = r.getContent().indexOf("ADMIN INVENTORY");
+            int posTx    = r.getContent().indexOf("TODAY'S TRANSACTIONS");
+            assertThat(posAdmin).isLessThan(posTx);
+        }
+
+        @Test
+        void adminInventoryShowsCorrectQuantity() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, adminUser, vial, 15, null)));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            // Admin inventory section should show vial 10 ml: 15
+            String content = r.getContent();
+            int adminSection = content.indexOf("ADMIN INVENTORY");
+            int txSection    = content.indexOf("TODAY'S TRANSACTIONS");
+            String adminBlock = content.substring(adminSection, txSection);
+            assertThat(adminBlock).contains("Vial 10 ml: 15");
+        }
+
+        @Test
+        void adminInventoryShowsZeroForSpecsWithNoAdminStock() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            String content = r.getContent();
+            int adminSection = content.indexOf("ADMIN INVENTORY");
+            int txSection    = content.indexOf("TODAY'S TRANSACTIONS");
+            String adminBlock = content.substring(adminSection, txSection);
+            assertThat(adminBlock).contains("Vial 10 ml: 0");
+        }
+
+        @Test
+        void adminInventoryDoesNotIncludeNonAdminQuantities() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(
+                            makeInv(1L, adminUser, vial, 5, null),
+                            makeInv(2L, john, vial, 30, null)));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            String content = r.getContent();
+            int adminSection = content.indexOf("ADMIN INVENTORY");
+            int txSection    = content.indexOf("TODAY'S TRANSACTIONS");
+            String adminBlock = content.substring(adminSection, txSection);
+            assertThat(adminBlock).contains("Vial 10 ml: 5");
+            assertThat(adminBlock).doesNotContain("30");
         }
     }
 }
