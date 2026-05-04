@@ -7,6 +7,7 @@ const REPORTS = [
     { value: 'inventory-by-user', label: 'Current Inventory Level By User' },
     { value: 'inventory-valuation', label: 'Current Inventory Valuation' },
     { value: 'today-sales', label: "Today's Sales" },
+    { value: 'daily', label: 'Daily Report' },
 ];
 
 export default function ViewReports() {
@@ -25,6 +26,7 @@ export default function ViewReports() {
             if (selected === 'inventory-by-user') res = await api.getReportInventoryByUser();
             else if (selected === 'inventory-valuation') res = await api.getReportInventoryValuation();
             else if (selected === 'today-sales') res = await api.getReportTodaySales();
+            else if (selected === 'daily') res = await api.getReportDaily();
             setContent(res.data.content);
         } catch {
             setError('Failed to generate report. Please try again.');

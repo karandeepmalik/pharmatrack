@@ -672,9 +672,24 @@ async function run() {
     assert(typeof r.data.content === 'string' && r.data.content.length > 0, 'Expected non-empty content');
   });
 
-  await test('Reports include generatedAt timestamp', async () => {
-    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
-    assert(r.data.generatedAt && r.data.generatedAt.length > 0, 'Expected generatedAt timestamp');
+  await test('Admin can access daily report', async () => {
+    const r = await apiGet(`${API}/reports/daily`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.reportType === 'DAILY_REPORT', `Expected DAILY_REPORT, got ${r.data.reportType}`);
+    assert(r.data.content.includes('DAILY REPORT'), 'Expected daily report header');
+    assert(r.data.content.includes('INVENTORY COUNTS'), 'Expected inventory counts section');
+    assert(r.data.content.includes("TODAY'S TRANSACTIONS"), "Expected transactions section");
+    assert(r.data.content.includes('Vial 10 ml'), 'Expected 10ml vial in inventory section');
+    assert(r.data.content.includes('Vial 5 ml'), 'Expected 5ml vial in inventory section');
+    assert(r.data.content.includes('IST'), 'Expected IST in timestamp');
+    // 10ml must appear before 5ml
+    assert(r.data.content.indexOf('Vial 10 ml') < r.data.content.indexOf('Vial 5 ml'),
+      'Expected 10ml vial before 5ml vial');
+  });
+
+  await test('Reports include generatedAt timestamp with IST', async () => {
+    const r = await apiGet(`${API}/reports/daily`, adminToken);
+    assert(r.data.generatedAt && r.data.generatedAt.endsWith('IST'), `Expected generatedAt ending with IST, got: ${r.data.generatedAt}`);
   });
 
   await test('Non-admin cannot access reports (401/403)', async () => {
