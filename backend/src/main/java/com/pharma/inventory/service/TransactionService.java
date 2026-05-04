@@ -90,6 +90,11 @@ public class TransactionService {
         User admin = findUserByUsername(adminUsername);
         if (req.isApproved()) {
             tx.setStatus(TransactionStatus.APPROVED);
+            if (req.getNewPrice() != null) {
+                Medicine m = tx.getMedicine();
+                m.setPrice(req.getNewPrice());
+                medicineRepository.save(m);
+            }
         } else {
             tx.setStatus(TransactionStatus.REJECTED);
             Inventory inv = findInventory(tx.getSubmittedBy().getId(), tx.getMedicine().getId());

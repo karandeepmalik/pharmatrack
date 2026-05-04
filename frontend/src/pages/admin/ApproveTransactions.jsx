@@ -78,6 +78,7 @@ export default function ApproveTransactions() {
   const [loading, setLoading]           = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
+  const [priceOverrides, setPriceOverrides] = useState({});
 
   const fetchTransactions = useCallback(() => {
     setLoading(true);
@@ -94,7 +95,14 @@ export default function ApproveTransactions() {
     setActionLoading(id);
     setErrorMessage(''); // clear stale error before new attempt
     try {
-      await api.approveTransaction(id, { approved });
+      const payload = { approved };
+      if (approved) {
+        const priceStr = priceOverrides[id];
+        if (priceStr !== undefined && priceStr !== '') {
+          payload.newPrice = parseInt(priceStr, 10);
+        }
+      }
+      await api.approveTransaction(id, payload);
       fetchTransactions();
     } catch {
       setErrorMessage(`Failed to ${approved ? 'approve' : 'reject'} transaction`);
@@ -149,6 +157,21 @@ export default function ApproveTransactions() {
                   <p><strong>Medicine:</strong> {tx.medicineName} — {tx.medicineType === 'VIAL' ? `${tx.concentrationMgPerMl ?? tx.specification} mg/ml` : `${tx.specification} mg (10 Tablets)`}</p>
                   <p><strong>Pharma:</strong> {tx.pharmaName}</p>
                   <p><strong>Quantity:</strong> {tx.quantity}</p>
+                  {tx.status === 'PENDING' && (
+                    <div className="tx-price-edit">
+                      <label htmlFor={`price-${tx.id}`}><strong>Price (Rs):</strong></label>
+                      <input
+                        id={`price-${tx.id}`}
+                        type="number"
+                        min="0"
+                        value={priceOverrides[tx.id] ?? (tx.price ?? '')}
+                        onChange={(e) =>
+                          setPriceOverrides((prev) => ({ ...prev, [tx.id]: e.target.value }))
+                        }
+                        className="price-input"
+                      />
+                    </div>
+                  )}
                   <p><strong>Submitted:</strong>{' '}
                     {tx.submittedAt ? new Date(tx.submittedAt).toLocaleString() : '—'}
                   </p>

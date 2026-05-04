@@ -223,6 +223,19 @@ class ReportServiceTest {
 
             assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 0");
         }
+
+        @Test
+        void adminInventoryExcludedFromValuation() {
+            // Repository query (findAllNonZeroForValuation) excludes admin users via JPQL WHERE clause.
+            // Verify the service totals only what the repository returns (user-only inventory).
+            when(inventoryRepository.findAllNonZeroForValuation())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            assertThat(r.getContent()).contains("Qty: 5");
+            assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 20,000");
+        }
     }
 
     @Nested @DisplayName("todaySales")
