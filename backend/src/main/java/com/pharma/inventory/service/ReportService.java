@@ -28,13 +28,13 @@ public class ReportService {
     private static final DateTimeFormatter DT_FMT   = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
     private static final DateTimeFormatter DATE_FMT  = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
-    // Fixed display order for daily report: type|specification -> display entry
+    // Fixed display order for daily report — short names, no pharma prefix
     private static final List<String[]> DAILY_SPEC_ORDER = List.of(
-        new String[]{"VIAL",   "10.0", "Shield FX Vial 10 ml"},
-        new String[]{"VIAL",   "5.0",  "Shield FX Vial 5 ml"},
-        new String[]{"TABLET", "50.0", "Shield FX Tablet 50 mg (10 Tablets)"},
-        new String[]{"TABLET", "25.0", "Shield FX Tablet 25 mg (10 Tablets)"},
-        new String[]{"TABLET", "12.0", "Shield FX Tablet 12 mg (10 Tablets)"}
+        new String[]{"VIAL",   "10.0", "Vial 10 ml"},
+        new String[]{"VIAL",   "5.0",  "Vial 5 ml"},
+        new String[]{"TABLET", "50.0", "Tablet 50 mg (10 Tablets)"},
+        new String[]{"TABLET", "25.0", "Tablet 25 mg (10 Tablets)"},
+        new String[]{"TABLET", "12.0", "Tablet 12 mg (10 Tablets)"}
     );
 
     private String nowIST() {
@@ -196,25 +196,25 @@ public class ReportService {
             specToMedicine.putIfAbsent(key, m);
         }
 
+        // Use pharma company name as section heading
+        String pharmaName = specToMedicine.values().stream()
+                .map(m -> m.getPharmaCompany().getName())
+                .findFirst()
+                .orElse("Shield FX");
+
         StringBuilder sb = new StringBuilder();
         sb.append("DAILY REPORT - ").append(today.format(DATE_FMT)).append("\n");
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
-        sb.append("INVENTORY COUNTS\n");
-        sb.append("-".repeat(16)).append("\n");
+        sb.append(pharmaName).append("\n");
+        sb.append("-".repeat(pharmaName.length())).append("\n");
 
         for (String[] spec : DAILY_SPEC_ORDER) {
-            String type    = spec[0];
-            String specVal = spec[1];
+            String specVal  = spec[1];
             String baseName = spec[2];
-            String key = type + "|" + specVal;
+            String key = spec[0] + "|" + specVal;
 
-            String header = "VIAL".equals(type)
-                    ? baseName + " | " + (specToMedicine.containsKey(key)
-                            ? vialConc(specToMedicine.get(key)) : "20") + " mg/ml"
-                    : baseName;
-
-            sb.append("\n").append(header).append("\n");
+            sb.append("\n").append(baseName).append("\n");
 
             List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
             if (entries.isEmpty()) {

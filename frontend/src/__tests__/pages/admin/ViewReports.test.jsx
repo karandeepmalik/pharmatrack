@@ -111,7 +111,7 @@ describe('ViewReports — daily report', () => {
   test('generates daily report', async () => {
     api.getReportDaily.mockResolvedValue(
       sampleReport('DAILY_REPORT',
-        'DAILY REPORT - 04 May 2026\nINVENTORY COUNTS\nShield FX Vial 10 ml | 20 mg/ml\n  john.doe: 30\n  TOTAL: 30\nTODAY\'S TRANSACTIONS\n2 x 10 ml  Clinic B')
+        'DAILY REPORT - 04 May 2026\nShield FX\n---------\n\nVial 10 ml\n  john.doe: 30\n  TOTAL: 30\n\nTODAY\'S TRANSACTIONS\n2 x 10 ml  Clinic B')
     );
     renderPage();
 
@@ -120,7 +120,7 @@ describe('ViewReports — daily report', () => {
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
-      expect(screen.getByText(/inventory counts/i)).toBeInTheDocument()
+      expect(screen.getByText(/vial 10 ml/i)).toBeInTheDocument()
     );
     expect(api.getReportDaily).toHaveBeenCalledTimes(1);
   });
