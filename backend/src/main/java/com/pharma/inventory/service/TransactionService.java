@@ -61,6 +61,7 @@ public class TransactionService {
                 .status(TransactionStatus.PENDING).notes(req.getNotes())
                 .paymentScreenshot(req.getPaymentScreenshot())
                 .paymentScreenshotType(req.getPaymentScreenshotType())
+                .pricePerUnit(req.getPricePerUnit())
                 .build());
         return transactionMapper.toResponse(saved);
     }

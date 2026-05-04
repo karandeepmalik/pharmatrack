@@ -164,7 +164,7 @@ export default function ApproveTransactions() {
                         id={`price-${tx.id}`}
                         type="number"
                         min="0"
-                        value={priceOverrides[tx.id] ?? (tx.price ?? '')}
+                        value={priceOverrides[tx.id] ?? (tx.pricePerUnit ?? tx.price ?? '')}
                         onChange={(e) =>
                           setPriceOverrides((prev) => ({ ...prev, [tx.id]: e.target.value }))
                         }

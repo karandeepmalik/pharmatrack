@@ -38,6 +38,12 @@ public class TransactionRequest {
      */
     private String paymentScreenshotType;
 
+    /**
+     * Optional price per unit override submitted by the user.
+     * If null, the medicine's current price is used at approval time.
+     */
+    private Integer pricePerUnit;
+
     // ── Getters & Setters ──────────────────────────────────────────────
 
     public Long getMedicineId() { return medicineId; }
@@ -58,4 +64,7 @@ public class TransactionRequest {
     public void setPaymentScreenshotType(String paymentScreenshotType) {
         this.paymentScreenshotType = paymentScreenshotType;
     }
+
+    public Integer getPricePerUnit() { return pricePerUnit; }
+    public void setPricePerUnit(Integer pricePerUnit) { this.pricePerUnit = pricePerUnit; }
 }

@@ -42,6 +42,7 @@ public class TransactionMapper {
         r.setPharmaId(t.getMedicine().getPharmaCompany().getId());
 
         r.setPrice(t.getMedicine().getPrice());
+        r.setPricePerUnit(t.getPricePerUnit());
 
         // Transaction fields
         r.setQuantity(t.getQuantity());

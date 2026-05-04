@@ -38,6 +38,9 @@ public class TransactionResponse {
 
     private Integer price;
 
+    /** Price per unit submitted by the user at transaction time. May be null if not overridden. */
+    private Integer pricePerUnit;
+
     // ── Getters & Setters ─────────────────────────────────────────────
 
     public Long getId() { return id; }
@@ -109,4 +112,7 @@ public class TransactionResponse {
 
     public Integer getPrice() { return price; }
     public void setPrice(Integer price) { this.price = price; }
+
+    public Integer getPricePerUnit() { return pricePerUnit; }
+    public void setPricePerUnit(Integer pricePerUnit) { this.pricePerUnit = pricePerUnit; }
 }

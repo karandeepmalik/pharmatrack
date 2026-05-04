@@ -17,6 +17,9 @@ export default function SubmitTransaction() {
   const [selectedSpec, setSelectedSpec]     = useState('');
   const [quantity, setQuantity]             = useState('');
 
+  // ── Price override ───────────────────────────────────────────────────
+  const [priceOverride, setPriceOverride] = useState('');
+
   // ── Notes ────────────────────────────────────────────────────────────
   const [notes, setNotes] = useState('');
 
@@ -83,12 +86,14 @@ export default function SubmitTransaction() {
     setSelectedType('');
     setSelectedSpec('');
     setQuantity('');
+    setPriceOverride('');
   };
 
   const handleTypeChange = (e) => {
     setSelectedType(e.target.value);
     setSelectedSpec('');
     setQuantity('');
+    setPriceOverride('');
   };
 
   const handleSubmit = async (e) => {
@@ -105,11 +110,12 @@ export default function SubmitTransaction() {
         quantity: Number(quantity),
         notes: notes.trim(),
         screenshotFile: screenshot.screenshotFile,
+        pricePerUnit: priceOverride !== '' ? parseInt(priceOverride, 10) : undefined,
       });
 
       setSuccessMessage('Inventory adjustment submitted successfully and is pending admin approval.');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
-      setQuantity(''); setNotes('');
+      setQuantity(''); setNotes(''); setPriceOverride('');
       screenshot.handleRemoveScreenshot();
 
       const r = await api.getAvailableInventory();
@@ -169,7 +175,17 @@ export default function SubmitTransaction() {
           </label>
           <select id="spec-select" value={selectedSpec}
             disabled={!selectedType}
-            onChange={(e) => { setSelectedSpec(e.target.value); setQuantity(''); }}>
+            onChange={(e) => {
+              const newSpec = e.target.value;
+              setSelectedSpec(newSpec);
+              setQuantity('');
+              const newItem = inventory.find(
+                (i) => String(i.pharmaId) === selectedPharma &&
+                       i.medicineType === selectedType &&
+                       String(i.specification) === newSpec
+              );
+              setPriceOverride(newItem ? String(newItem.price) : '');
+            }}>
             <option value="">-- Select Specification --</option>
             {specOptions.map((s) => {
               const label = selectedType === 'VIAL' ? `${s} ml` : `${s} mg (10 Tablets)`;
@@ -187,6 +203,20 @@ export default function SubmitTransaction() {
             value={quantity} disabled={!selectedSpec}
             onChange={(e) => setQuantity(e.target.value)} />
         </div>
+
+        {/* Price per Unit — only shown when an item is selected */}
+        {selectedItem && (
+          <div className="form-group">
+            <label htmlFor="price-input">Price per Unit (Rs)</label>
+            <input
+              id="price-input"
+              type="number"
+              min="0"
+              value={priceOverride}
+              onChange={(e) => setPriceOverride(e.target.value)}
+            />
+          </div>
+        )}
 
         {/* Notes */}
         <div className="form-group">
@@ -220,6 +250,7 @@ export default function SubmitTransaction() {
           quantity={quantity}
           notes={notes}
           screenshotFile={screenshot.screenshotFile}
+          pricePerUnit={priceOverride !== '' ? parseInt(priceOverride, 10) : undefined}
         />
 
         <button type="submit" disabled={!isFormValid || submitting} className="btn btn-primary">

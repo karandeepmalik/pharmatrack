@@ -242,6 +242,49 @@ describe('Preview card', () => {
   });
 });
 
+// ── Price override ─────────────────────────────────────────────────────
+
+describe('Price override input', () => {
+  test('price input appears after spec selected and is pre-filled with item price', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/pharma company/i));
+    await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
+    await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
+
+    const priceInput = screen.getByLabelText(/price per unit/i);
+    expect(priceInput).toBeInTheDocument();
+    expect(priceInput).toHaveValue(4000);
+  });
+
+  test('price input does not appear before spec is selected', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/pharma company/i));
+    await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
+    // No spec selected yet
+    expect(screen.queryByLabelText(/price per unit/i)).not.toBeInTheDocument();
+  });
+
+  test('submit call includes pricePerUnit when user changes price', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+
+    const priceInput = screen.getByLabelText(/price per unit/i);
+    await userEvent.clear(priceInput);
+    await userEvent.type(priceInput, '3500');
+
+    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    await waitFor(() =>
+      expect(api.submitTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pricePerUnit: 3500,
+        })
+      )
+    );
+  });
+});
+
 // ── Submit ─────────────────────────────────────────────────────────────
 
 describe('Form submission', () => {

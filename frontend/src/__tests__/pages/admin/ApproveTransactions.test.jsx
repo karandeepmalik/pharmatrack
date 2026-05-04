@@ -20,6 +20,7 @@ const makeTx = (overrides = {}) => ({
   pharmaName: 'FIP Shield',
   quantity: 5,
   price: 4000,
+  pricePerUnit: null,
   submittedAt: '2026-04-01T10:00:00',
   notes: 'Dispatched to Clinic B for FIP treatment',
   paymentScreenshot: null,
@@ -432,6 +433,16 @@ describe('ApproveTransactions — price override', () => {
     await waitFor(() =>
       expect(api.approveTransaction).toHaveBeenCalledWith(1, { approved: true })
     );
+  });
+
+  test('price input is pre-filled with pricePerUnit when set', async () => {
+    api.getAllTransactions.mockResolvedValue({ data: [makeTx({ pricePerUnit: 3500 })] });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/price \(rs\)/i)).toBeInTheDocument()
+    );
+    expect(screen.getByLabelText(/price \(rs\)/i)).toHaveValue(3500);
   });
 });
 
