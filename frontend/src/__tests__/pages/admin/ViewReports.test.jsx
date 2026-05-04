@@ -120,7 +120,7 @@ describe('ViewReports — daily report', () => {
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
-      expect(screen.getByText(/daily report/i)).toBeInTheDocument()
+      expect(screen.getByText(/inventory counts/i)).toBeInTheDocument()
     );
     expect(api.getReportDaily).toHaveBeenCalledTimes(1);
   });
