@@ -1,9 +1,14 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import ManageMedicines from '../../../pages/admin/ManageMedicines';
 import * as api from '../../../api/api';
+
+/** Returns the "Add Medicine" section — scopes queries to avoid the
+ *  "Add Pharma Company" section's aria-labelledby colliding with
+ *  the "Pharma Company" label inside the medicine form. */
+const getMedicineSection = () => screen.getByRole('region', { name: /add medicine/i });
 
 jest.mock('../../../api/api');
 
@@ -63,7 +68,7 @@ describe('ManageMedicines — render', () => {
 
   test('renders medicine form fields', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/pharma company/i));
+    await waitFor(() => within(getMedicineSection()).getByLabelText(/pharma company/i));
     expect(screen.getByLabelText(/medicine name/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/medicine type/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/specification/i)).toBeInTheDocument();
@@ -134,8 +139,8 @@ describe('ManageMedicines — add pharma company', () => {
 
 describe('ManageMedicines — add medicine', () => {
   const fillMedicineForm = async () => {
-    await waitFor(() => screen.getByLabelText(/pharma company/i));
-    await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
+    await waitFor(() => within(getMedicineSection()).getByLabelText(/pharma company/i));
+    await userEvent.selectOptions(within(getMedicineSection()).getByLabelText(/pharma company/i), '1');
     await userEvent.type(screen.getByLabelText(/medicine name/i), 'Shield FX Vial 10 ml');
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
     await userEvent.type(screen.getByLabelText(/specification/i), '10');
