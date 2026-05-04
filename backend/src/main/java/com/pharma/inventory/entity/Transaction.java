@@ -59,6 +59,13 @@ public class Transaction {
     @Column(name = "payment_screenshot_type", length = 50)
     private String paymentScreenshotType;
 
+    /**
+     * Optional price per unit submitted by the user at the time of transaction.
+     * May be null if the user did not override the default medicine price.
+     */
+    @Column(name = "price_per_unit")
+    private Integer pricePerUnit;
+
     @PrePersist
     protected void onCreate() {
         submittedAt = LocalDateTime.now();

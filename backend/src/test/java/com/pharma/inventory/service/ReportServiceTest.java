@@ -158,6 +158,33 @@ class ReportServiceTest {
 
             assertThat(r.getContent()).contains("CURRENT INVENTORY LEVEL BY USER");
         }
+
+        @Test
+        void vialAppearsBeforeTabletInFixedOrder() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(
+                            makeInv(1L, john, vial, 10, null),
+                            makeInv(2L, john, tablet, 5, null)));
+
+            ReportResponse r = reportService.inventoryByUser();
+
+            int posVial   = r.getContent().indexOf("Shield FX Vial 10 ml");
+            int posTablet = r.getContent().indexOf("Shield FX Tablet 25 mg");
+            assertThat(posVial).isLessThan(posTablet);
+        }
+
+        @Test
+        void specsWithNoDataAreSkipped() {
+            // Only vial 10ml present — vial 5ml and tablets should not appear
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+
+            ReportResponse r = reportService.inventoryByUser();
+
+            assertThat(r.getContent()).contains("Shield FX Vial 10 ml");
+            assertThat(r.getContent()).doesNotContain("Vial 5 ml");
+            assertThat(r.getContent()).doesNotContain("Tablet 25 mg");
+        }
     }
 
     @Nested @DisplayName("inventoryValuation")
@@ -173,7 +200,8 @@ class ReportServiceTest {
             ReportResponse r = reportService.inventoryValuation();
 
             assertThat(r.getReportType()).isEqualTo("INVENTORY_VALUATION");
-            assertThat(r.getContent()).contains("Shield FX Vial 10 ml");
+            // Short name used, not the full medicine name
+            assertThat(r.getContent()).contains("Vial 10 ml");
             assertThat(r.getContent()).contains("Qty: 15");
             assertThat(r.getContent()).contains("60,000");
             assertThat(r.getContent()).contains("TOTAL VALUATION");
@@ -199,19 +227,31 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.inventoryValuation();
 
-            assertThat(r.getContent()).contains("Shield FX Tablet 25 mg (10 Tablets)");
-            assertThat(r.getContent()).doesNotContain("| 25.0 mg (10 Tablets)");
+            // Short name from DAILY_SPEC_ORDER
+            assertThat(r.getContent()).contains("Tablet 25 mg (10 Tablets)");
         }
 
         @Test
-        void vialHeaderShowsConcentration() {
+        void pharmaNameHeadingAppearsInReport() {
             when(inventoryRepository.findAllNonZeroForValuation())
                     .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
 
             ReportResponse r = reportService.inventoryValuation();
 
-            assertThat(r.getContent()).contains("Shield FX Vial 10 ml | 20 mg/ml");
-            assertThat(r.getContent()).doesNotContain("10.0 mg/ml");
+            assertThat(r.getContent()).contains("Shield FX");
+        }
+
+        @Test
+        void shortSpecNameUsedNotFullMedicineName() {
+            when(inventoryRepository.findAllNonZeroForValuation())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            // Short name present
+            assertThat(r.getContent()).contains("Vial 10 ml");
+            // Full name with pharma prefix should NOT appear as the spec line
+            assertThat(r.getContent()).doesNotContain("Shield FX Vial 10 ml\n");
         }
 
         @Test
@@ -252,9 +292,34 @@ class ReportServiceTest {
 
             assertThat(r.getReportType()).isEqualTo("TODAY_SALES");
             assertThat(r.getContent()).contains("John Doe");
-            assertThat(r.getContent()).contains("Shield FX Vial 10 ml");
-            assertThat(r.getContent()).contains("Qty: 3");
+            // New format: username + spec label + notes on one line
+            assertThat(r.getContent()).contains("john.doe");
+            assertThat(r.getContent()).contains("10 ml");
             assertThat(r.getContent()).contains("12,000");
+        }
+
+        @Test
+        void reportShowsUsernameInTransactionLine() {
+            Transaction tx = makeTx(1L, john, vial, 3,
+                    Transaction.TransactionStatus.APPROVED, "sent to Vandana");
+            when(transactionRepository.findApprovedBetween(any(Transaction.TransactionStatus.class), any(LocalDateTime.class), any(LocalDateTime.class)))
+                    .thenReturn(List.of(tx));
+
+            ReportResponse r = reportService.todaySales();
+
+            assertThat(r.getContent()).contains("john.doe  10 ml  sent to Vandana");
+        }
+
+        @Test
+        void tabletTransactionShowsMgSpecLabel() {
+            Transaction tx = makeTx(1L, john, tablet, 2,
+                    Transaction.TransactionStatus.APPROVED, "for clinic");
+            when(transactionRepository.findApprovedBetween(any(Transaction.TransactionStatus.class), any(LocalDateTime.class), any(LocalDateTime.class)))
+                    .thenReturn(List.of(tx));
+
+            ReportResponse r = reportService.todaySales();
+
+            assertThat(r.getContent()).contains("john.doe  25 mg  for clinic");
         }
 
         @Test
@@ -302,6 +367,7 @@ class ReportServiceTest {
         void reportTypeAndHeader() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -315,6 +381,7 @@ class ReportServiceTest {
         void timestampContainsIST() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -327,6 +394,7 @@ class ReportServiceTest {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -342,6 +410,7 @@ class ReportServiceTest {
                             makeInv(1L, john, vial, 10, null),
                             makeInv(2L, john, tablet, 5, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -354,6 +423,7 @@ class ReportServiceTest {
         void tenMlVialAppearsBeforeFiveMlVial() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -367,6 +437,7 @@ class ReportServiceTest {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
                     .thenReturn(List.of(makeInv(1L, john, vial, 30, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -378,6 +449,7 @@ class ReportServiceTest {
         void showsNoneWhenSpecHasNoInventory() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -391,10 +463,12 @@ class ReportServiceTest {
             Transaction tx = makeTx(1L, john, tablet, 2,
                     Transaction.TransactionStatus.APPROVED, "sent to Vandana");
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of(tx));
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
-            assertThat(r.getContent()).contains("2 x 25 mg  sent to Vandana");
+            // New format: username  N x specLabel  notes
+            assertThat(r.getContent()).contains("john.doe  2 x 25 mg  sent to Vandana");
         }
 
         @Test
@@ -403,16 +477,19 @@ class ReportServiceTest {
             Transaction tx = makeTx(1L, john, vial, 3,
                     Transaction.TransactionStatus.APPROVED, "Clinic B");
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of(tx));
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
-            assertThat(r.getContent()).contains("3 x 10 ml  Clinic B");
+            // New format: username  N x specLabel  notes
+            assertThat(r.getContent()).contains("john.doe  3 x 10 ml  Clinic B");
         }
 
         @Test
         void noTransactionsShowsMessage() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -426,6 +503,7 @@ class ReportServiceTest {
                             makeInv(1L, john, vial, 30, null),
                             makeInv(2L, jane, vial, 20, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -438,6 +516,7 @@ class ReportServiceTest {
         void adminInventorySectionPresentBeforeTransactions() {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -452,6 +531,7 @@ class ReportServiceTest {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
                     .thenReturn(List.of(makeInv(1L, adminUser, vial, 15, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -468,6 +548,7 @@ class ReportServiceTest {
             when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -485,6 +566,7 @@ class ReportServiceTest {
                             makeInv(1L, adminUser, vial, 5, null),
                             makeInv(2L, john, vial, 30, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport();
 
@@ -494,6 +576,67 @@ class ReportServiceTest {
             String adminBlock = content.substring(adminSection, txSection);
             assertThat(adminBlock).contains("Vial 10 ml: 5");
             assertThat(adminBlock).doesNotContain("30");
+        }
+
+        @Test
+        void transactionLineHasUsernameAtFront() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            Transaction tx = makeTx(1L, john, vial, 3,
+                    Transaction.TransactionStatus.APPROVED, "Clinic B");
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of(tx));
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("john.doe  3 x 10 ml  Clinic B");
+        }
+
+        @Test
+        void internalMovementSectionPresent() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("INTERNAL MOVEMENT");
+        }
+
+        @Test
+        void internalMovementShowsAdminNoteWhenPresent() {
+            Inventory adminInv = makeInv(10L, adminUser, vial, 5, "sent 20 mg to dhairya");
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of(adminInv));
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("INTERNAL MOVEMENT");
+            assertThat(r.getContent()).contains("admin  sent 20 mg to dhairya");
+        }
+
+        @Test
+        void internalMovementShowsNoMovementsWhenEmpty() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("(no internal movements today)");
+        }
+
+        @Test
+        void internalMovementSectionAfterTransactions() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+            when(inventoryRepository.findAdminModificationsToday(any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            int posTx = r.getContent().indexOf("TODAY'S TRANSACTIONS");
+            int posIM = r.getContent().indexOf("INTERNAL MOVEMENT");
+            assertThat(posTx).isLessThan(posIM);
         }
     }
 }

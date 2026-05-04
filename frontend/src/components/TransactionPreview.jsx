@@ -9,9 +9,12 @@ import React from 'react';
  * @param {string}   props.quantity       - quantity string from form input
  * @param {string}   props.notes          - adjustment notes text
  * @param {File|null} props.screenshotFile - attached file or null
+ * @param {number}   props.pricePerUnit   - price per unit (overridden or item's default price)
  */
-export default function TransactionPreview({ item, quantity, notes, screenshotFile }) {
+export default function TransactionPreview({ item, quantity, notes, screenshotFile, pricePerUnit }) {
   if (!item || !quantity || notes.trim().length < 5) return null;
+
+  const displayPrice = pricePerUnit != null ? pricePerUnit : item?.price;
 
   return (
     <div className="preview-card" role="region" aria-label="Submission preview">
@@ -23,6 +26,11 @@ export default function TransactionPreview({ item, quantity, notes, screenshotFi
       <p>
         <strong>Quantity:</strong> {quantity}
       </p>
+      {displayPrice != null && (
+        <p>
+          <strong>Price per Unit:</strong> Rs {displayPrice?.toLocaleString()}
+        </p>
+      )}
       <p>
         <strong>Adjustment Note:</strong> {notes}
       </p>
