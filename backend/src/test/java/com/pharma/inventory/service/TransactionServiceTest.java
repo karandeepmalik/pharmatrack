@@ -106,7 +106,7 @@ class TransactionServiceTest {
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
-            when(inventoryRepository.findByUserIdAndMedicineId(1L, 1L))
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR))
                     .thenReturn(Optional.of(inventory));
             when(inventoryRepository.save(any())).thenReturn(inventory);
             when(transactionRepository.save(any())).thenReturn(tx);
@@ -127,7 +127,7 @@ class TransactionServiceTest {
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
-            when(inventoryRepository.findByUserIdAndMedicineId(1L, 1L))
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR))
                     .thenReturn(Optional.of(inventory));
             when(inventoryRepository.save(any())).thenReturn(inventory);
             when(transactionRepository.save(any())).thenReturn(tx);
@@ -165,7 +165,7 @@ class TransactionServiceTest {
         void submit_inventoryNotFound_throwsResourceNotFound() {
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
-            when(inventoryRepository.findByUserIdAndMedicineId(1L, 1L))
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR))
                     .thenReturn(Optional.empty());
 
             assertThatThrownBy(() ->
@@ -182,7 +182,7 @@ class TransactionServiceTest {
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
-            when(inventoryRepository.findByUserIdAndMedicineId(1L, 1L))
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR))
                     .thenReturn(Optional.of(inventory));
 
             assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
@@ -224,7 +224,7 @@ class TransactionServiceTest {
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
-            when(inventoryRepository.findByUserIdAndMedicineId(1L, 1L))
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR))
                     .thenReturn(Optional.of(inventory));
             when(inventoryRepository.save(any())).thenReturn(inventory);
             when(transactionRepository.save(any())).thenReturn(tx);
@@ -240,7 +240,7 @@ class TransactionServiceTest {
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
-            when(inventoryRepository.findByUserIdAndMedicineId(1L, 1L))
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR))
                     .thenReturn(Optional.of(inventory));
             when(inventoryRepository.save(any())).thenReturn(inventory);
             when(transactionRepository.save(any())).thenReturn(tx);
@@ -370,7 +370,7 @@ class TransactionServiceTest {
         void reject_valid_setsRejectedAndRestoresInventory() {
             when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
             when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
-            when(inventoryRepository.findByUserIdAndMedicineId(1L, 1L))
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR))
                     .thenReturn(Optional.of(inventory));
             when(inventoryRepository.save(any())).thenReturn(inventory);
             when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));

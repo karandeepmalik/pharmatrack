@@ -16,6 +16,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.mockito.ArgumentMatchers;
+
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -102,6 +104,40 @@ class ReportControllerTest {
         @Test
         void unauthenticatedIsUnauthorized() throws Exception {
             mockMvc.perform(get("/api/reports/today-sales"))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Nested @DisplayName("GET /api/reports/daily")
+    class DailyReport {
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanGetDailyReportWithoutDate() throws Exception {
+            when(reportService.dailyReport(ArgumentMatchers.isNull()))
+                    .thenReturn(sampleReport("DAILY_REPORT"));
+            mockMvc.perform(get("/api/reports/daily"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reportType").value("DAILY_REPORT"));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanGetDailyReportForSpecificDate() throws Exception {
+            when(reportService.dailyReport(ArgumentMatchers.any()))
+                    .thenReturn(sampleReport("DAILY_REPORT"));
+            mockMvc.perform(get("/api/reports/daily").param("date", "2026-05-01"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reportType").value("DAILY_REPORT"));
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userIsForbidden() throws Exception {
+            mockMvc.perform(get("/api/reports/daily"))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedIsUnauthorized() throws Exception {
+            mockMvc.perform(get("/api/reports/daily"))
                     .andExpect(status().isUnauthorized());
         }
     }

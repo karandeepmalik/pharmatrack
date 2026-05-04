@@ -294,4 +294,62 @@ class TransactionControllerTest {
                     .andExpect(jsonPath("$.paymentScreenshotType").value("image/png"));
         }
     }
+
+    // ── GET /api/transactions/history ─────────────────────────────────
+
+    @Nested
+    @DisplayName("GET /api/transactions/history — admin date-range search")
+    class History {
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("returns transactions for given date range and ALL status")
+        void history_allStatus_200() throws Exception {
+            sampleResponse.setStatus("APPROVED");
+            when(transactionService.getHistory(any(), any(), eq("ALL")))
+                    .thenReturn(List.of(sampleResponse));
+
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04")
+                    .param("status", "ALL"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].status").value("APPROVED"));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("returns only APPROVED transactions when status=APPROVED")
+        void history_approvedStatus_200() throws Exception {
+            sampleResponse.setStatus("APPROVED");
+            when(transactionService.getHistory(any(), any(), eq("APPROVED")))
+                    .thenReturn(List.of(sampleResponse));
+
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04")
+                    .param("status", "APPROVED"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].status").value("APPROVED"));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("missing from/to returns 400")
+        void history_missingParams_400() throws Exception {
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("status", "ALL"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("USER role cannot access history endpoint")
+        void history_userRole_403() throws Exception {
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04"))
+                    .andExpect(status().isForbidden());
+        }
+    }
 }

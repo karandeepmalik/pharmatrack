@@ -10,8 +10,12 @@ const REPORTS = [
     { value: 'daily', label: 'Daily Report' },
 ];
 
+// Default date = today in YYYY-MM-DD
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
 export default function ViewReports() {
     const [selected, setSelected] = useState('');
+    const [dailyDate, setDailyDate] = useState(todayStr());
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -26,7 +30,7 @@ export default function ViewReports() {
             if (selected === 'inventory-by-user') res = await api.getReportInventoryByUser();
             else if (selected === 'inventory-valuation') res = await api.getReportInventoryValuation();
             else if (selected === 'today-sales') res = await api.getReportTodaySales();
-            else if (selected === 'daily') res = await api.getReportDaily();
+            else if (selected === 'daily') res = await api.getReportDaily(dailyDate || null);
             setContent(res.data.content);
         } catch {
             setError('Failed to generate report. Please try again.');
@@ -68,6 +72,19 @@ export default function ViewReports() {
                         ))}
                     </select>
                 </div>
+
+                {selected === 'daily' && (
+                    <div className="form-group">
+                        <label htmlFor="daily-date-input">Report Date</label>
+                        <input
+                            id="daily-date-input"
+                            type="date"
+                            value={dailyDate}
+                            onChange={e => { setDailyDate(e.target.value); setContent(''); }}
+                        />
+                    </div>
+                )}
+
                 <button
                     type="button"
                     className="btn btn-primary"

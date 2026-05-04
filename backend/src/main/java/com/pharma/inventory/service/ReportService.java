@@ -4,7 +4,6 @@ import com.pharma.inventory.dto.ReportResponse;
 import com.pharma.inventory.entity.Inventory;
 import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Transaction;
-import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +58,7 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryByUser() {
-        List<Inventory> records = inventoryRepository.findAllNonZeroOrderByMedicineAndUser();
+        List<Inventory> records = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR);
 
         // Build maps: specKey → list of inventory records, specKey → full medicine name header
         Map<String, List<Inventory>> bySpec = new LinkedHashMap<>();
@@ -102,10 +101,9 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryValuation() {
-        List<Inventory> records = inventoryRepository.findAllNonZeroForValuation();
+        List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR);
 
         // Group by pharmaId → then by specKey within each pharma
-        // Also track pharma name and spec totals
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, Integer>> pharmaSpecQty = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, Integer>> pharmaSpecPrice = new LinkedHashMap<>();
@@ -198,7 +196,6 @@ public class ReportService {
                 long amount = (long) tx.getQuantity() * med.getPrice();
                 userTotal += amount;
 
-                // Build short spec label: "10 ml" or "50 mg"
                 int specInt = med.getSpecification().intValue();
                 String specLabel = med.getType() == Medicine.MedicineType.VIAL
                         ? specInt + " ml"
@@ -208,7 +205,6 @@ public class ReportService {
                 String notes = (tx.getNotes() != null && !tx.getNotes().isBlank())
                         ? tx.getNotes() : "";
 
-                // Format: "  username  specLabel  notes"
                 sb.append("  ").append(username).append("  ").append(specLabel);
                 if (!notes.isBlank()) {
                     sb.append("  ").append(notes);
@@ -226,46 +222,97 @@ public class ReportService {
         return new ReportResponse("TODAY_SALES", nowIST(), sb.toString());
     }
 
+    /**
+     * Generates the daily report for the given date (or today if null).
+     *
+     * Structure:
+     *   INVENTORY section        — REGULAR inventory per spec per user
+     *   ADMIN INVENTORY section  — ADMIN_STOCK inventory per spec per user
+     *   DAILY TRANSACTION SUMMARY — approved transactions on that date
+     */
     @Transactional(readOnly = true)
-    public ReportResponse dailyReport() {
-        LocalDate today = todayIST();
-        LocalDateTime start = today.atStartOfDay();
-        LocalDateTime end = today.plusDays(1).atStartOfDay();
+    public ReportResponse dailyReport(LocalDate date) {
+        LocalDate reportDate = (date != null) ? date : todayIST();
+        LocalDateTime start = reportDate.atStartOfDay();
+        LocalDateTime end   = reportDate.plusDays(1).atStartOfDay();
 
-        List<Inventory> inventoryRecords = inventoryRepository.findAllNonZeroOrderByMedicineAndUser();
+        List<Inventory> regularRecords  = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR);
+        List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK);
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
-        List<Inventory> adminMovements = inventoryRepository.findAdminModificationsToday(start, end);
 
-        // Group inventory by type|specification key
-        Map<String, List<Inventory>> bySpec = new HashMap<>();
-        Map<String, Medicine> specToMedicine = new HashMap<>();
-        for (Inventory inv : inventoryRecords) {
-            Medicine m = inv.getMedicine();
-            String key = specKey(m);
-            bySpec.computeIfAbsent(key, k -> new ArrayList<>()).add(inv);
-            specToMedicine.putIfAbsent(key, m);
-        }
-
-        // Use pharma company name as section heading
-        String pharmaName = specToMedicine.values().stream()
-                .map(m -> m.getPharmaCompany().getName())
+        // Derive pharma name from either inventory set
+        String pharmaName = regularRecords.stream()
+                .map(i -> i.getMedicine().getPharmaCompany().getName())
                 .findFirst()
-                .orElse("Shield FX");
+                .orElseGet(() -> adminStockRecords.stream()
+                        .map(i -> i.getMedicine().getPharmaCompany().getName())
+                        .findFirst()
+                        .orElse("Shield FX"));
 
         StringBuilder sb = new StringBuilder();
-        sb.append("DAILY REPORT - ").append(today.format(DATE_FMT)).append("\n");
+        sb.append("DAILY REPORT - ").append(reportDate.format(DATE_FMT)).append("\n");
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
+
+        // ── INVENTORY section ──────────────────────────────────────────
         sb.append(pharmaName).append("\n");
         sb.append("-".repeat(pharmaName.length())).append("\n");
+        appendInventorySection(sb, regularRecords);
+
+        // ── ADMIN INVENTORY section ───────────────────────────────────
+        sb.append("\n").append("=".repeat(40)).append("\n");
+        sb.append("ADMIN INVENTORY\n");
+        sb.append("-".repeat(15)).append("\n");
+        appendInventorySection(sb, adminStockRecords);
+
+        // ── DAILY TRANSACTION SUMMARY ─────────────────────────────────
+        sb.append("\n").append("=".repeat(40)).append("\n");
+        sb.append("DAILY TRANSACTION SUMMARY\n");
+        sb.append("-".repeat(25)).append("\n");
+
+        if (txList.isEmpty()) {
+            sb.append("(no transactions today)\n");
+        } else {
+            for (Transaction tx : txList) {
+                Medicine m = tx.getMedicine();
+                int specInt = m.getSpecification().intValue();
+                String specLabel = m.getType() == Medicine.MedicineType.VIAL
+                        ? specInt + " ml"
+                        : specInt + " mg";
+                sb.append(tx.getSubmittedBy().getUsername())
+                  .append("  ")
+                  .append(tx.getQuantity()).append(" x ").append(specLabel);
+                if (tx.getNotes() != null && !tx.getNotes().isBlank()) {
+                    sb.append("  ").append(tx.getNotes());
+                }
+                sb.append("\n");
+            }
+        }
+
+        return new ReportResponse("DAILY_REPORT", nowIST(), sb.toString());
+    }
+
+    /** Convenience overload — defaults to today. */
+    public ReportResponse dailyReport() {
+        return dailyReport(null);
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────
+
+    /**
+     * Appends per-spec, per-user inventory lines to the builder.
+     * Always emits all 5 specs in fixed order; shows (none) / TOTAL: 0 when empty.
+     */
+    private void appendInventorySection(StringBuilder sb, List<Inventory> records) {
+        Map<String, List<Inventory>> bySpec = new HashMap<>();
+        for (Inventory inv : records) {
+            bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
+        }
 
         for (String[] spec : DAILY_SPEC_ORDER) {
-            String specVal  = spec[1];
-            String baseName = spec[2];
-            String key = spec[0] + "|" + specVal;
-
-            sb.append("\n").append(baseName).append("\n");
+            String key = spec[0] + "|" + spec[1];
+            sb.append("\n").append(spec[2]).append("\n");
 
             List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
             if (entries.isEmpty()) {
@@ -281,62 +328,5 @@ public class ReportService {
                 sb.append("  TOTAL: ").append(total).append("\n");
             }
         }
-
-        // Admin inventory — quantities per spec for admin users
-        Map<String, Integer> adminBySpec = new HashMap<>();
-        for (Inventory inv : inventoryRecords) {
-            if (inv.getUser().getRole() == User.Role.ADMIN) {
-                String key = specKey(inv.getMedicine());
-                adminBySpec.merge(key, inv.getQuantity(), Integer::sum);
-            }
-        }
-
-        sb.append("\n").append("=".repeat(40)).append("\n");
-        sb.append("ADMIN INVENTORY\n");
-        sb.append("-".repeat(15)).append("\n");
-        for (String[] spec : DAILY_SPEC_ORDER) {
-            String key = spec[0] + "|" + spec[1];
-            int qty = adminBySpec.getOrDefault(key, 0);
-            sb.append(spec[2]).append(": ").append(qty).append("\n");
-        }
-
-        sb.append("\n").append("=".repeat(40)).append("\n");
-        sb.append("TODAY'S TRANSACTIONS\n");
-        sb.append("-".repeat(20)).append("\n");
-
-        if (txList.isEmpty()) {
-            sb.append("(no transactions today)\n");
-        } else {
-            for (Transaction tx : txList) {
-                Medicine m = tx.getMedicine();
-                int specInt = m.getSpecification().intValue();
-                String specLabel = m.getType() == Medicine.MedicineType.VIAL
-                        ? specInt + " ml"
-                        : specInt + " mg";
-                // Format: "username  N x specLabel  notes"
-                sb.append(tx.getSubmittedBy().getUsername())
-                  .append("  ")
-                  .append(tx.getQuantity()).append(" x ").append(specLabel);
-                if (tx.getNotes() != null && !tx.getNotes().isBlank()) {
-                    sb.append("  ").append(tx.getNotes());
-                }
-                sb.append("\n");
-            }
-        }
-
-        sb.append("\n").append("=".repeat(40)).append("\n");
-        sb.append("INTERNAL MOVEMENT\n");
-        sb.append("---------------\n");
-
-        if (adminMovements.isEmpty()) {
-            sb.append("(no internal movements today)\n");
-        } else {
-            for (Inventory inv : adminMovements) {
-                sb.append(inv.getUser().getUsername())
-                  .append("  ").append(inv.getLastNote()).append("\n");
-            }
-        }
-
-        return new ReportResponse("DAILY_REPORT", nowIST(), sb.toString());
     }
 }

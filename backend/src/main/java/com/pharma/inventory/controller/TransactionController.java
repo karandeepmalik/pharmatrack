@@ -5,6 +5,7 @@ import com.pharma.inventory.dto.TransactionRequest;
 import com.pharma.inventory.dto.TransactionResponse;
 import com.pharma.inventory.service.ScreenshotProcessor;
 import com.pharma.inventory.service.TransactionService;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -61,6 +63,22 @@ public class TransactionController {
     public ResponseEntity<List<TransactionResponse>> getMy(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(transactionService.getByUser(userDetails.getUsername()));
+    }
+
+    /**
+     * Admin endpoint to browse transaction history by date range and status.
+     *
+     * @param from   start date inclusive (YYYY-MM-DD)
+     * @param to     end date inclusive (YYYY-MM-DD)
+     * @param status ALL | APPROVED | REJECTED  (default ALL)
+     */
+    @GetMapping("/history")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<TransactionResponse>> getHistory(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "ALL") String status) {
+        return ResponseEntity.ok(transactionService.getHistory(from, to, status));
     }
 
     @PostMapping("/{id}/approve")

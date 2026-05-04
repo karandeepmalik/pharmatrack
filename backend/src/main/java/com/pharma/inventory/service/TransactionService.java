@@ -19,6 +19,7 @@ import com.pharma.inventory.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -48,7 +49,7 @@ public class TransactionService {
         validateNotes(req.getNotes());
         User user = findUserByUsername(username);
         Medicine medicine = findMedicineById(req.getMedicineId());
-        Inventory inventory = findInventory(user.getId(), medicine.getId());
+        Inventory inventory = findRegularInventory(user.getId(), medicine.getId());
 
         if (inventory.getQuantity() < req.getQuantity()) {
             throw new InsufficientInventoryException(inventory.getQuantity(), req.getQuantity());
@@ -79,6 +80,21 @@ public class TransactionService {
                 .stream().map(transactionMapper::toResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status) {
+        LocalDateTime start = from.atStartOfDay();
+        LocalDateTime end   = to.plusDays(1).atStartOfDay();
+
+        List<Transaction> txList;
+        if ("ALL".equalsIgnoreCase(status)) {
+            txList = transactionRepository.findBySubmittedAtBetween(start, end);
+        } else {
+            TransactionStatus txStatus = TransactionStatus.valueOf(status.toUpperCase());
+            txList = transactionRepository.findBySubmittedAtBetweenAndStatus(start, end, txStatus);
+        }
+        return txList.stream().map(transactionMapper::toResponse).toList();
+    }
+
     @Transactional
     public TransactionResponse approve(Long id, ApprovalRequest req, String adminUsername) {
         Transaction tx = transactionRepository.findById(id)
@@ -98,7 +114,7 @@ public class TransactionService {
             }
         } else {
             tx.setStatus(TransactionStatus.REJECTED);
-            Inventory inv = findInventory(tx.getSubmittedBy().getId(), tx.getMedicine().getId());
+            Inventory inv = findRegularInventory(tx.getSubmittedBy().getId(), tx.getMedicine().getId());
             inv.setQuantity(inv.getQuantity() + tx.getQuantity());
             inventoryRepository.save(inv);
         }
@@ -123,8 +139,10 @@ public class TransactionService {
         return medicineRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Medicine", id));
     }
-    private Inventory findInventory(Long userId, Long medicineId) {
-        return inventoryRepository.findByUserIdAndMedicineId(userId, medicineId)
+    private Inventory findRegularInventory(Long userId, Long medicineId) {
+        return inventoryRepository
+                .findByUserIdAndMedicineIdAndInventoryType(
+                        userId, medicineId, Inventory.InventoryType.REGULAR)
                 .orElseThrow(() -> new ResourceNotFoundException("Inventory",
                         "userId=" + userId + ",medicineId=" + medicineId));
     }
