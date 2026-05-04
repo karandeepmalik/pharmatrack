@@ -4,6 +4,7 @@ import com.pharma.inventory.dto.ReportResponse;
 import com.pharma.inventory.entity.Inventory;
 import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Transaction;
+import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -229,6 +230,24 @@ public class ReportService {
                 }
                 sb.append("  TOTAL: ").append(total).append("\n");
             }
+        }
+
+        // Admin inventory — quantities per spec for admin users
+        Map<String, Integer> adminBySpec = new HashMap<>();
+        for (Inventory inv : inventoryRecords) {
+            if (inv.getUser().getRole() == User.Role.ADMIN) {
+                String key = inv.getMedicine().getType().name() + "|" + inv.getMedicine().getSpecification();
+                adminBySpec.merge(key, inv.getQuantity(), Integer::sum);
+            }
+        }
+
+        sb.append("\n").append("=".repeat(40)).append("\n");
+        sb.append("ADMIN INVENTORY\n");
+        sb.append("-".repeat(15)).append("\n");
+        for (String[] spec : DAILY_SPEC_ORDER) {
+            String key = spec[0] + "|" + spec[1];
+            int qty = adminBySpec.getOrDefault(key, 0);
+            sb.append(spec[2]).append(": ").append(qty).append("\n");
         }
 
         sb.append("\n").append("=".repeat(40)).append("\n");

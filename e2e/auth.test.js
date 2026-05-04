@@ -679,10 +679,14 @@ async function run() {
     assert(r.data.content.includes('DAILY REPORT'), 'Expected daily report header');
     assert(r.data.content.includes('Shield FX'), 'Expected pharma name as section heading');
     assert(!r.data.content.includes('INVENTORY COUNTS'), 'Should not contain INVENTORY COUNTS heading');
+    assert(r.data.content.includes('ADMIN INVENTORY'), 'Expected admin inventory section');
     assert(r.data.content.includes("TODAY'S TRANSACTIONS"), "Expected transactions section");
     assert(r.data.content.includes('Vial 10 ml'), 'Expected 10ml vial in inventory section');
     assert(r.data.content.includes('Vial 5 ml'), 'Expected 5ml vial in inventory section');
     assert(!r.data.content.includes('mg/ml'), 'Should not show mg/ml concentration in daily report');
+    // Admin inventory must appear before transactions
+    assert(r.data.content.indexOf('ADMIN INVENTORY') < r.data.content.indexOf("TODAY'S TRANSACTIONS"),
+      'Expected ADMIN INVENTORY before TODAY\'S TRANSACTIONS');
     assert(r.data.content.includes('IST'), 'Expected IST in timestamp');
     // 10ml must appear before 5ml
     assert(r.data.content.indexOf('Vial 10 ml') < r.data.content.indexOf('Vial 5 ml'),

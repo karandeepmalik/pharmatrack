@@ -111,7 +111,7 @@ describe('ViewReports — daily report', () => {
   test('generates daily report', async () => {
     api.getReportDaily.mockResolvedValue(
       sampleReport('DAILY_REPORT',
-        'DAILY REPORT - 04 May 2026\nShield FX\n---------\n\nVial 10 ml\n  john.doe: 30\n  TOTAL: 30\n\nTODAY\'S TRANSACTIONS\n2 x 10 ml  Clinic B')
+        'DAILY REPORT - 04 May 2026\nShield FX\n---------\n\nVial 10 ml\n  john.doe: 30\n  TOTAL: 30\n\nADMIN INVENTORY\n---------------\nVial 10 ml: 5\nVial 5 ml: 0\n\nTODAY\'S TRANSACTIONS\n2 x 10 ml  Clinic B')
     );
     renderPage();
 
