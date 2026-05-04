@@ -46,9 +46,10 @@ public class TransactionController {
             @RequestParam("notes") String notes,
             @RequestParam("screenshot") MultipartFile screenshot,
             @RequestParam(value = "pricePerUnit", required = false) Integer pricePerUnit,
+            @RequestParam(value = "inventoryType", required = false) String inventoryType,
             @AuthenticationPrincipal UserDetails userDetails) throws IOException {
 
-        TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshot, pricePerUnit);
+        TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshot, pricePerUnit, inventoryType);
         return ResponseEntity.ok(transactionService.submit(req, userDetails.getUsername()));
     }
 
@@ -95,13 +96,14 @@ public class TransactionController {
 
     private TransactionRequest buildRequest(Long medicineId, Integer quantity,
                                              String notes, MultipartFile screenshot,
-                                             Integer pricePerUnit)
+                                             Integer pricePerUnit, String inventoryType)
             throws IOException {
         TransactionRequest req = new TransactionRequest();
         req.setMedicineId(medicineId);
         req.setQuantity(quantity);
         req.setNotes(notes);
         req.setPricePerUnit(pricePerUnit);
+        req.setInventoryType(inventoryType);
 
         if (screenshotProcessor.hasScreenshot(screenshot)) {
             req.setPaymentScreenshot(screenshotProcessor.encodeToBase64(screenshot));

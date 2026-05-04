@@ -11,6 +11,9 @@ export default function SubmitTransaction() {
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading]     = useState(true);
 
+  // ── Inventory type selector ──────────────────────────────────────────
+  const [selectedInventoryType, setSelectedInventoryType] = useState('REGULAR');
+
   // ── Cascading selects ────────────────────────────────────────────────
   const [selectedPharma, setSelectedPharma] = useState('');
   const [selectedType, setSelectedType]     = useState('');
@@ -39,14 +42,18 @@ export default function SubmitTransaction() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Derived option lists ──────────────────────────────────────────────
+  // ── Derived option lists (filtered by inventory type) ─────────────────
+  const filteredInventory = inventory.filter(
+    (i) => i.inventoryType === selectedInventoryType
+  );
+
   const pharmaOptions = [...new Map(
-    inventory.map((i) => [i.pharmaId, { id: i.pharmaId, name: i.pharmaName }])
+    filteredInventory.map((i) => [i.pharmaId, { id: i.pharmaId, name: i.pharmaName }])
   ).values()];
 
   const typeOptions = selectedPharma
     ? [...new Set(
-        inventory
+        filteredInventory
           .filter((i) => String(i.pharmaId) === selectedPharma)
           .map((i) => i.medicineType)
       )]
@@ -54,13 +61,13 @@ export default function SubmitTransaction() {
 
   const specOptions = selectedPharma && selectedType
     ? [...new Set(
-        inventory
+        filteredInventory
           .filter((i) => String(i.pharmaId) === selectedPharma && i.medicineType === selectedType)
           .map((i) => i.specification)
       )]
     : [];
 
-  const selectedItem = inventory.find(
+  const selectedItem = filteredInventory.find(
     (i) =>
       String(i.pharmaId) === selectedPharma &&
       i.medicineType === selectedType &&
@@ -81,6 +88,15 @@ export default function SubmitTransaction() {
     !screenshot.screenshotError;
 
   // ── Handlers ─────────────────────────────────────────────────────────
+  const handleInventoryTypeChange = (e) => {
+    setSelectedInventoryType(e.target.value);
+    setSelectedPharma('');
+    setSelectedType('');
+    setSelectedSpec('');
+    setQuantity('');
+    setPriceOverride('');
+  };
+
   const handlePharmaChange = (e) => {
     setSelectedPharma(e.target.value);
     setSelectedType('');
@@ -111,9 +127,11 @@ export default function SubmitTransaction() {
         notes: notes.trim(),
         screenshotFile: screenshot.screenshotFile,
         pricePerUnit: priceOverride !== '' ? parseInt(priceOverride, 10) : undefined,
+        inventoryType: selectedInventoryType,
       });
 
       setSuccessMessage('Inventory adjustment submitted successfully and is pending admin approval.');
+      setSelectedInventoryType('REGULAR');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
       setQuantity(''); setNotes(''); setPriceOverride('');
       screenshot.handleRemoveScreenshot();
@@ -147,6 +165,19 @@ export default function SubmitTransaction() {
       )}
 
       <form onSubmit={handleSubmit} noValidate>
+        {/* Inventory Type */}
+        <div className="form-group">
+          <label htmlFor="inventory-type-select">Inventory Type</label>
+          <select
+            id="inventory-type-select"
+            value={selectedInventoryType}
+            onChange={handleInventoryTypeChange}
+          >
+            <option value="REGULAR">Regular</option>
+            <option value="ADMIN_STOCK">Admin Stock</option>
+          </select>
+        </div>
+
         {/* Pharma */}
         <div className="form-group">
           <label htmlFor="pharma-select">Pharma Company</label>

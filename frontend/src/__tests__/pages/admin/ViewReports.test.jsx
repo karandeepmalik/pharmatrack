@@ -65,6 +65,44 @@ describe('ViewReports — inventory by user report', () => {
     );
     expect(api.getReportInventoryByUser).toHaveBeenCalledTimes(1);
   });
+
+  test('inventory-by-user report shows ADMIN INVENTORY section', async () => {
+    const content = [
+      'CURRENT INVENTORY LEVEL BY USER',
+      'Generated: 01 Jan 2025, 12:00 PM IST',
+      '========================================',
+      '',
+      'Shield FX',
+      '---------',
+      'Shield FX Vial 10 ml | 20 mg/ml',
+      '-----------------------------------',
+      '  john.doe: 50',
+      '  TOTAL: 50',
+      '',
+      '========================================',
+      'ADMIN INVENTORY',
+      '---------------',
+      'Shield FX Vial 10 ml | 20 mg/ml',
+      '-----------------------------------',
+      '  john.doe: 5',
+      '  TOTAL: 5',
+    ].join('\n');
+
+    api.getReportInventoryByUser.mockResolvedValue(
+      sampleReport('INVENTORY_BY_USER', content)
+    );
+    renderPage();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(/select report/i),
+      'inventory-by-user'
+    );
+    await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/admin inventory/i)).toBeInTheDocument()
+    );
+  });
 });
 
 describe('ViewReports — inventory valuation report', () => {

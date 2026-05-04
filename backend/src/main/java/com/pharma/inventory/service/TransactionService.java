@@ -49,7 +49,9 @@ public class TransactionService {
         validateNotes(req.getNotes());
         User user = findUserByUsername(username);
         Medicine medicine = findMedicineById(req.getMedicineId());
-        Inventory inventory = findRegularInventory(user.getId(), medicine.getId());
+
+        Inventory.InventoryType invType = resolveInventoryType(req.getInventoryType());
+        Inventory inventory = findInventoryByType(user.getId(), medicine.getId(), invType);
 
         if (inventory.getQuantity() < req.getQuantity()) {
             throw new InsufficientInventoryException(inventory.getQuantity(), req.getQuantity());
@@ -63,6 +65,7 @@ public class TransactionService {
                 .paymentScreenshot(req.getPaymentScreenshot())
                 .paymentScreenshotType(req.getPaymentScreenshotType())
                 .pricePerUnit(req.getPricePerUnit())
+                .inventoryType(invType)
                 .build());
         return transactionMapper.toResponse(saved);
     }
@@ -114,7 +117,10 @@ public class TransactionService {
             }
         } else {
             tx.setStatus(TransactionStatus.REJECTED);
-            Inventory inv = findRegularInventory(tx.getSubmittedBy().getId(), tx.getMedicine().getId());
+            Inventory.InventoryType rollbackType = tx.getInventoryType() != null
+                    ? tx.getInventoryType()
+                    : Inventory.InventoryType.REGULAR;
+            Inventory inv = findInventoryByType(tx.getSubmittedBy().getId(), tx.getMedicine().getId(), rollbackType);
             inv.setQuantity(inv.getQuantity() + tx.getQuantity());
             inventoryRepository.save(inv);
         }
@@ -140,10 +146,22 @@ public class TransactionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Medicine", id));
     }
     private Inventory findRegularInventory(Long userId, Long medicineId) {
+        return findInventoryByType(userId, medicineId, Inventory.InventoryType.REGULAR);
+    }
+
+    private Inventory findInventoryByType(Long userId, Long medicineId, Inventory.InventoryType type) {
         return inventoryRepository
-                .findByUserIdAndMedicineIdAndInventoryType(
-                        userId, medicineId, Inventory.InventoryType.REGULAR)
+                .findByUserIdAndMedicineIdAndInventoryType(userId, medicineId, type)
                 .orElseThrow(() -> new ResourceNotFoundException("Inventory",
-                        "userId=" + userId + ",medicineId=" + medicineId));
+                        "userId=" + userId + ",medicineId=" + medicineId + ",type=" + type));
+    }
+
+    private Inventory.InventoryType resolveInventoryType(String rawType) {
+        if (rawType == null || rawType.isBlank()) return Inventory.InventoryType.REGULAR;
+        try {
+            return Inventory.InventoryType.valueOf(rawType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return Inventory.InventoryType.REGULAR;
+        }
     }
 }

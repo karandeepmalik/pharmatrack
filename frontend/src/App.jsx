@@ -10,6 +10,7 @@ import AdminInventory from './pages/admin/AdminInventory';
 import ManageUsers from './pages/admin/ManageUsers';
 import ViewReports from './pages/admin/ViewReports';
 import ViewPastTransactions from './pages/admin/ViewPastTransactions';
+import ManageMedicines from './pages/admin/ManageMedicines';
 import UserDashboard from './pages/user/UserDashboard';
 import SubmitTransaction from './pages/user/SubmitTransaction';
 import MyTransactions from './pages/user/MyTransactions';
@@ -24,6 +25,7 @@ export default function App(){
         <Route path="/admin/users" element={<ProtectedRoute adminOnly><ManageUsers/></ProtectedRoute>}/>
         <Route path="/admin/reports" element={<ProtectedRoute adminOnly><ViewReports/></ProtectedRoute>}/>
         <Route path="/admin/past-transactions" element={<ProtectedRoute adminOnly><ViewPastTransactions/></ProtectedRoute>}/>
+        <Route path="/admin/medicines" element={<ProtectedRoute adminOnly><ManageMedicines/></ProtectedRoute>}/>
         <Route path="/user/dashboard" element={<ProtectedRoute><UserDashboard/></ProtectedRoute>}/>
         <Route path="/user/submit" element={<ProtectedRoute><SubmitTransaction/></ProtectedRoute>}/>
         <Route path="/user/transactions" element={<ProtectedRoute><MyTransactions/></ProtectedRoute>}/>

@@ -66,6 +66,14 @@ public class Transaction {
     @Column(name = "price_per_unit")
     private Integer pricePerUnit;
 
+    /**
+     * The inventory type this transaction was deducted from (REGULAR or ADMIN_STOCK).
+     * Null means REGULAR (backward compatible with existing records).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inventory_type", length = 20)
+    private Inventory.InventoryType inventoryType;
+
     @PrePersist
     protected void onCreate() {
         submittedAt = LocalDateTime.now();
