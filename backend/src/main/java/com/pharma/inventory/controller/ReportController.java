@@ -31,4 +31,9 @@ public class ReportController {
     public ResponseEntity<ReportResponse> todaySales() {
         return ResponseEntity.ok(reportService.todaySales());
     }
+
+    @GetMapping("/daily")
+    public ResponseEntity<ReportResponse> dailyReport() {
+        return ResponseEntity.ok(reportService.dailyReport());
+    }
 }

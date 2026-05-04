@@ -107,6 +107,30 @@ describe("ViewReports — today's sales report", () => {
   });
 });
 
+describe('ViewReports — daily report', () => {
+  test('generates daily report', async () => {
+    api.getReportDaily.mockResolvedValue(
+      sampleReport('DAILY_REPORT',
+        'DAILY REPORT - 04 May 2026\nINVENTORY COUNTS\nShield FX Vial 10 ml | 20 mg/ml\n  john.doe: 30\n  TOTAL: 30\nTODAY\'S TRANSACTIONS\n2 x 10 ml  Clinic B')
+    );
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'daily');
+    expect(screen.getByRole('button', { name: /generate report/i })).not.toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/inventory counts/i)).toBeInTheDocument()
+    );
+    expect(api.getReportDaily).toHaveBeenCalledTimes(1);
+  });
+
+  test('daily report option appears in dropdown', () => {
+    renderPage();
+    expect(screen.getByRole('option', { name: /daily report/i })).toBeInTheDocument();
+  });
+});
+
 // ── Error handling ───────────────────────────────────────────────────────
 
 describe('ViewReports — error handling', () => {

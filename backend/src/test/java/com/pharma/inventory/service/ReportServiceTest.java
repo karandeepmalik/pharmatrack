@@ -278,4 +278,129 @@ class ReportServiceTest {
             assertThat(r.getContent()).contains("Special dispatch for FIP treatment");
         }
     }
+
+    @Nested @DisplayName("dailyReport")
+    class DailyReport {
+
+        @Test
+        void reportTypeAndHeader() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getReportType()).isEqualTo("DAILY_REPORT");
+            assertThat(r.getContent()).contains("DAILY REPORT");
+        }
+
+        @Test
+        void timestampContainsIST() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("IST");
+            assertThat(r.getGeneratedAt()).endsWith("IST");
+        }
+
+        @Test
+        void vialAppearsBeforeTabletInFixedOrder() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(
+                            makeInv(1L, john, vial, 10, null),
+                            makeInv(2L, john, tablet, 5, null)));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            int pos10ml = r.getContent().indexOf("Vial 10 ml");
+            int pos25mg = r.getContent().indexOf("Tablet 25 mg");
+            assertThat(pos10ml).isLessThan(pos25mg);
+        }
+
+        @Test
+        void tenMlVialAppearsBeforeFiveMlVial() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            int pos10ml = r.getContent().indexOf("Vial 10 ml");
+            int pos5ml  = r.getContent().indexOf("Vial 5 ml");
+            assertThat(pos10ml).isLessThan(pos5ml);
+        }
+
+        @Test
+        void showsUserQuantityUnderSpec() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 30, null)));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("john.doe: 30");
+            assertThat(r.getContent()).contains("TOTAL: 30");
+        }
+
+        @Test
+        void showsNoneWhenSpecHasNoInventory() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("(none)");
+            assertThat(r.getContent()).contains("TOTAL: 0");
+        }
+
+        @Test
+        void tabletTransactionShowsMgSuffix() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            Transaction tx = makeTx(1L, john, tablet, 2,
+                    Transaction.TransactionStatus.APPROVED, "sent to Vandana");
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of(tx));
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("2 x 25 mg  sent to Vandana");
+        }
+
+        @Test
+        void vialTransactionShowsMlSuffix() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            Transaction tx = makeTx(1L, john, vial, 3,
+                    Transaction.TransactionStatus.APPROVED, "Clinic B");
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of(tx));
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("3 x 10 ml  Clinic B");
+        }
+
+        @Test
+        void noTransactionsShowsMessage() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser()).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("no transactions today");
+        }
+
+        @Test
+        void multipleUsersForSameSpecShowSeparateLines() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(
+                            makeInv(1L, john, vial, 30, null),
+                            makeInv(2L, jane, vial, 20, null)));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("john.doe: 30");
+            assertThat(r.getContent()).contains("jane.smith: 20");
+            assertThat(r.getContent()).contains("TOTAL: 50");
+        }
+    }
 }
