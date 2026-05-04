@@ -176,9 +176,15 @@ export default function SubmitTransaction() {
           <select id="spec-select" value={selectedSpec}
             disabled={!selectedType}
             onChange={(e) => {
-              setSelectedSpec(e.target.value);
+              const newSpec = e.target.value;
+              setSelectedSpec(newSpec);
               setQuantity('');
-              setPriceOverride('');
+              const newItem = inventory.find(
+                (i) => String(i.pharmaId) === selectedPharma &&
+                       i.medicineType === selectedType &&
+                       String(i.specification) === newSpec
+              );
+              setPriceOverride(newItem ? String(newItem.price) : '');
             }}>
             <option value="">-- Select Specification --</option>
             {specOptions.map((s) => {
@@ -206,7 +212,7 @@ export default function SubmitTransaction() {
               id="price-input"
               type="number"
               min="0"
-              value={priceOverride !== '' ? priceOverride : selectedItem.price}
+              value={priceOverride}
               onChange={(e) => setPriceOverride(e.target.value)}
             />
           </div>
@@ -244,7 +250,7 @@ export default function SubmitTransaction() {
           quantity={quantity}
           notes={notes}
           screenshotFile={screenshot.screenshotFile}
-          pricePerUnit={priceOverride !== '' ? parseInt(priceOverride, 10) : selectedItem?.price}
+          pricePerUnit={priceOverride !== '' ? parseInt(priceOverride, 10) : undefined}
         />
 
         <button type="submit" disabled={!isFormValid || submitting} className="btn btn-primary">
