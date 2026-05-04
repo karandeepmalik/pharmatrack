@@ -36,6 +36,8 @@ public class TransactionResponse {
     /** MIME type for the screenshot data URI, e.g. "image/png". */
     private String paymentScreenshotType;
 
+    private Integer price;
+
     // ── Getters & Setters ─────────────────────────────────────────────
 
     public Long getId() { return id; }
@@ -104,4 +106,7 @@ public class TransactionResponse {
     public void setPaymentScreenshotType(String paymentScreenshotType) {
         this.paymentScreenshotType = paymentScreenshotType;
     }
+
+    public Integer getPrice() { return price; }
+    public void setPrice(Integer price) { this.price = price; }
 }

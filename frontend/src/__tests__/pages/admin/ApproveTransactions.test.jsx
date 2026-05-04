@@ -19,6 +19,7 @@ const makeTx = (overrides = {}) => ({
   specification: 10,
   pharmaName: 'FIP Shield',
   quantity: 5,
+  price: 4000,
   submittedAt: '2026-04-01T10:00:00',
   notes: 'Dispatched to Clinic B for FIP treatment',
   paymentScreenshot: null,
@@ -375,6 +376,62 @@ describe('ApproveTransactions — approve and reject actions', () => {
     await userEvent.click(screen.getByRole('button', { name: /✓ approve/i }));
 
     await waitFor(() => expect(api.getAllTransactions).toHaveBeenCalledTimes(2));
+  });
+});
+
+// ── Price override on approval ────────────────────────────────────────────
+
+describe('ApproveTransactions — price override', () => {
+  test('shows price input for PENDING transactions', async () => {
+    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/price \(rs\)/i)).toBeInTheDocument()
+    );
+    expect(screen.getByLabelText(/price \(rs\)/i)).toHaveValue(4000);
+  });
+
+  test('does not show price input for non-PENDING transactions', async () => {
+    api.getAllTransactions.mockResolvedValue({
+      data: [makeTx({ id: 2, status: 'APPROVED', approvedByUsername: 'admin', approvedAt: '2026-04-01T11:00:00' })],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /^all$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^all$/i }));
+
+    await waitFor(() => screen.getByText(/fip shield vial/i));
+    expect(screen.queryByLabelText(/price \(rs\)/i)).not.toBeInTheDocument();
+  });
+
+  test('approve with changed price passes newPrice in payload', async () => {
+    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'APPROVED' } });
+
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/price \(rs\)/i));
+
+    await userEvent.clear(screen.getByLabelText(/price \(rs\)/i));
+    await userEvent.type(screen.getByLabelText(/price \(rs\)/i), '5000');
+    await userEvent.click(screen.getByRole('button', { name: /✓ approve/i }));
+
+    await waitFor(() =>
+      expect(api.approveTransaction).toHaveBeenCalledWith(1, { approved: true, newPrice: 5000 })
+    );
+  });
+
+  test('approve without price change does not pass newPrice', async () => {
+    api.getAllTransactions.mockResolvedValue({ data: [makeTx({ price: undefined })] });
+    api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'APPROVED' } });
+
+    renderPage();
+    await waitFor(() => screen.getByRole('button', { name: /✓ approve/i }));
+    await userEvent.click(screen.getByRole('button', { name: /✓ approve/i }));
+
+    await waitFor(() =>
+      expect(api.approveTransaction).toHaveBeenCalledWith(1, { approved: true })
+    );
   });
 });
 
