@@ -291,6 +291,8 @@ class ReportServiceTest {
 
             assertThat(r.getReportType()).isEqualTo("DAILY_REPORT");
             assertThat(r.getContent()).contains("DAILY REPORT");
+            assertThat(r.getContent()).contains("Shield FX");
+            assertThat(r.getContent()).doesNotContain("INVENTORY COUNTS");
         }
 
         @Test
@@ -302,6 +304,19 @@ class ReportServiceTest {
 
             assertThat(r.getContent()).contains("IST");
             assertThat(r.getGeneratedAt()).endsWith("IST");
+        }
+
+        @Test
+        void pharmaNameIsUsedAsHeadingFromInventoryData() {
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser())
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport();
+
+            assertThat(r.getContent()).contains("Shield FX");
+            assertThat(r.getContent()).doesNotContain("mg/ml");
+            assertThat(r.getContent()).doesNotContain("Shield FX Vial");
         }
 
         @Test
