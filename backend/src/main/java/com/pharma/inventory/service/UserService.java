@@ -2,6 +2,7 @@ package com.pharma.inventory.service;
 import com.pharma.inventory.dto.*;
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.exception.ResourceNotFoundException;
+import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import com.pharma.inventory.repository.UserRepository;
@@ -15,6 +16,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final InventoryRepository inventoryRepository;
     private final TransactionRepository transactionRepository;
+    private final InventoryAdjustmentRepository adjustmentRepository;
     private final PasswordEncoder passwordEncoder;
     @Transactional
     public User register(RegisterRequest req){
@@ -46,6 +48,8 @@ public class UserService {
         User u=userRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("User",id));
         transactionRepository.nullifyApprovedBy(id);
         transactionRepository.deleteBySubmittedById(id);
+        adjustmentRepository.nullifyAdjustedBy(id);
+        adjustmentRepository.deleteByUserId(id);
         inventoryRepository.deleteByUserId(id);
         userRepository.delete(u);
     }

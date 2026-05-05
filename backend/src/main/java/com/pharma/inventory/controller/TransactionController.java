@@ -50,7 +50,8 @@ public class TransactionController {
             @AuthenticationPrincipal UserDetails userDetails) throws IOException {
 
         TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshots, pricePerUnit, inventoryType);
-        return ResponseEntity.ok(transactionService.submit(req, userDetails.getUsername()));
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(transactionService.submit(req, userDetails.getUsername()));
     }
 
     @GetMapping

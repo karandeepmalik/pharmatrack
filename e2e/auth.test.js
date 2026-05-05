@@ -1,8 +1,9 @@
 // Copyright (c) 2024 Karandeep Malik. All rights reserved.
 // PharmaTrack E2E Tests — run against production Cloud Run services
+// Override with env vars for local: FRONTEND_URL=http://localhost BACKEND_URL=http://localhost:8080
 
-const FRONTEND = 'https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app';
-const BACKEND  = 'https://pharmatrack-backend-xhlza2c2ua-el.a.run.app';
+const FRONTEND = process.env.FRONTEND_URL || 'https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app';
+const BACKEND  = process.env.BACKEND_URL  || 'https://pharmatrack-backend-xhlza2c2ua-el.a.run.app';
 const API      = `${BACKEND}/api`;
 
 let passed = 0, failed = 0;
@@ -609,62 +610,16 @@ async function run() {
     adminUserId = adminUser.id;
   });
 
-  let adminInvMedicineId;
-  let adminQtyBefore = 0;
-  await test('Record admin current inventory level before test', async () => {
-    assert(adminUserId, 'No adminUserId — previous test must have passed');
-    const r = await apiGet(`${API}/inventory`, adminToken);
-    assert(r.status === 200, `Expected 200, got ${r.status}`);
-    // Use the same medicine as the john.doe adjust tests
-    const med = r.data.find(i => i.userId === adminUserId);
-    // If admin already has inventory use that medicine, otherwise fall back to adjustMedicineId
-    adminInvMedicineId = med ? med.medicineId : adjustMedicineId;
-    const existing = r.data.find(i => i.userId === adminUserId && i.medicineId === adminInvMedicineId);
-    adminQtyBefore = existing ? existing.quantity : 0;
-  });
-
-  await test('Admin can add inventory to own account', async () => {
+  await test('Admin cannot add inventory to own account (admin has no personal inventory)', async () => {
     assert(adminUserId, 'No adminUserId');
     const r = await apiPost(`${API}/inventory/adjust`, {
       userId: adminUserId,
-      medicineId: adminInvMedicineId,
+      medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
       quantity: 3,
-      note: 'E2E test — admin adding inventory to own account',
+      note: 'E2E test — admin adding inventory to own account should be blocked',
     }, adminToken);
-    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
-  });
-
-  await test('Admin inventory quantity increased after ADD', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
-    const inv = r.data.find(i => i.userId === adminUserId && i.medicineId === adminInvMedicineId);
-    const newQty = inv ? inv.quantity : 0;
-    assert(newQty === adminQtyBefore + 3,
-      `Expected ${adminQtyBefore + 3}, got ${newQty}`);
-  });
-
-  // ── TEARDOWN: Restore admin inventory ───────────────────────────────
-  await test('[TEARDOWN] Restore admin inventory to pre-test level', async () => {
-    const currentR = await apiGet(`${API}/inventory`, adminToken);
-    const current = currentR.data.find(i => i.userId === adminUserId && i.medicineId === adminInvMedicineId);
-    const currentQty = current ? current.quantity : 0;
-    if (currentQty === adminQtyBefore) return;
-    const diff = currentQty - adminQtyBefore;
-    const r = await apiPost(`${API}/inventory/adjust`, {
-      userId: adminUserId,
-      medicineId: adminInvMedicineId,
-      adjustmentType: diff > 0 ? 'REDUCE' : 'ADD',
-      quantity: Math.abs(diff),
-      note: 'E2E test teardown — restoring admin inventory level',
-    }, adminToken);
-    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
-  });
-
-  await test('[VERIFY TEARDOWN] Admin inventory restored to original', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
-    const inv = r.data.find(i => i.userId === adminUserId && i.medicineId === adminInvMedicineId);
-    const restored = inv ? inv.quantity : 0;
-    assert(restored === adminQtyBefore, `Expected ${adminQtyBefore}, got ${restored}`);
+    assert(r.status === 400, `Expected 400 (admin cannot hold inventory), got ${r.status}: ${JSON.stringify(r.data)}`);
   });
 
   // ── Admin: Reports ────────────────────────────────────────────────────
@@ -731,6 +686,19 @@ async function run() {
 
   // ── Multi-Screenshot Transactions ────────────────────────────────────
   console.log('\n-- Multi-Screenshot Transactions');
+
+  // Ensure john.doe has at least 5 units of REGULAR_MEDICINE_STOCK to submit transactions against
+  await test('[SETUP] Allocate inventory to john.doe for transaction tests', async () => {
+    assert(johnId && adjustMedicineId, 'johnId and adjustMedicineId must be resolved');
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 5,
+      note: 'E2E setup — allocating stock for screenshot transaction tests',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
 
   // Find a medicine the user (john.doe) has access to
   let txMedicineId;

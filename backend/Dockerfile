@@ -1,5 +1,5 @@
 # ── Stage 1: Build ───────────────────────────────────────────────────
-FROM maven:3.9.5-eclipse-temurin-17-alpine AS build
+FROM --platform=linux/amd64 maven:3.9.5-eclipse-temurin-17-alpine AS build
 WORKDIR /build
 
 # Cache dependencies separately from source
@@ -10,7 +10,7 @@ COPY src ./src
 RUN mvn package -DskipTests -q
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────
-FROM eclipse-temurin:17-jre-alpine AS runtime
+FROM --platform=linux/amd64 eclipse-temurin:17-jre-alpine AS runtime
 
 # Security: run as non-root
 RUN addgroup -S pharma && adduser -S pharma -G pharma

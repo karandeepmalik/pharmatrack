@@ -8,6 +8,12 @@ import java.util.List;
 
 public interface InventoryAdjustmentRepository extends JpaRepository<InventoryAdjustment, Long> {
 
+    void deleteByUserId(Long userId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE InventoryAdjustment a SET a.adjustedBy = null WHERE a.adjustedBy.id = :userId")
+    void nullifyAdjustedBy(@Param("userId") Long userId);
+
     @Query("SELECT a FROM InventoryAdjustment a " +
            "JOIN FETCH a.user u JOIN FETCH a.medicine m JOIN FETCH m.pharmaCompany " +
            "WHERE a.adjustedAt >= :start AND a.adjustedAt < :end " +
