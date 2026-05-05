@@ -19,6 +19,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import org.springframework.mock.web.MockMultipartFile;
 
+import java.util.List;
+
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
@@ -86,12 +88,11 @@ class GlobalExceptionHandlerTest {
         @Test @WithMockUser(roles = "USER")
         @DisplayName("InvalidScreenshotException → 400")
         void invalidScreenshot_returns400() throws Exception {
-            when(screenshotProcessor.hasScreenshot(any())).thenReturn(true);
-            when(screenshotProcessor.encodeToBase64(any()))
+            when(screenshotProcessor.encodeAll(any()))
                     .thenThrow(new InvalidScreenshotException("Must be an image file"));
 
             mockMvc.perform(multipart("/api/transactions")
-                    .file("screenshot", "pdf".getBytes())
+                    .file(new MockMultipartFile("screenshots", "bad.pdf", "application/pdf", "pdf".getBytes()))
                     .param("medicineId", "1").param("quantity", "5")
                     .param("notes", "Valid clinic dispatch note").with(csrf()))
                     .andExpect(status().isBadRequest())
@@ -110,14 +111,14 @@ class GlobalExceptionHandlerTest {
         @Test @WithMockUser(roles = "USER")
         @DisplayName("IllegalArgumentException → 400 with message")
         void illegalArgument_returns400() throws Exception {
-            MockMultipartFile screenshot = new MockMultipartFile(
-                    "screenshot", "pay.png", "image/png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
-            when(screenshotProcessor.hasScreenshot(any())).thenReturn(false);
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.<String[]>of(new String[]{"anY=", "image/png"}));
             when(transactionService.submit(any(), anyString()))
                     .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
 
             mockMvc.perform(multipart("/api/transactions")
-                    .file(screenshot)
+                    .file(new MockMultipartFile("screenshots", "pay.png", "image/png",
+                            new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47}))
                     .param("medicineId", "1").param("quantity", "5")
                     .param("notes", "Hi").with(csrf()))
                     .andExpect(status().isBadRequest())
