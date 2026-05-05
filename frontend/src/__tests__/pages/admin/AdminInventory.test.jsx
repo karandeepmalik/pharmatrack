@@ -55,7 +55,7 @@ describe('AdminInventory — render', () => {
     api.getAdminInventory.mockResolvedValue({ data: [] });
     renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/no inventory records found/i)).toBeInTheDocument()
+      expect(screen.getByText(/no medicine stock records found/i)).toBeInTheDocument()
     );
   });
 
@@ -63,7 +63,7 @@ describe('AdminInventory — render', () => {
     api.getAdminInventory.mockRejectedValue(new Error('Network error'));
     renderPage();
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/failed to load inventory/i)
+      expect(screen.getByRole('alert')).toHaveTextContent(/failed to load stock/i)
     );
   });
 });
@@ -89,7 +89,7 @@ describe('AdminInventory — zero quantity filtering', () => {
     });
     renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/no inventory records found/i)).toBeInTheDocument()
+      expect(screen.getByText(/no medicine stock records found/i)).toBeInTheDocument()
     );
   });
 

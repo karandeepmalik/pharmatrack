@@ -18,7 +18,7 @@ export default function AdminInventory() {
     useEffect(() => {
         api.getAdminInventory()
             .then(r => setInventory(r.data))
-            .catch(() => setError('Failed to load inventory'))
+            .catch(() => setError('Failed to load stock'))
             .finally(() => setLoading(false));
     }, []);
 
@@ -80,7 +80,7 @@ export default function AdminInventory() {
                 </div>
             </div>
 
-            <div className="filter-tabs" role="group" aria-label="Sort inventory by">
+            <div className="filter-tabs" role="group" aria-label="Sort stock by">
                 <button
                     type="button"
                     className={`filter-tab ${sortBy === 'spec' ? 'active' : ''}`}
@@ -96,7 +96,7 @@ export default function AdminInventory() {
             </div>
 
             {items.length === 0 ? (
-                <p className="empty-message">No inventory records found.</p>
+                <p className="empty-message">No medicine stock records found.</p>
             ) : (
                 <div className="table-wrapper">
                     <table className="data-table">

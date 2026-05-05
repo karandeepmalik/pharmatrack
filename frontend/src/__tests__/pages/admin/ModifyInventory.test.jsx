@@ -110,25 +110,25 @@ describe('ModifyInventory — user dropdown', () => {
 // ── Inventory type selector ───────────────────────────────────────────────
 
 describe('ModifyInventory — inventory type selector', () => {
-  test('shows inventory type selector with Regular and Admin Stock options', async () => {
+  test('shows stock type selector with Regular and Admin Medicine Stock options', async () => {
     api.getUsers.mockResolvedValue({ data: [makeUser()] });
     renderPage();
 
     await waitFor(() =>
-      expect(screen.getByLabelText(/inventory type/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/stock type/i)).toBeInTheDocument()
     );
-    expect(screen.getByRole('option', { name: /regular inventory/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /admin stock/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /regular medicine stock/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /admin medicine stock/i })).toBeInTheDocument();
   });
 
-  test('defaults to Regular Inventory', async () => {
+  test('defaults to Regular Medicine Stock', async () => {
     api.getUsers.mockResolvedValue({ data: [makeUser()] });
     renderPage();
 
     await waitFor(() =>
-      expect(screen.getByLabelText(/inventory type/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/stock type/i)).toBeInTheDocument()
     );
-    expect(screen.getByLabelText(/inventory type/i)).toHaveValue('REGULAR');
+    expect(screen.getByLabelText(/stock type/i)).toHaveValue('REGULAR_MEDICINE_STOCK');
   });
 });
 
@@ -138,7 +138,7 @@ describe('ModifyInventory — page structure', () => {
   test('renders the page heading', async () => {
     api.getUsers.mockResolvedValue({ data: [] });
     renderPage();
-    expect(screen.getByRole('heading', { name: /modify inventory/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /modify medicine stock/i })).toBeInTheDocument();
   });
 
   test('renders a Back link to /admin/dashboard', async () => {

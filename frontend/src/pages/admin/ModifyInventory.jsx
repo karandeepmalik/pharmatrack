@@ -11,7 +11,7 @@ export default function ModifyInventory() {
     const [inventory, setInventory] = useState([]);
     const [form, setForm]           = useState({
         userId: '', medicineId: '', adjustmentType: 'ADD',
-        quantity: '', note: '', inventoryType: 'REGULAR', internalMovement: false,
+        quantity: '', note: '', inventoryType: 'REGULAR_MEDICINE_STOCK', internalMovement: false,
     });
     const [msg, setMsg]             = useState('');
     const [err, setErr]             = useState('');
@@ -59,7 +59,7 @@ export default function ModifyInventory() {
                 inventoryType:   form.inventoryType,
                 internalMovement: form.internalMovement,
             });
-            setMsg(`Inventory ${form.adjustmentType === 'ADD' ? 'added' : 'reduced'} successfully.`);
+            setMsg(`Medicine stock ${form.adjustmentType === 'ADD' ? 'added' : 'reduced'} successfully.`);
             setForm(f => ({ ...f, quantity: '', note: '' }));
             reload();
         } catch (ex) {
@@ -67,7 +67,7 @@ export default function ModifyInventory() {
             if (status === 409) {
                 setErr(`Insufficient stock. Current quantity: ${currentQty ?? 0}.`);
             } else {
-                setErr(ex.response?.data?.message || 'Failed to modify inventory.');
+                setErr(ex.response?.data?.message || 'Failed to modify medicine stock.');
             }
         } finally {
             setSubmitting(false);
@@ -77,8 +77,8 @@ export default function ModifyInventory() {
     const selectedMedicine = medicines.find(m => String(m.id) === form.medicineId);
 
     // Group inventory by type for display
-    const regularInventory   = inventory.filter(i => i.quantity > 0 && i.inventoryType === 'REGULAR');
-    const adminStockInventory = inventory.filter(i => i.quantity > 0 && i.inventoryType === 'ADMIN_STOCK');
+    const regularStock       = inventory.filter(i => i.quantity > 0 && i.inventoryType === 'REGULAR_MEDICINE_STOCK');
+    const adminMedicineStock = inventory.filter(i => i.quantity > 0 && i.inventoryType === 'ADMIN_MEDICINE_STOCK');
 
     const InventoryTable = ({ items, caption }) => (
         items.length > 0 ? (
@@ -119,10 +119,10 @@ export default function ModifyInventory() {
     return (
         <div className="page">
             <div className="page-header">
-                <h1>Modify Inventory</h1>
+                <h1>Modify Medicine Stock</h1>
                 <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
             </div>
-            <p className="page-subtitle">Add or reduce inventory for a user. A note explaining the reason is required.</p>
+            <p className="page-subtitle">Add or reduce medicine stock for a user. A note explaining the reason is required.</p>
 
             {msg && <div role="alert" className="alert alert-success">{msg}</div>}
             {err && <div role="alert" className="alert alert-error">{err}</div>}
@@ -155,17 +155,17 @@ export default function ModifyInventory() {
                     </div>
 
                     <div className="form-group">
-                        <label htmlFor="inventory-type-select">Inventory Type</label>
+                        <label htmlFor="inventory-type-select">Stock Type</label>
                         <select id="inventory-type-select" value={form.inventoryType}
                             onChange={set('inventoryType')} required>
-                            <option value="REGULAR">Regular Inventory</option>
-                            <option value="ADMIN_STOCK">Admin Stock</option>
+                            <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
+                            <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
                         </select>
                     </div>
 
                     {form.userId && form.medicineId && (
                         <div className="availability-badge">
-                            Current {form.inventoryType === 'ADMIN_STOCK' ? 'admin stock' : 'quantity'} for user:{' '}
+                            Current {form.inventoryType === 'ADMIN_MEDICINE_STOCK' ? 'admin medicine stock' : 'quantity'} for user:{' '}
                             <strong>{currentQty}</strong> units
                             {selectedMedicine && (
                                 <span style={{ marginLeft: '1rem' }}>
@@ -178,8 +178,8 @@ export default function ModifyInventory() {
                     <div className="form-group">
                         <label htmlFor="type-select">Adjustment Type</label>
                         <select id="type-select" value={form.adjustmentType} onChange={set('adjustmentType')} required>
-                            <option value="ADD">Add Inventory</option>
-                            <option value="REDUCE">Reduce Inventory</option>
+                            <option value="ADD">Add Medicine Stock</option>
+                            <option value="REDUCE">Reduce Medicine Stock</option>
                         </select>
                     </div>
 
@@ -223,13 +223,13 @@ export default function ModifyInventory() {
 
                     <button type="submit" className="btn btn-primary"
                         disabled={!isValid || submitting}>
-                        {submitting ? 'Saving…' : `${form.adjustmentType === 'ADD' ? 'Add' : 'Reduce'} Inventory`}
+                        {submitting ? 'Saving…' : `${form.adjustmentType === 'ADD' ? 'Add' : 'Reduce'} Medicine Stock`}
                     </button>
                 </form>
             </div>
 
-            <InventoryTable items={regularInventory} caption="Current Regular Inventory" />
-            <InventoryTable items={adminStockInventory} caption="Current Admin Stock" />
+            <InventoryTable items={regularStock} caption="Current Regular Medicine Stock" />
+            <InventoryTable items={adminMedicineStock} caption="Current Admin Medicine Stock" />
         </div>
     );
 }

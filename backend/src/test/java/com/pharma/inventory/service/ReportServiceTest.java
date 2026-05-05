@@ -65,13 +65,13 @@ class ReportServiceTest {
         inv.setId(id); inv.setUser(u); inv.setMedicine(m);
         inv.setQuantity(qty); inv.setLastNote(note);
         inv.setLastUpdated(LocalDateTime.now());
-        inv.setInventoryType(Inventory.InventoryType.REGULAR);
+        inv.setInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         return inv;
     }
 
     private Inventory makeAdminStockInv(Long id, User u, Medicine m, int qty, String note) {
         Inventory inv = makeInv(id, u, m, qty, note);
-        inv.setInventoryType(Inventory.InventoryType.ADMIN_STOCK);
+        inv.setInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
         return inv;
     }
 
@@ -87,13 +87,13 @@ class ReportServiceTest {
     class InventoryByUser {
 
         private void stubAdminStockEmpty() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
         }
 
         @Test
         void reportContainsMedicineNameAndUserQuantity() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 50, "Restocked Ward 3")));
             stubAdminStockEmpty();
 
@@ -107,7 +107,7 @@ class ReportServiceTest {
 
         @Test
         void reportUsesUsernameNotFullName() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
             stubAdminStockEmpty();
 
@@ -119,7 +119,7 @@ class ReportServiceTest {
 
         @Test
         void reportDoesNotShowNotes() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, "Restocked Ward 3")));
             stubAdminStockEmpty();
 
@@ -132,7 +132,7 @@ class ReportServiceTest {
 
         @Test
         void tabletSectionHeaderHasNoSpecSuffix() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, tablet, 20, null)));
             stubAdminStockEmpty();
 
@@ -144,7 +144,7 @@ class ReportServiceTest {
 
         @Test
         void vialSectionHeaderShowsConcentration() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
             stubAdminStockEmpty();
 
@@ -157,7 +157,7 @@ class ReportServiceTest {
 
         @Test
         void reportShowsTotalAcrossUsers() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 30, null),
                             makeInv(2L, jane, vial, 20, null)));
@@ -170,18 +170,18 @@ class ReportServiceTest {
 
         @Test
         void emptyInventoryProducesEmptyReport() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of());
             stubAdminStockEmpty();
 
             ReportResponse r = reportService.inventoryByUser();
 
-            assertThat(r.getContent()).contains("CURRENT INVENTORY LEVEL BY USER");
+            assertThat(r.getContent()).contains("CURRENT MEDICINE STOCK PER USER");
         }
 
         @Test
         void vialAppearsBeforeTabletInFixedOrder() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 10, null),
                             makeInv(2L, john, tablet, 5, null)));
@@ -196,7 +196,7 @@ class ReportServiceTest {
 
         @Test
         void specsWithNoDataAreSkipped() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
             stubAdminStockEmpty();
 
@@ -209,29 +209,29 @@ class ReportServiceTest {
 
         @Test
         void reportContainsPharmaNameHeading() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
             stubAdminStockEmpty();
 
             ReportResponse r = reportService.inventoryByUser();
 
             assertThat(r.getContent()).contains("Shield FX");
-            assertThat(r.getContent()).contains("ADMIN INVENTORY");
+            assertThat(r.getContent()).contains("ADMIN MEDICINE STOCK");
         }
 
         @Test
         void reportContainsAdminInventorySectionAfterRegular() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of(makeAdminStockInv(2L, john, vial, 5, null)));
 
             ReportResponse r = reportService.inventoryByUser();
 
             String content = r.getContent();
-            assertThat(content).contains("ADMIN INVENTORY");
+            assertThat(content).contains("ADMIN MEDICINE STOCK");
             int posRegular = content.indexOf("Shield FX\n");
-            int posAdmin   = content.indexOf("ADMIN INVENTORY");
+            int posAdmin   = content.indexOf("ADMIN MEDICINE STOCK");
             assertThat(posRegular).isLessThan(posAdmin);
             // Admin section should have the admin stock quantity
             String adminBlock = content.substring(posAdmin);
@@ -240,15 +240,15 @@ class ReportServiceTest {
 
         @Test
         void adminInventorySectionSkipsEmptySpecs() {
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of());
-            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of(makeAdminStockInv(1L, john, vial, 7, null)));
 
             ReportResponse r = reportService.inventoryByUser();
 
             String content = r.getContent();
-            int posAdmin = content.indexOf("ADMIN INVENTORY");
+            int posAdmin = content.indexOf("ADMIN MEDICINE STOCK");
             String adminBlock = content.substring(posAdmin);
             // Only the vial spec should appear — no (none) for empty specs
             assertThat(adminBlock).doesNotContain("(none)");
@@ -262,7 +262,7 @@ class ReportServiceTest {
 
         @Test
         void reportCalculatesValuationCorrectly() {
-            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 10, null),
                             makeInv(2L, jane, vial, 5, null)));
@@ -278,7 +278,7 @@ class ReportServiceTest {
 
         @Test
         void reportShowsGrandTotal() {
-            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 5, null),
                             makeInv(2L, jane, tablet, 2, null)));
@@ -291,7 +291,7 @@ class ReportServiceTest {
 
         @Test
         void tabletHeaderHasNoSpecSuffix() {
-            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, tablet, 5, null)));
 
             ReportResponse r = reportService.inventoryValuation();
@@ -301,7 +301,7 @@ class ReportServiceTest {
 
         @Test
         void pharmaNameHeadingAppearsInReport() {
-            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
 
             ReportResponse r = reportService.inventoryValuation();
@@ -311,7 +311,7 @@ class ReportServiceTest {
 
         @Test
         void shortSpecNameUsedNotFullMedicineName() {
-            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
 
             ReportResponse r = reportService.inventoryValuation();
@@ -322,7 +322,7 @@ class ReportServiceTest {
 
         @Test
         void emptyInventoryShowsZeroTotal() {
-            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation();
@@ -334,7 +334,7 @@ class ReportServiceTest {
         void adminStockExcludedFromValuation() {
             // findAllNonZeroForValuation only returns REGULAR type (enforced by JPQL).
             // Verify the service totals only what the repository returns.
-            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
 
             ReportResponse r = reportService.inventoryValuation();
@@ -428,9 +428,9 @@ class ReportServiceTest {
     class DailyReport {
 
         private void stubEmpty() {
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of());
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
         }
@@ -459,9 +459,9 @@ class ReportServiceTest {
 
         @Test
         void pharmaNameIsUsedAsHeadingFromInventoryData() {
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
@@ -474,11 +474,11 @@ class ReportServiceTest {
 
         @Test
         void vialAppearsBeforeTabletInFixedOrder() {
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 10, null),
                             makeInv(2L, john, tablet, 5, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
@@ -502,9 +502,9 @@ class ReportServiceTest {
 
         @Test
         void showsUserQuantityUnderSpec() {
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 30, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
@@ -559,11 +559,11 @@ class ReportServiceTest {
 
         @Test
         void multipleUsersForSameSpecShowSeparateLines() {
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 30, null),
                             makeInv(2L, jane, vial, 20, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
@@ -580,8 +580,8 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.dailyReport(null);
 
-            assertThat(r.getContent()).contains("ADMIN INVENTORY");
-            int posAdmin = r.getContent().indexOf("ADMIN INVENTORY");
+            assertThat(r.getContent()).contains("ADMIN MEDICINE STOCK");
+            int posAdmin = r.getContent().indexOf("ADMIN MEDICINE STOCK");
             int posTx    = r.getContent().indexOf("DAILY TRANSACTION SUMMARY");
             assertThat(posAdmin).isLessThan(posTx);
         }
@@ -589,16 +589,16 @@ class ReportServiceTest {
         @Test
         void adminInventoryShowsCorrectQuantity() {
             // ADMIN_STOCK inventory belongs to non-admin users in the new model
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of());
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of(makeAdminStockInv(1L, john, vial, 15, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
 
             String content = r.getContent();
-            int adminSection = content.indexOf("ADMIN INVENTORY");
+            int adminSection = content.indexOf("ADMIN MEDICINE STOCK");
             int txSection    = content.indexOf("DAILY TRANSACTION SUMMARY");
             String adminBlock = content.substring(adminSection, txSection);
             assertThat(adminBlock).contains("john.doe: 15");
@@ -608,16 +608,16 @@ class ReportServiceTest {
         @Test
         void adminInventorySkipsSpecsWithNoAdminStock() {
             // Feature 2: admin inventory section skips specs with no data (no (none)/TOTAL: 0)
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
 
             String content = r.getContent();
-            int adminSection = content.indexOf("ADMIN INVENTORY");
+            int adminSection = content.indexOf("ADMIN MEDICINE STOCK");
             int txSection    = content.indexOf("DAILY TRANSACTION SUMMARY");
             String adminBlock = content.substring(adminSection, txSection);
             // No specs should appear when admin stock is empty
@@ -628,16 +628,16 @@ class ReportServiceTest {
         @Test
         void adminInventoryShowsOnlySpecsWithData() {
             // Only vial 10 ml has admin stock — other specs should not appear
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of());
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of(makeAdminStockInv(1L, john, vial, 8, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
 
             String content = r.getContent();
-            int adminSection = content.indexOf("ADMIN INVENTORY");
+            int adminSection = content.indexOf("ADMIN MEDICINE STOCK");
             int txSection    = content.indexOf("DAILY TRANSACTION SUMMARY");
             String adminBlock = content.substring(adminSection, txSection);
             assertThat(adminBlock).contains("Vial 10 ml");
@@ -649,16 +649,16 @@ class ReportServiceTest {
 
         @Test
         void adminInventoryDoesNotIncludeRegularInventory() {
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 30, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK))
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of(makeAdminStockInv(2L, john, vial, 5, null)));
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
 
             String content = r.getContent();
-            int adminSection = content.indexOf("ADMIN INVENTORY");
+            int adminSection = content.indexOf("ADMIN MEDICINE STOCK");
             int txSection    = content.indexOf("DAILY TRANSACTION SUMMARY");
             String adminBlock = content.substring(adminSection, txSection);
             assertThat(adminBlock).contains("john.doe: 5");

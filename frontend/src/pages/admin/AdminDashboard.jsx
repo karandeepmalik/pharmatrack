@@ -10,7 +10,7 @@ export default function AdminDashboard(){
             <Link to="/admin/past-transactions" className="nav-card"><h2>🕐 View Past Medicine Dispatches</h2><p>Browse transaction history by date range</p></Link>
             <Link to="/admin/inventory" className="nav-card"><h2>📋 View Available Medicine Stock</h2><p>See all user stock levels</p></Link>
             <Link to="/admin/reports" className="nav-card"><h2>📊 View Reports</h2><p>Inventory, valuation and sales reports</p></Link>
-            <Link to="/admin/modify-inventory" className="nav-card"><h2>🔄 Modify Inventory</h2><p>Add or reduce user inventory</p></Link>
+            <Link to="/admin/modify-inventory" className="nav-card"><h2>🔄 Modify Medicine Stock</h2><p>Add or reduce user medicine stock</p></Link>
             <Link to="/admin/users" className="nav-card"><h2>👥 Manage Users</h2><p>Add users, manage access and passwords</p></Link>
             <Link to="/admin/medicines" className="nav-card"><h2>💊 Manage Medicines</h2><p>Add pharma companies and medicines</p></Link>
         </div>

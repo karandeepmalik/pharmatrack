@@ -41,8 +41,8 @@ public class TransactionRequest {
     private Integer pricePerUnit;
 
     /**
-     * The inventory bucket to deduct from: REGULAR or ADMIN_STOCK.
-     * Defaults to REGULAR if not provided.
+     * The inventory bucket to deduct from: REGULAR_MEDICINE_STOCK or ADMIN_MEDICINE_STOCK.
+     * Defaults to REGULAR_MEDICINE_STOCK if not provided.
      */
     private String inventoryType;
 
