@@ -30,7 +30,7 @@ public class InventoryService {
         try {
             invType = Inventory.InventoryType.valueOf(req.getInventoryType());
         } catch (IllegalArgumentException e) {
-            invType = Inventory.InventoryType.REGULAR;
+            invType = Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
         }
 
         Inventory inv = inventoryRepository
@@ -69,9 +69,9 @@ public class InventoryService {
     public List<InventoryResponse> getAvailableForUser(Long userId) {
         // Return both REGULAR and ADMIN_STOCK so the user can choose which bucket to draw from
         List<Inventory> regular = inventoryRepository
-            .findAvailableByUserIdAndType(userId, Inventory.InventoryType.REGULAR);
+            .findAvailableByUserIdAndType(userId, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         List<Inventory> adminStock = inventoryRepository
-            .findAvailableByUserIdAndType(userId, Inventory.InventoryType.ADMIN_STOCK);
+            .findAvailableByUserIdAndType(userId, Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
         List<InventoryResponse> result = new java.util.ArrayList<>();
         regular.stream().map(this::toResponse).forEach(result::add);
         adminStock.stream().map(this::toResponse).forEach(result::add);
@@ -96,7 +96,7 @@ public class InventoryService {
         r.setQuantity(i.getQuantity());
         r.setPrice(i.getMedicine().getPrice());
         r.setLastNote(i.getLastNote());
-        r.setInventoryType(i.getInventoryType() != null ? i.getInventoryType().name() : "REGULAR");
+        r.setInventoryType(i.getInventoryType() != null ? i.getInventoryType().name() : "REGULAR_MEDICINE_STOCK");
         return r;
     }
 }

@@ -12,7 +12,7 @@ export default function SubmitTransaction() {
   const [loading, setLoading]     = useState(true);
 
   // ── Inventory type selector ──────────────────────────────────────────
-  const [selectedInventoryType, setSelectedInventoryType] = useState('REGULAR');
+  const [selectedInventoryType, setSelectedInventoryType] = useState('REGULAR_MEDICINE_STOCK');
 
   // ── Cascading selects ────────────────────────────────────────────────
   const [selectedPharma, setSelectedPharma] = useState('');
@@ -38,7 +38,7 @@ export default function SubmitTransaction() {
   useEffect(() => {
     api.getAvailableInventory()
       .then((r) => setInventory(r.data))
-      .catch(() => setErrorMessage('Failed to load inventory'))
+      .catch(() => setErrorMessage('Failed to load stock'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -132,7 +132,7 @@ export default function SubmitTransaction() {
       });
 
       setSuccessMessage('Medicine movement submitted successfully and is pending admin approval.');
-      setSelectedInventoryType('REGULAR');
+      setSelectedInventoryType('REGULAR_MEDICINE_STOCK');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
       setQuantity(''); setNotes(''); setPriceOverride('');
       screenshot.clearAll();
@@ -149,7 +149,7 @@ export default function SubmitTransaction() {
   };
 
   // ── Render ────────────────────────────────────────────────────────────
-  if (loading) return <div className="loading">Loading inventory…</div>;
+  if (loading) return <div className="loading">Loading stock…</div>;
 
   return (
     <div className="page submit-transaction-page">
@@ -168,14 +168,14 @@ export default function SubmitTransaction() {
       <form onSubmit={handleSubmit} noValidate>
         {/* Inventory Type */}
         <div className="form-group">
-          <label htmlFor="inventory-type-select">Inventory Type</label>
+          <label htmlFor="inventory-type-select">Stock Type</label>
           <select
             id="inventory-type-select"
             value={selectedInventoryType}
             onChange={handleInventoryTypeChange}
           >
-            <option value="REGULAR">Regular</option>
-            <option value="ADMIN_STOCK">Admin Stock</option>
+            <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
+            <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
           </select>
         </div>
 

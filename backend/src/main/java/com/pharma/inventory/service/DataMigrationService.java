@@ -27,25 +27,45 @@ public class DataMigrationService {
     @EventListener(ApplicationReadyEvent.class)
     public void onStartup() {
         setDefaultInventoryType();
+        renameInventoryTypeValues();
         dropLegacyUniqueConstraint();
         removeAdminInventory();
         createTransactionScreenshotsTable();
     }
 
-    /** Backfill existing rows that have no inventory_type yet. */
+    /** Backfill existing rows that have no inventory_type yet (pre-rename default). */
     private void setDefaultInventoryType() {
         try {
             int n = jdbc.update(
-                "UPDATE inventory SET inventory_type = 'REGULAR' WHERE inventory_type IS NULL");
-            if (n > 0) log.info("DataMigration: set {} rows to REGULAR inventory_type", n);
+                "UPDATE inventory SET inventory_type = 'REGULAR_MEDICINE_STOCK' WHERE inventory_type IS NULL");
+            if (n > 0) log.info("DataMigration: set {} rows to REGULAR_MEDICINE_STOCK inventory_type", n);
         } catch (Exception e) {
             log.debug("DataMigration: inventory_type backfill skipped — {}", e.getMessage());
         }
     }
 
+    /** Rename old enum string values to the new names in all tables that store inventory_type. */
+    private void renameInventoryTypeValues() {
+        try {
+            int n1 = jdbc.update(
+                "UPDATE inventory SET inventory_type = 'REGULAR_MEDICINE_STOCK' WHERE inventory_type = 'REGULAR'");
+            int n2 = jdbc.update(
+                "UPDATE inventory SET inventory_type = 'ADMIN_MEDICINE_STOCK' WHERE inventory_type = 'ADMIN_STOCK'");
+            int n3 = jdbc.update(
+                "UPDATE transactions SET inventory_type = 'REGULAR_MEDICINE_STOCK' WHERE inventory_type = 'REGULAR'");
+            int n4 = jdbc.update(
+                "UPDATE transactions SET inventory_type = 'ADMIN_MEDICINE_STOCK' WHERE inventory_type = 'ADMIN_STOCK'");
+            if (n1 + n2 + n3 + n4 > 0)
+                log.info("DataMigration: renamed inventory_type values — inventory({}/{}) transactions({}/{})",
+                        n1, n2, n3, n4);
+        } catch (Exception e) {
+            log.debug("DataMigration: inventory_type rename skipped — {}", e.getMessage());
+        }
+    }
+
     /**
      * Drop the old two-column unique constraint (user_id, medicine_id) so that
-     * a user can now have both REGULAR and ADMIN_STOCK rows for the same medicine.
+     * a user can now have both REGULAR_MEDICINE_STOCK and ADMIN_MEDICINE_STOCK rows for the same medicine.
      * Uses information_schema for portability.
      */
     private void dropLegacyUniqueConstraint() {

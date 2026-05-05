@@ -134,7 +134,7 @@ public class TransactionService {
             tx.setStatus(TransactionStatus.REJECTED);
             Inventory.InventoryType rollbackType = tx.getInventoryType() != null
                     ? tx.getInventoryType()
-                    : Inventory.InventoryType.REGULAR;
+                    : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
             Inventory inv = findInventoryByType(tx.getSubmittedBy().getId(), tx.getMedicine().getId(), rollbackType);
             inv.setQuantity(inv.getQuantity() + tx.getQuantity());
             inventoryRepository.save(inv);
@@ -161,7 +161,7 @@ public class TransactionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Medicine", id));
     }
     private Inventory findRegularInventory(Long userId, Long medicineId) {
-        return findInventoryByType(userId, medicineId, Inventory.InventoryType.REGULAR);
+        return findInventoryByType(userId, medicineId, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
     }
 
     private Inventory findInventoryByType(Long userId, Long medicineId, Inventory.InventoryType type) {
@@ -172,11 +172,11 @@ public class TransactionService {
     }
 
     private Inventory.InventoryType resolveInventoryType(String rawType) {
-        if (rawType == null || rawType.isBlank()) return Inventory.InventoryType.REGULAR;
+        if (rawType == null || rawType.isBlank()) return Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
         try {
             return Inventory.InventoryType.valueOf(rawType.toUpperCase());
         } catch (IllegalArgumentException e) {
-            return Inventory.InventoryType.REGULAR;
+            return Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
         }
     }
 }

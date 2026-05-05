@@ -10,13 +10,13 @@ jest.mock('../../../api/api');
 const mockInventory = [
   { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 1, medicineName: 'FIP Shield Vial',
     medicineType: 'VIAL', specification: 10, quantity: 50, specUnit: 'mg/ml', price: 4000,
-    inventoryType: 'REGULAR' },
+    inventoryType: 'REGULAR_MEDICINE_STOCK' },
   { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 2, medicineName: 'FIP Shield Tablet',
     medicineType: 'TABLET', specification: 50, quantity: 30, specUnit: 'mg (10 Tablets)', price: 8000,
-    inventoryType: 'REGULAR' },
+    inventoryType: 'REGULAR_MEDICINE_STOCK' },
   { pharmaId: 2, pharmaName: 'MediCure', medicineId: 3, medicineName: 'MediCure Vial',
     medicineType: 'VIAL', specification: 20, quantity: 10, specUnit: 'mg/ml', price: 2000,
-    inventoryType: 'REGULAR' },
+    inventoryType: 'REGULAR_MEDICINE_STOCK' },
 ];
 
 beforeEach(() => {
@@ -57,7 +57,7 @@ describe('Initial render', () => {
   test('shows loading indicator while inventory is fetching', () => {
     api.getAvailableInventory.mockReturnValue(new Promise(() => {}));
     renderPage();
-    expect(screen.getByText(/loading inventory/i)).toBeInTheDocument();
+    expect(screen.getByText(/loading stock/i)).toBeInTheDocument();
   });
 
   test('renders page heading as Submit Medicine Movement', async () => {
@@ -91,7 +91,7 @@ describe('Initial render', () => {
     api.getAvailableInventory.mockRejectedValue(new Error('Network error'));
     renderPage();
     await waitFor(() => screen.getByRole('alert'));
-    expect(screen.getByRole('alert')).toHaveTextContent(/failed to load inventory/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/failed to load stock/i);
   });
 });
 
@@ -291,36 +291,36 @@ describe('Price override input', () => {
 // ── Inventory type selector ────────────────────────────────────────────
 
 describe('Inventory type selector', () => {
-  test('renders inventory type select with Regular and Admin Stock options', async () => {
+  test('renders stock type select with Regular and Admin Medicine Stock options', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/inventory type/i));
-    const selector = screen.getByLabelText(/inventory type/i);
+    await waitFor(() => screen.getByLabelText(/stock type/i));
+    const selector = screen.getByLabelText(/stock type/i);
     expect(selector).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /regular/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /admin stock/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /regular medicine stock/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /admin medicine stock/i })).toBeInTheDocument();
   });
 
-  test('defaults to Regular inventory type', async () => {
+  test('defaults to Regular Medicine Stock type', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/inventory type/i));
-    expect(screen.getByLabelText(/inventory type/i)).toHaveValue('REGULAR');
+    await waitFor(() => screen.getByLabelText(/stock type/i));
+    expect(screen.getByLabelText(/stock type/i)).toHaveValue('REGULAR_MEDICINE_STOCK');
   });
 
-  test('inventory type selector appears before pharma company selector', async () => {
+  test('stock type selector appears before pharma company selector', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/inventory type/i));
-    const invTypeSelect = screen.getByLabelText(/inventory type/i);
+    await waitFor(() => screen.getByLabelText(/stock type/i));
+    const invTypeSelect = screen.getByLabelText(/stock type/i);
     const pharmaSelect  = screen.getByLabelText(/pharma company/i);
     const position = invTypeSelect.compareDocumentPosition(pharmaSelect);
     // DOCUMENT_POSITION_FOLLOWING = 4, meaning pharmaSelect comes after invTypeSelect
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  test('changing inventory type resets pharma, type, spec and quantity', async () => {
+  test('changing stock type resets pharma, type, spec and quantity', async () => {
     const adminInventory = [
       { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 1, medicineName: 'FIP Shield Vial',
         medicineType: 'VIAL', specification: 10, quantity: 20, specUnit: 'mg/ml', price: 4000,
-        inventoryType: 'ADMIN_STOCK' },
+        inventoryType: 'ADMIN_MEDICINE_STOCK' },
     ];
     api.getAvailableInventory.mockResolvedValueOnce({ data: mockInventory });
     renderPage();
@@ -330,9 +330,9 @@ describe('Inventory type selector', () => {
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
     expect(screen.getByLabelText(/medicine type/i)).toHaveValue('VIAL');
 
-    // Switch to Admin Stock
+    // Switch to Admin Medicine Stock
     api.getAvailableInventory.mockResolvedValue({ data: adminInventory });
-    await userEvent.selectOptions(screen.getByLabelText(/inventory type/i), 'ADMIN_STOCK');
+    await userEvent.selectOptions(screen.getByLabelText(/stock type/i), 'ADMIN_MEDICINE_STOCK');
     expect(screen.getByLabelText(/pharma company/i)).toHaveValue('');
   });
 
@@ -343,7 +343,7 @@ describe('Inventory type selector', () => {
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
-          inventoryType: 'REGULAR',
+          inventoryType: 'REGULAR_MEDICINE_STOCK',
         })
       )
     );

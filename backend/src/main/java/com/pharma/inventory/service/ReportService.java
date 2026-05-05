@@ -61,8 +61,8 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryByUser() {
-        List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR);
-        List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_STOCK);
+        List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+        List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
 
         // Derive pharma name from whichever list is non-empty
         String pharmaName = regularRecords.stream()
@@ -74,7 +74,7 @@ public class ReportService {
                         .orElse("Shield FX"));
 
         StringBuilder sb = new StringBuilder();
-        sb.append("CURRENT INVENTORY LEVEL BY USER\n");
+        sb.append("CURRENT MEDICINE STOCK PER USER\n");
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
 
@@ -83,9 +83,9 @@ public class ReportService {
         sb.append("-".repeat(pharmaName.length())).append("\n");
         appendInventoryByUserSection(sb, regularRecords);
 
-        // ── ADMIN INVENTORY section ───────────────────────────────────────
+        // ── ADMIN MEDICINE STOCK section ───────────────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
-        sb.append("ADMIN INVENTORY\n");
+        sb.append("ADMIN MEDICINE STOCK\n");
         sb.append("-".repeat(15)).append("\n");
         if (!adminStockRecords.isEmpty()) {
             String adminPharma = adminStockRecords.get(0).getMedicine().getPharmaCompany().getName();
@@ -131,7 +131,7 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryValuation() {
-        List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR);
+        List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
         // Group by pharmaId → then by specKey within each pharma
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
@@ -152,7 +152,7 @@ public class ReportService {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("CURRENT INVENTORY VALUATION\n");
+        sb.append("CURRENT MEDICINE STOCK VALUATION\n");
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
 
@@ -267,7 +267,7 @@ public class ReportService {
      *
      * Structure:
      *   INVENTORY section        — REGULAR inventory per spec per user
-     *   ADMIN INVENTORY section  — ADMIN_STOCK inventory per spec per user
+     *   ADMIN MEDICINE STOCK section  — ADMIN_STOCK inventory per spec per user
      *   DAILY TRANSACTION SUMMARY — approved transactions on that date
      */
     @Transactional(readOnly = true)
@@ -276,8 +276,8 @@ public class ReportService {
         LocalDateTime start = reportDate.atStartOfDay();
         LocalDateTime end   = reportDate.plusDays(1).atStartOfDay();
 
-        List<Inventory> regularRecords  = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR);
-        List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK);
+        List<Inventory> regularRecords  = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+        List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
         List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findByDateRange(start, end);
@@ -301,9 +301,9 @@ public class ReportService {
         sb.append("-".repeat(pharmaName.length())).append("\n");
         appendInventorySection(sb, regularRecords);
 
-        // ── ADMIN INVENTORY section ───────────────────────────────────
+        // ── ADMIN MEDICINE STOCK section ───────────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
-        sb.append("ADMIN INVENTORY\n");
+        sb.append("ADMIN MEDICINE STOCK\n");
         sb.append("-".repeat(15)).append("\n");
         if (!adminStockRecords.isEmpty()) {
             String adminPharma = adminStockRecords.get(0).getMedicine().getPharmaCompany().getName();
@@ -400,7 +400,7 @@ public class ReportService {
     /**
      * Appends per-spec, per-user admin inventory lines to the builder.
      * Skips specs with no inventory (no (none) / TOTAL: 0 for empty specs).
-     * Used for the ADMIN INVENTORY section in the daily report.
+     * Used for the ADMIN MEDICINE STOCK section in the daily report.
      */
     private void appendInventoryAdminSection(StringBuilder sb, List<Inventory> records) {
         Map<String, List<Inventory>> bySpec = new HashMap<>();

@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 public class Inventory {
 
     public enum InventoryType {
-        REGULAR, ADMIN_STOCK
+        REGULAR_MEDICINE_STOCK, ADMIN_MEDICINE_STOCK
     }
 
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
@@ -18,9 +18,9 @@ public class Inventory {
     @Column(nullable=false) private LocalDateTime lastUpdated;
 
     @Enumerated(EnumType.STRING)
-    @Column(name="inventory_type", nullable=false, columnDefinition="VARCHAR(20) DEFAULT 'REGULAR'")
+    @Column(name="inventory_type", nullable=false, columnDefinition="VARCHAR(30) DEFAULT 'REGULAR_MEDICINE_STOCK'")
     @Builder.Default
-    private InventoryType inventoryType = InventoryType.REGULAR;
+    private InventoryType inventoryType = InventoryType.REGULAR_MEDICINE_STOCK;
 
     @PrePersist @PreUpdate protected void onUpdate(){ lastUpdated=LocalDateTime.now(); }
 }
