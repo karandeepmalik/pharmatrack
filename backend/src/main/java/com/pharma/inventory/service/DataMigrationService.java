@@ -26,11 +26,31 @@ public class DataMigrationService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onStartup() {
+        widenInventoryTypeColumns();
         setDefaultInventoryType();
         renameInventoryTypeValues();
         dropLegacyUniqueConstraint();
         removeAdminInventory();
         createTransactionScreenshotsTable();
+    }
+
+    /**
+     * Widen inventory_type columns to VARCHAR(30) before renaming values.
+     * The old column was VARCHAR(20), which is too short for REGULAR_MEDICINE_STOCK (22 chars).
+     */
+    private void widenInventoryTypeColumns() {
+        try {
+            jdbc.execute("ALTER TABLE transactions ALTER COLUMN inventory_type TYPE VARCHAR(30)");
+            log.info("DataMigration: widened transactions.inventory_type to VARCHAR(30)");
+        } catch (Exception e) {
+            log.debug("DataMigration: transactions column widen skipped — {}", e.getMessage());
+        }
+        try {
+            jdbc.execute("ALTER TABLE inventory_adjustments ALTER COLUMN inventory_type TYPE VARCHAR(30)");
+            log.info("DataMigration: widened inventory_adjustments.inventory_type to VARCHAR(30)");
+        } catch (Exception e) {
+            log.debug("DataMigration: inventory_adjustments column widen skipped — {}", e.getMessage());
+        }
     }
 
     /** Backfill existing rows that have no inventory_type yet (pre-rename default). */
@@ -55,9 +75,13 @@ public class DataMigrationService {
                 "UPDATE transactions SET inventory_type = 'REGULAR_MEDICINE_STOCK' WHERE inventory_type = 'REGULAR'");
             int n4 = jdbc.update(
                 "UPDATE transactions SET inventory_type = 'ADMIN_MEDICINE_STOCK' WHERE inventory_type = 'ADMIN_STOCK'");
-            if (n1 + n2 + n3 + n4 > 0)
-                log.info("DataMigration: renamed inventory_type values — inventory({}/{}) transactions({}/{})",
-                        n1, n2, n3, n4);
+            int n5 = jdbc.update(
+                "UPDATE inventory_adjustments SET inventory_type = 'REGULAR_MEDICINE_STOCK' WHERE inventory_type = 'REGULAR'");
+            int n6 = jdbc.update(
+                "UPDATE inventory_adjustments SET inventory_type = 'ADMIN_MEDICINE_STOCK' WHERE inventory_type = 'ADMIN_STOCK'");
+            if (n1 + n2 + n3 + n4 + n5 + n6 > 0)
+                log.info("DataMigration: renamed inventory_type values — inventory({}/{}) transactions({}/{}) adjustments({}/{})",
+                        n1, n2, n3, n4, n5, n6);
         } catch (Exception e) {
             log.debug("DataMigration: inventory_type rename skipped — {}", e.getMessage());
         }
