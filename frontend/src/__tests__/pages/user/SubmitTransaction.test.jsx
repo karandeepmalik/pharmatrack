@@ -8,10 +8,10 @@ import * as api from '../../../api/api';
 jest.mock('../../../api/api');
 
 const mockInventory = [
-  { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 1, medicineName: 'FIP Shield Vial',
+  { pharmaId: 1, pharmaName: 'Shield FX', medicineId: 1, medicineName: 'Shield FX Vial',
     medicineType: 'VIAL', specification: 10, quantity: 50, specUnit: 'mg/ml', price: 4000,
     inventoryType: 'REGULAR' },
-  { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 2, medicineName: 'FIP Shield Tablet',
+  { pharmaId: 1, pharmaName: 'Shield FX', medicineId: 2, medicineName: 'Shield FX Tablet',
     medicineType: 'TABLET', specification: 50, quantity: 30, specUnit: 'mg (10 Tablets)', price: 8000,
     inventoryType: 'REGULAR' },
   { pharmaId: 2, pharmaName: 'MediCure', medicineId: 3, medicineName: 'MediCure Vial',
@@ -46,7 +46,7 @@ const fillValidForm = async () => {
   await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
   await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
   await userEvent.type(screen.getByLabelText(/quantity/i), '5');
-  await userEvent.type(screen.getByLabelText(/medicine movement note/i),
+  await userEvent.type(screen.getByLabelText(/medicine dispatch note/i),
     'Dispatched to clinic B for FIP treatment');
   await attachScreenshot();
 };
@@ -60,10 +60,10 @@ describe('Initial render', () => {
     expect(screen.getByText(/loading inventory/i)).toBeInTheDocument();
   });
 
-  test('renders page heading as Submit Medicine Movement', async () => {
+  test('renders page heading as Submit Medicine Dispatch', async () => {
     renderPage();
-    await waitFor(() => screen.getByRole('heading', { name: /submit medicine movement/i }));
-    expect(screen.getByRole('heading', { name: /submit medicine movement/i })).toBeInTheDocument();
+    await waitFor(() => screen.getByRole('heading', { name: /submit medicine dispatch/i }));
+    expect(screen.getByRole('heading', { name: /submit medicine dispatch/i })).toBeInTheDocument();
   });
 
   test('renders back button linking to user dashboard', async () => {
@@ -78,13 +78,13 @@ describe('Initial render', () => {
     expect(screen.getByLabelText(/medicine type/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/volume \(ml\)|specification/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/quantity/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/medicine movement note/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/medicine dispatch note/i)).toBeInTheDocument();
   });
 
   test('submit button is disabled initially', async () => {
     renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /submit medicine movement/i }));
-    expect(screen.getByRole('button', { name: /submit medicine movement/i })).toBeDisabled();
+    await waitFor(() => screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    expect(screen.getByRole('button', { name: /submit medicine dispatch/i })).toBeDisabled();
   });
 
   test('shows error if inventory fetch fails', async () => {
@@ -98,10 +98,11 @@ describe('Initial render', () => {
 // ── Cascading selects ───────────────────────────────────────────────────
 
 describe('Cascading select behaviour', () => {
-  test('type select is disabled until pharma is selected', async () => {
+  test('auto-selects Shield FX pharma on load and enables type select', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/medicine type/i));
-    expect(screen.getByLabelText(/medicine type/i)).toBeDisabled();
+    await waitFor(() => screen.getByLabelText(/pharma company/i));
+    expect(screen.getByLabelText(/pharma company/i)).toHaveValue('1');
+    expect(screen.getByLabelText(/medicine type/i)).not.toBeDisabled();
   });
 
   test('spec select is disabled until type is selected', async () => {
@@ -161,14 +162,14 @@ describe('Cascading select behaviour', () => {
 describe('Notes field', () => {
   test('shows character counter', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/medicine movement note/i));
+    await waitFor(() => screen.getByLabelText(/medicine dispatch note/i));
     expect(screen.getByText(/0\/500/)).toBeInTheDocument();
   });
 
   test('counter updates as user types', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/medicine movement note/i));
-    await userEvent.type(screen.getByLabelText(/medicine movement note/i), 'Hello');
+    await waitFor(() => screen.getByLabelText(/medicine dispatch note/i));
+    await userEvent.type(screen.getByLabelText(/medicine dispatch note/i), 'Hello');
     expect(screen.getByText(/5\/500/)).toBeInTheDocument();
   });
 });
@@ -189,10 +190,10 @@ describe('Screenshot upload section — mandatory', () => {
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
     await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
     await userEvent.type(screen.getByLabelText(/quantity/i), '5');
-    await userEvent.type(screen.getByLabelText(/medicine movement note/i),
+    await userEvent.type(screen.getByLabelText(/medicine dispatch note/i),
       'Dispatched to clinic B for FIP treatment');
     // No screenshot attached
-    expect(screen.getByRole('button', { name: /submit medicine movement/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /submit medicine dispatch/i })).toBeDisabled();
   });
 
   test('shows preview after valid PNG file selected', async () => {
@@ -277,7 +278,7 @@ describe('Price override input', () => {
     await userEvent.clear(priceInput);
     await userEvent.type(priceInput, '3500');
 
-    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -339,7 +340,7 @@ describe('Inventory type selector', () => {
   test('submit call includes inventoryType', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -356,14 +357,14 @@ describe('Form submission', () => {
   test('submit button enables when form is fully valid with screenshot', async () => {
     await fillValidForm();
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /submit medicine movement/i })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /submit medicine dispatch/i })).not.toBeDisabled()
     );
   });
 
   test('calls submitTransaction with correct params including screenshotFiles', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -379,7 +380,7 @@ describe('Form submission', () => {
   test('shows success message after submission', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/submitted successfully/i)
     );
@@ -390,7 +391,7 @@ describe('Form submission', () => {
       response: { data: { message: 'Insufficient inventory: requested 5 but only 3 available' } },
     });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/insufficient inventory/i)
     );
@@ -399,7 +400,7 @@ describe('Form submission', () => {
   test('resets form fields after successful submission', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
     await waitFor(() => screen.getByRole('alert'));
     expect(screen.getByLabelText(/pharma company/i)).toHaveValue('');
   });
