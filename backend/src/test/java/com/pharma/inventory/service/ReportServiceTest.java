@@ -2,6 +2,7 @@ package com.pharma.inventory.service;
 
 import com.pharma.inventory.dto.ReportResponse;
 import com.pharma.inventory.entity.*;
+import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,7 @@ class ReportServiceTest {
 
     @Mock InventoryRepository inventoryRepository;
     @Mock TransactionRepository transactionRepository;
+    @Mock InventoryAdjustmentRepository inventoryAdjustmentRepository;
 
     @InjectMocks ReportService reportService;
 
