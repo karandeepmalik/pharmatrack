@@ -2,6 +2,7 @@ package com.pharma.inventory.service;
 
 import com.pharma.inventory.dto.ReportResponse;
 import com.pharma.inventory.entity.*;
+import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +28,7 @@ class ReportServiceTest {
 
     @Mock InventoryRepository inventoryRepository;
     @Mock TransactionRepository transactionRepository;
+    @Mock InventoryAdjustmentRepository inventoryAdjustmentRepository;
 
     @InjectMocks ReportService reportService;
 
@@ -98,7 +100,7 @@ class ReportServiceTest {
             ReportResponse r = reportService.inventoryByUser();
 
             assertThat(r.getReportType()).isEqualTo("INVENTORY_BY_USER");
-            assertThat(r.getContent()).contains("Shield FX Vial 10 ml");
+            assertThat(r.getContent()).contains("Vial 10 ml | 20 mg/ml");
             assertThat(r.getContent()).contains("john.doe");
             assertThat(r.getContent()).contains("50");
         }
@@ -136,8 +138,8 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.inventoryByUser();
 
-            assertThat(r.getContent()).contains("Shield FX Tablet 25 mg (10 Tablets)");
-            assertThat(r.getContent()).doesNotContain("| 25.0 mg (10 Tablets)");
+            assertThat(r.getContent()).contains("Tablet 25 mg (10 Tablets)");
+            assertThat(r.getContent()).doesNotContain("Shield FX Tablet");
         }
 
         @Test
@@ -148,7 +150,8 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.inventoryByUser();
 
-            assertThat(r.getContent()).contains("Shield FX Vial 10 ml | 20 mg/ml");
+            assertThat(r.getContent()).contains("Vial 10 ml | 20 mg/ml");
+            assertThat(r.getContent()).doesNotContain("Shield FX Vial");
             assertThat(r.getContent()).doesNotContain("10.0 mg/ml");
         }
 
@@ -186,8 +189,8 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.inventoryByUser();
 
-            int posVial   = r.getContent().indexOf("Shield FX Vial 10 ml");
-            int posTablet = r.getContent().indexOf("Shield FX Tablet 25 mg");
+            int posVial   = r.getContent().indexOf("Vial 10 ml | 20 mg/ml");
+            int posTablet = r.getContent().indexOf("Tablet 25 mg (10 Tablets)");
             assertThat(posVial).isLessThan(posTablet);
         }
 
@@ -199,7 +202,7 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.inventoryByUser();
 
-            assertThat(r.getContent()).contains("Shield FX Vial 10 ml");
+            assertThat(r.getContent()).contains("Vial 10 ml | 20 mg/ml");
             assertThat(r.getContent()).doesNotContain("Vial 5 ml");
             assertThat(r.getContent()).doesNotContain("Tablet 25 mg");
         }

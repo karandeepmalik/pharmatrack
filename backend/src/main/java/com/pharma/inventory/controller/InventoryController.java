@@ -29,7 +29,9 @@ public class InventoryController {
 
     @PostMapping("/adjust")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<InventoryResponse> adjust(@Valid @RequestBody AdjustInventoryRequest req) {
-        return ResponseEntity.ok(inventoryService.adjustInventory(req));
+    public ResponseEntity<InventoryResponse> adjust(
+            @Valid @RequestBody AdjustInventoryRequest req,
+            @AuthenticationPrincipal UserDetails ud) {
+        return ResponseEntity.ok(inventoryService.adjustInventory(req, ud.getUsername()));
     }
 }

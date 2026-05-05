@@ -6,16 +6,18 @@ import com.pharma.inventory.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service @RequiredArgsConstructor
 public class InventoryService {
     private final InventoryRepository inventoryRepository;
+    private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private final UserRepository userRepository;
     private final MedicineRepository medicineRepository;
 
     @Transactional
-    public InventoryResponse adjustInventory(AdjustInventoryRequest req) {
+    public InventoryResponse adjustInventory(AdjustInventoryRequest req, String adjustedByUsername) {
         User user = userRepository.findById(req.getUserId())
             .orElseThrow(() -> new ResourceNotFoundException("User", req.getUserId()));
         if (user.getRole() == User.Role.ADMIN) {
@@ -45,7 +47,22 @@ public class InventoryService {
             inv.setQuantity(inv.getQuantity() + req.getQuantity());
         }
         inv.setLastNote(req.getNote());
-        return toResponse(inventoryRepository.save(inv));
+        InventoryResponse response = toResponse(inventoryRepository.save(inv));
+
+        User adjustedBy = userRepository.findByUsername(adjustedByUsername).orElse(null);
+        inventoryAdjustmentRepository.save(InventoryAdjustment.builder()
+            .user(user)
+            .medicine(medicine)
+            .quantity(req.getQuantity())
+            .adjustmentType(req.getAdjustmentType())
+            .note(req.getNote())
+            .internalMovement(req.isInternalMovement())
+            .inventoryType(invType)
+            .adjustedAt(LocalDateTime.now())
+            .adjustedBy(adjustedBy)
+            .build());
+
+        return response;
     }
 
     @Transactional(readOnly=true)

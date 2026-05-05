@@ -158,3 +158,34 @@ describe('ModifyInventory — page structure', () => {
     expect(screen.getByLabelText(/quantity/i)).toBeDisabled();
   });
 });
+
+// ── Internal movement checkbox ────────────────────────────────────────────
+
+describe('ModifyInventory — internal movement', () => {
+  test('renders the Internal Movement checkbox unchecked by default', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/internal movement/i)).toBeInTheDocument()
+    );
+    expect(screen.getByLabelText(/internal movement/i)).not.toBeChecked();
+  });
+
+  test('checkbox can be toggled on and off', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    const checkbox = await screen.findByLabelText(/internal movement/i);
+    await userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    await userEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+  });
+
+  test('note placeholder text is "e.g. Sent to Suma"', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    renderPage();
+    expect(screen.getByPlaceholderText('e.g. Sent to Suma')).toBeInTheDocument();
+  });
+});
