@@ -2,6 +2,7 @@ package com.pharma.inventory.service;
 
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.exception.ResourceNotFoundException;
+import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import com.pharma.inventory.repository.UserRepository;
@@ -27,6 +28,7 @@ class UserServiceTest {
     @Mock UserRepository userRepository;
     @Mock InventoryRepository inventoryRepository;
     @Mock TransactionRepository transactionRepository;
+    @Mock InventoryAdjustmentRepository adjustmentRepository;
     @Mock PasswordEncoder passwordEncoder;
 
     @InjectMocks UserService userService;
@@ -51,6 +53,8 @@ class UserServiceTest {
 
             verify(transactionRepository).nullifyApprovedBy(2L);
             verify(transactionRepository).deleteBySubmittedById(2L);
+            verify(adjustmentRepository).nullifyAdjustedBy(2L);
+            verify(adjustmentRepository).deleteByUserId(2L);
             verify(inventoryRepository).deleteByUserId(2L);
             verify(userRepository).delete(user);
         }
@@ -69,12 +73,14 @@ class UserServiceTest {
         @Test
         void deletionOrderIsCorrect() {
             when(userRepository.findById(2L)).thenReturn(Optional.of(user));
-            var order = inOrder(transactionRepository, inventoryRepository, userRepository);
+            var order = inOrder(transactionRepository, adjustmentRepository, inventoryRepository, userRepository);
 
             userService.deleteUser(2L);
 
             order.verify(transactionRepository).nullifyApprovedBy(2L);
             order.verify(transactionRepository).deleteBySubmittedById(2L);
+            order.verify(adjustmentRepository).nullifyAdjustedBy(2L);
+            order.verify(adjustmentRepository).deleteByUserId(2L);
             order.verify(inventoryRepository).deleteByUserId(2L);
             order.verify(userRepository).delete(user);
         }

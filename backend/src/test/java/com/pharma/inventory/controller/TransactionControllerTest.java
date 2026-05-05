@@ -105,7 +105,7 @@ class TransactionControllerTest {
                     .param("quantity", "10")
                     .param("notes", "Dispatched to clinic B for FIP treatment")
                     .with(csrf()))
-                    .andExpect(status().isOk())
+                    .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.screenshots[0].data").value(expectedB64))
                     .andExpect(jsonPath("$.screenshots[0].mimeType").value("image/png"));
         }
@@ -136,7 +136,7 @@ class TransactionControllerTest {
                     .param("quantity", "10")
                     .param("notes", "Dispatched to clinic B for FIP treatment")
                     .with(csrf()))
-                    .andExpect(status().isOk())
+                    .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.screenshots", hasSize(2)))
                     .andExpect(jsonPath("$.screenshots[0].mimeType").value("image/png"))
                     .andExpect(jsonPath("$.screenshots[1].mimeType").value("image/jpeg"));
@@ -161,7 +161,7 @@ class TransactionControllerTest {
                     .param("quantity", "10")
                     .param("notes", "Payment confirmed for clinic B dispatch")
                     .with(csrf()))
-                    .andExpect(status().isOk())
+                    .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.screenshots[0].mimeType").value("image/jpeg"));
         }
 
