@@ -191,22 +191,32 @@ public class ReportService {
         return new ReportResponse("INVENTORY_VALUATION", nowIST(), sb.toString());
     }
 
+    /** Convenience overload — defaults to today only. */
+    public ReportResponse todaySales() { return todaySales(1); }
+
     @Transactional(readOnly = true)
-    public ReportResponse todaySales() {
+    public ReportResponse todaySales(int days) {
         LocalDate today = todayIST();
-        LocalDateTime start = today.atStartOfDay();
+        int effectiveDays = Math.max(1, days);
+        LocalDate startDate = today.minusDays(effectiveDays - 1);
+        LocalDateTime start = startDate.atStartOfDay();
         LocalDateTime end = today.plusDays(1).atStartOfDay();
 
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("TODAY'S SALES - ").append(today.format(DATE_FMT)).append("\n");
+        if (effectiveDays == 1) {
+            sb.append("TODAY'S SALES - ").append(today.format(DATE_FMT)).append("\n");
+        } else {
+            sb.append("SALES - ").append(startDate.format(DATE_FMT))
+              .append(" to ").append(today.format(DATE_FMT)).append("\n");
+        }
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
 
         if (txList.isEmpty()) {
-            sb.append("No sales recorded today.\n");
+            sb.append(effectiveDays == 1 ? "No sales recorded today.\n" : "No sales recorded in this period.\n");
             return new ReportResponse("TODAY_SALES", nowIST(), sb.toString());
         }
 
