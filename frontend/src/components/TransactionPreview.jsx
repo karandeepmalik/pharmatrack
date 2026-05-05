@@ -32,7 +32,7 @@ export default function TransactionPreview({ item, quantity, notes, screenshotCo
         </p>
       )}
       <p>
-        <strong>Adjustment Note:</strong> {notes}
+        <strong>Medicine Movement Note:</strong> {notes}
       </p>
       {screenshotCount > 0 && (
         <p>

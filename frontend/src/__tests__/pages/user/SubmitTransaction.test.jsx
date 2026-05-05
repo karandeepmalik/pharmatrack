@@ -46,7 +46,7 @@ const fillValidForm = async () => {
   await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
   await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
   await userEvent.type(screen.getByLabelText(/quantity/i), '5');
-  await userEvent.type(screen.getByLabelText(/adjustment note/i),
+  await userEvent.type(screen.getByLabelText(/medicine movement note/i),
     'Dispatched to clinic B for FIP treatment');
   await attachScreenshot();
 };
@@ -60,10 +60,10 @@ describe('Initial render', () => {
     expect(screen.getByText(/loading inventory/i)).toBeInTheDocument();
   });
 
-  test('renders page heading as Submit Inventory Adjustment', async () => {
+  test('renders page heading as Submit Medicine Movement', async () => {
     renderPage();
-    await waitFor(() => screen.getByRole('heading', { name: /submit inventory adjustment/i }));
-    expect(screen.getByRole('heading', { name: /submit inventory adjustment/i })).toBeInTheDocument();
+    await waitFor(() => screen.getByRole('heading', { name: /submit medicine movement/i }));
+    expect(screen.getByRole('heading', { name: /submit medicine movement/i })).toBeInTheDocument();
   });
 
   test('renders back button linking to user dashboard', async () => {
@@ -78,13 +78,13 @@ describe('Initial render', () => {
     expect(screen.getByLabelText(/medicine type/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/volume \(ml\)|specification/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/quantity/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/adjustment note/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/medicine movement note/i)).toBeInTheDocument();
   });
 
   test('submit button is disabled initially', async () => {
     renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /submit inventory adjustment/i }));
-    expect(screen.getByRole('button', { name: /submit inventory adjustment/i })).toBeDisabled();
+    await waitFor(() => screen.getByRole('button', { name: /submit medicine movement/i }));
+    expect(screen.getByRole('button', { name: /submit medicine movement/i })).toBeDisabled();
   });
 
   test('shows error if inventory fetch fails', async () => {
@@ -161,14 +161,14 @@ describe('Cascading select behaviour', () => {
 describe('Notes field', () => {
   test('shows character counter', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/adjustment note/i));
+    await waitFor(() => screen.getByLabelText(/medicine movement note/i));
     expect(screen.getByText(/0\/500/)).toBeInTheDocument();
   });
 
   test('counter updates as user types', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/adjustment note/i));
-    await userEvent.type(screen.getByLabelText(/adjustment note/i), 'Hello');
+    await waitFor(() => screen.getByLabelText(/medicine movement note/i));
+    await userEvent.type(screen.getByLabelText(/medicine movement note/i), 'Hello');
     expect(screen.getByText(/5\/500/)).toBeInTheDocument();
   });
 });
@@ -189,10 +189,10 @@ describe('Screenshot upload section — mandatory', () => {
     await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
     await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
     await userEvent.type(screen.getByLabelText(/quantity/i), '5');
-    await userEvent.type(screen.getByLabelText(/adjustment note/i),
+    await userEvent.type(screen.getByLabelText(/medicine movement note/i),
       'Dispatched to clinic B for FIP treatment');
     // No screenshot attached
-    expect(screen.getByRole('button', { name: /submit inventory adjustment/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /submit medicine movement/i })).toBeDisabled();
   });
 
   test('shows preview after valid PNG file selected', async () => {
@@ -277,7 +277,7 @@ describe('Price override input', () => {
     await userEvent.clear(priceInput);
     await userEvent.type(priceInput, '3500');
 
-    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -339,7 +339,7 @@ describe('Inventory type selector', () => {
   test('submit call includes inventoryType', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -356,14 +356,14 @@ describe('Form submission', () => {
   test('submit button enables when form is fully valid with screenshot', async () => {
     await fillValidForm();
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /submit inventory adjustment/i })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /submit medicine movement/i })).not.toBeDisabled()
     );
   });
 
   test('calls submitTransaction with correct params including screenshotFiles', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -379,7 +379,7 @@ describe('Form submission', () => {
   test('shows success message after submission', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/submitted successfully/i)
     );
@@ -390,7 +390,7 @@ describe('Form submission', () => {
       response: { data: { message: 'Insufficient inventory: requested 5 but only 3 available' } },
     });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/insufficient inventory/i)
     );
@@ -399,7 +399,7 @@ describe('Form submission', () => {
   test('resets form fields after successful submission', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
-    await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine movement/i }));
     await waitFor(() => screen.getByRole('alert'));
     expect(screen.getByLabelText(/pharma company/i)).toHaveValue('');
   });
