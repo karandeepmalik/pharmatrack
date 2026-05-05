@@ -8,10 +8,10 @@ import React from 'react';
  * @param {Object}   props.item           - selected inventory item
  * @param {string}   props.quantity       - quantity string from form input
  * @param {string}   props.notes          - adjustment notes text
- * @param {File|null} props.screenshotFile - attached file or null
+ * @param {number}   props.screenshotCount - number of valid screenshots attached
  * @param {number}   props.pricePerUnit   - price per unit (overridden or item's default price)
  */
-export default function TransactionPreview({ item, quantity, notes, screenshotFile, pricePerUnit }) {
+export default function TransactionPreview({ item, quantity, notes, screenshotCount = 0, pricePerUnit }) {
   if (!item || !quantity || notes.trim().length < 5) return null;
 
   const displayPrice = pricePerUnit != null ? pricePerUnit : item?.price;
@@ -34,9 +34,9 @@ export default function TransactionPreview({ item, quantity, notes, screenshotFi
       <p>
         <strong>Adjustment Note:</strong> {notes}
       </p>
-      {screenshotFile && (
+      {screenshotCount > 0 && (
         <p>
-          <strong>Payment Screenshot:</strong> {screenshotFile.name} attached ✓
+          <strong>Payment Screenshots:</strong> {screenshotCount} attached ✓
         </p>
       )}
     </div>

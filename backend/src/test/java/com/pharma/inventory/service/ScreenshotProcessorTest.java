@@ -11,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Base64;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -95,5 +96,57 @@ class ScreenshotProcessorTest {
         byte[] exactly5mb = new byte[5 * 1024 * 1024];
         MultipartFile file = new MockMultipartFile("f", "ok.png", "image/png", exactly5mb);
         assertThatNoException().isThrownBy(() -> processor.encodeToBase64(file));
+    }
+
+    // ── encodeAll ─────────────────────────────────────────────────────
+
+    @Test @DisplayName("encodeAll returns empty list for null input")
+    void encodeAll_null_returnsEmpty() throws IOException {
+        assertThat(processor.encodeAll(null)).isEmpty();
+    }
+
+    @Test @DisplayName("encodeAll returns empty list for empty list")
+    void encodeAll_emptyList_returnsEmpty() throws IOException {
+        assertThat(processor.encodeAll(List.of())).isEmpty();
+    }
+
+    @Test @DisplayName("encodeAll skips null and empty files")
+    void encodeAll_nullAndEmptyEntries_skipped() throws IOException {
+        MultipartFile empty = new MockMultipartFile("f", new byte[0]);
+        List<String[]> result = processor.encodeAll(List.of(empty));
+        assertThat(result).isEmpty();
+    }
+
+    @Test @DisplayName("encodeAll encodes single valid file")
+    void encodeAll_oneFile_encodedCorrectly() throws IOException {
+        byte[] content = "png-data".getBytes();
+        MultipartFile file = new MockMultipartFile("f", "a.png", "image/png", content);
+
+        List<String[]> result = processor.encodeAll(List.of(file));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0)[0]).isEqualTo(Base64.getEncoder().encodeToString(content));
+        assertThat(result.get(0)[1]).isEqualTo("image/png");
+    }
+
+    @Test @DisplayName("encodeAll encodes multiple valid files in order")
+    void encodeAll_twoFiles_bothEncodedInOrder() throws IOException {
+        byte[] content1 = "png1".getBytes();
+        byte[] content2 = "jpg2".getBytes();
+        MultipartFile f1 = new MockMultipartFile("f1", "a.png", "image/png", content1);
+        MultipartFile f2 = new MockMultipartFile("f2", "b.jpg", "image/jpeg", content2);
+
+        List<String[]> result = processor.encodeAll(List.of(f1, f2));
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0)[1]).isEqualTo("image/png");
+        assertThat(result.get(1)[1]).isEqualTo("image/jpeg");
+    }
+
+    @Test @DisplayName("encodeAll throws InvalidScreenshotException for invalid MIME in list")
+    void encodeAll_invalidMimeInList_throwsInvalidScreenshot() {
+        MultipartFile bad = new MockMultipartFile("f", "bad.pdf", "application/pdf", "data".getBytes());
+        assertThatThrownBy(() -> processor.encodeAll(List.of(bad)))
+                .isInstanceOf(InvalidScreenshotException.class);
     }
 }

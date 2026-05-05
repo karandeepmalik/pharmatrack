@@ -34,7 +34,7 @@ const attachScreenshot = async (filename = 'pay.png') => {
   fireEvent.change(screen.getByLabelText(/upload payment screenshot/i),
     { target: { files: [file] } });
   readerMock.onloadend();
-  await waitFor(() => screen.getByAltText(/payment screenshot preview/i));
+  await waitFor(() => screen.getByAltText(/payment screenshot 1 preview/i));
   return file;
 };
 
@@ -199,7 +199,7 @@ describe('Screenshot upload section — mandatory', () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/upload payment screenshot/i));
     await attachScreenshot();
-    expect(screen.getByAltText(/payment screenshot preview/i)).toBeInTheDocument();
+    expect(screen.getByAltText(/payment screenshot 1 preview/i)).toBeInTheDocument();
   });
 
   test('shows error for non-image file', async () => {
@@ -214,9 +214,9 @@ describe('Screenshot upload section — mandatory', () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/upload payment screenshot/i));
     await attachScreenshot();
-    await userEvent.click(screen.getByRole('button', { name: /remove screenshot/i }));
+    await userEvent.click(screen.getByRole('button', { name: /remove screenshot 1/i }));
     await waitFor(() =>
-      expect(screen.queryByAltText(/payment screenshot preview/i)).not.toBeInTheDocument()
+      expect(screen.queryByRole('img')).not.toBeInTheDocument()
     );
   });
 });
@@ -238,10 +238,10 @@ describe('Preview card', () => {
     );
   });
 
-  test('preview shows screenshot filename when file attached', async () => {
+  test('preview shows screenshot count when file attached', async () => {
     await fillValidForm();
-    await waitFor(() => screen.getByText(/pay\.png attached/i));
-    expect(screen.getByText(/pay\.png attached/i)).toBeInTheDocument();
+    await waitFor(() => screen.getByText(/1 attached/i));
+    expect(screen.getByText(/1 attached/i)).toBeInTheDocument();
   });
 });
 
@@ -360,7 +360,7 @@ describe('Form submission', () => {
     );
   });
 
-  test('calls submitTransaction with correct params including screenshotFile', async () => {
+  test('calls submitTransaction with correct params including screenshotFiles', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
     await userEvent.click(screen.getByRole('button', { name: /submit inventory adjustment/i }));
@@ -370,7 +370,7 @@ describe('Form submission', () => {
           medicineId: 1,
           quantity: 5,
           notes: expect.any(String),
-          screenshotFile: expect.any(File),
+          screenshotFiles: expect.arrayContaining([expect.any(File)]),
         })
       )
     );

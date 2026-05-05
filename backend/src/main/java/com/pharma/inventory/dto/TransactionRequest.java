@@ -5,6 +5,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * DTO for submitting an inventory adjustment (dispatch) request.
  *
@@ -25,18 +28,11 @@ public class TransactionRequest {
     @Size(min = 5, max = 500, message = "Note must be between 5 and 500 characters")
     private String notes;
 
-    /**
-     * Base64-encoded content of the payment screenshot.
-     * Populated by the controller after reading the uploaded MultipartFile.
-     * Optional — may be null if no screenshot was attached.
-     */
-    private String paymentScreenshot;
+    /** Base64-encoded content of each payment screenshot. Populated by the controller. */
+    private List<String> paymentScreenshots = new ArrayList<>();
 
-    /**
-     * MIME type of the payment screenshot, e.g. "image/png", "image/jpeg".
-     * Populated alongside paymentScreenshot.
-     */
-    private String paymentScreenshotType;
+    /** MIME type for each screenshot (parallel list with paymentScreenshots). */
+    private List<String> paymentScreenshotTypes = new ArrayList<>();
 
     /**
      * Optional price per unit override submitted by the user.
@@ -61,14 +57,14 @@ public class TransactionRequest {
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
 
-    public String getPaymentScreenshot() { return paymentScreenshot; }
-    public void setPaymentScreenshot(String paymentScreenshot) {
-        this.paymentScreenshot = paymentScreenshot;
+    public List<String> getPaymentScreenshots() { return paymentScreenshots; }
+    public void setPaymentScreenshots(List<String> paymentScreenshots) {
+        this.paymentScreenshots = paymentScreenshots;
     }
 
-    public String getPaymentScreenshotType() { return paymentScreenshotType; }
-    public void setPaymentScreenshotType(String paymentScreenshotType) {
-        this.paymentScreenshotType = paymentScreenshotType;
+    public List<String> getPaymentScreenshotTypes() { return paymentScreenshotTypes; }
+    public void setPaymentScreenshotTypes(List<String> paymentScreenshotTypes) {
+        this.paymentScreenshotTypes = paymentScreenshotTypes;
     }
 
     public Integer getPricePerUnit() { return pricePerUnit; }

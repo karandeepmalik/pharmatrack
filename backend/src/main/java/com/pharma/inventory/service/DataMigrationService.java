@@ -29,6 +29,7 @@ public class DataMigrationService {
         setDefaultInventoryType();
         dropLegacyUniqueConstraint();
         removeAdminInventory();
+        createTransactionScreenshotsTable();
     }
 
     /** Backfill existing rows that have no inventory_type yet. */
@@ -67,6 +68,23 @@ public class DataMigrationService {
             }
         } catch (Exception e) {
             log.debug("DataMigration: constraint drop skipped — {}", e.getMessage());
+        }
+    }
+
+    /** Create the transaction_screenshots table for prod where ddl-auto=validate won't create it. */
+    private void createTransactionScreenshotsTable() {
+        try {
+            jdbc.execute(
+                "CREATE TABLE IF NOT EXISTS transaction_screenshots (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "transaction_id BIGINT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE, " +
+                "data TEXT NOT NULL, " +
+                "mime_type VARCHAR(50) NOT NULL, " +
+                "display_order INT NOT NULL DEFAULT 0)"
+            );
+            log.info("DataMigration: transaction_screenshots table ensured");
+        } catch (Exception e) {
+            log.debug("DataMigration: transaction_screenshots table skipped — {}", e.getMessage());
         }
     }
 

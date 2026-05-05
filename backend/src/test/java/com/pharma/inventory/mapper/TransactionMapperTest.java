@@ -8,7 +8,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -101,23 +103,43 @@ class TransactionMapperTest {
         assertThat(r.getApprovedAt()).isEqualTo(approvedAt);
     }
 
-    @Test @DisplayName("maps null paymentScreenshot when none uploaded")
-    void toResponse_noScreenshot_nullFields() {
+    @Test @DisplayName("returns empty screenshots list when no screenshots and no legacy data")
+    void toResponse_noScreenshot_emptyList() {
         TransactionResponse r = mapper.toResponse(buildTx(TransactionStatus.PENDING));
-        assertThat(r.getPaymentScreenshot()).isNull();
-        assertThat(r.getPaymentScreenshotType()).isNull();
+        assertThat(r.getScreenshots()).isEmpty();
     }
 
-    @Test @DisplayName("maps payment screenshot Base64 and MIME type")
-    void toResponse_withScreenshot_mapsScreenshotFields() {
+    @Test @DisplayName("falls back to legacy payment_screenshot column for old records")
+    void toResponse_legacyScreenshot_convertedToList() {
         String b64 = Base64.getEncoder().encodeToString("img-data".getBytes());
         Transaction t = buildTx(TransactionStatus.PENDING);
         t.setPaymentScreenshot(b64);
         t.setPaymentScreenshotType("image/jpeg");
 
         TransactionResponse r = mapper.toResponse(t);
-        assertThat(r.getPaymentScreenshot()).isEqualTo(b64);
-        assertThat(r.getPaymentScreenshotType()).isEqualTo("image/jpeg");
+        assertThat(r.getScreenshots()).hasSize(1);
+        assertThat(r.getScreenshots().get(0).getData()).isEqualTo(b64);
+        assertThat(r.getScreenshots().get(0).getMimeType()).isEqualTo("image/jpeg");
+    }
+
+    @Test @DisplayName("uses new screenshots table when both old column and new entities present")
+    void toResponse_newScreenshotsTakePriorityOverLegacy() {
+        String legacyB64 = Base64.getEncoder().encodeToString("legacy".getBytes());
+        String newB64 = Base64.getEncoder().encodeToString("new-img".getBytes());
+
+        Transaction t = buildTx(TransactionStatus.PENDING);
+        t.setPaymentScreenshot(legacyB64);
+        t.setPaymentScreenshotType("image/png");
+
+        TransactionScreenshot ss = new TransactionScreenshot();
+        ss.setData(newB64);
+        ss.setMimeType("image/jpeg");
+        ss.setDisplayOrder(0);
+        t.setScreenshots(new ArrayList<>(List.of(ss)));
+
+        TransactionResponse r = mapper.toResponse(t);
+        assertThat(r.getScreenshots()).hasSize(1);
+        assertThat(r.getScreenshots().get(0).getData()).isEqualTo(newB64);
     }
 
     @Test @DisplayName("maps REJECTED status correctly")

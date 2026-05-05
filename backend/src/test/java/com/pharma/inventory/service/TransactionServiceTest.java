@@ -1,6 +1,7 @@
 package com.pharma.inventory.service;
 
 import com.pharma.inventory.dto.ApprovalRequest;
+import com.pharma.inventory.dto.ScreenshotDto;
 import com.pharma.inventory.dto.TransactionRequest;
 import com.pharma.inventory.dto.TransactionResponse;
 import com.pharma.inventory.entity.*;
@@ -30,6 +31,7 @@ import static org.mockito.Mockito.*;
 class TransactionServiceTest {
 
     @Mock TransactionRepository transactionRepository;
+    @Mock TransactionScreenshotRepository screenshotRepository;
     @Mock UserRepository        userRepository;
     @Mock MedicineRepository    medicineRepository;
     @Mock InventoryRepository   inventoryRepository;
@@ -78,9 +80,7 @@ class TransactionServiceTest {
         Transaction t = Transaction.builder()
                 .id(1L).submittedBy(regularUser).medicine(medicine)
                 .quantity(req.getQuantity()).status(TransactionStatus.PENDING)
-                .notes(req.getNotes())
-                .paymentScreenshot(req.getPaymentScreenshot())
-                .paymentScreenshotType(req.getPaymentScreenshotType()).build();
+                .notes(req.getNotes()).build();
         t.setSubmittedAt(LocalDateTime.now());
         return t;
     }
@@ -89,8 +89,6 @@ class TransactionServiceTest {
         TransactionResponse r = new TransactionResponse();
         r.setId(t.getId()); r.setStatus(t.getStatus().name());
         r.setQuantity(t.getQuantity()); r.setNotes(t.getNotes());
-        r.setPaymentScreenshot(t.getPaymentScreenshot());
-        r.setPaymentScreenshotType(t.getPaymentScreenshotType());
         return r;
     }
 
@@ -118,11 +116,12 @@ class TransactionServiceTest {
             verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 40));
         }
 
-        @Test @DisplayName("persists payment screenshot when provided")
-        void submit_withScreenshot_persistsScreenshot() {
+        @Test @DisplayName("saves TransactionScreenshot entries when screenshots provided")
+        void submit_withScreenshots_savesScreenshotEntities() {
             String b64 = Base64.getEncoder().encodeToString("png".getBytes());
             TransactionRequest req = buildReq("Payment confirmed, dispatching now");
-            req.setPaymentScreenshot(b64); req.setPaymentScreenshotType("image/png");
+            req.setPaymentScreenshots(List.of(b64));
+            req.setPaymentScreenshotTypes(List.of("image/png"));
             Transaction tx = savedTx(req);
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
@@ -135,9 +134,32 @@ class TransactionServiceTest {
 
             transactionService.submit(req, "john.doe");
 
-            verify(transactionRepository).save(argThat(t ->
-                    b64.equals(t.getPaymentScreenshot()) &&
-                    "image/png".equals(t.getPaymentScreenshotType())));
+            verify(screenshotRepository).save(argThat(s ->
+                    b64.equals(s.getData()) && "image/png".equals(s.getMimeType()) && s.getDisplayOrder() == 0));
+        }
+
+        @Test @DisplayName("saves multiple screenshots in display order")
+        void submit_withMultipleScreenshots_savesAllInOrder() {
+            String b64a = Base64.getEncoder().encodeToString("png1".getBytes());
+            String b64b = Base64.getEncoder().encodeToString("jpg2".getBytes());
+            TransactionRequest req = buildReq("Two screenshots dispatched here");
+            req.setPaymentScreenshots(List.of(b64a, b64b));
+            req.setPaymentScreenshotTypes(List.of("image/png", "image/jpeg"));
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR))
+                    .thenReturn(Optional.of(inventory));
+            when(inventoryRepository.save(any())).thenReturn(inventory);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            transactionService.submit(req, "john.doe");
+
+            verify(screenshotRepository, times(2)).save(any());
+            verify(screenshotRepository).save(argThat(s -> s.getDisplayOrder() == 0 && b64a.equals(s.getData())));
+            verify(screenshotRepository).save(argThat(s -> s.getDisplayOrder() == 1 && b64b.equals(s.getData())));
         }
 
         @Test @DisplayName("throws ResourceNotFoundException when user not found")
@@ -279,21 +301,21 @@ class TransactionServiceTest {
             assertThat(result).hasSize(2).containsExactly(r1, r2);
         }
 
-        @Test @DisplayName("returns paymentScreenshot in response when present")
-        void getAll_txWithScreenshot_includesScreenshotInResponse() {
+        @Test @DisplayName("returns screenshots in response when present")
+        void getAll_txWithScreenshots_includesScreenshotsInResponse() {
             String b64 = Base64.getEncoder().encodeToString("img".getBytes());
-            TransactionRequest req = buildReq("Dispatch with payment proof");
-            req.setPaymentScreenshot(b64); req.setPaymentScreenshotType("image/png");
-            Transaction tx = savedTx(req);
+            Transaction tx = savedTx(buildReq("Dispatch with payment proof"));
             TransactionResponse resp = stubResponse(tx);
+            resp.setScreenshots(List.of(new ScreenshotDto(b64, "image/png")));
 
             when(transactionRepository.findAllByOrderBySubmittedAtDesc())
                     .thenReturn(List.of(tx));
             when(transactionMapper.toResponse(tx)).thenReturn(resp);
 
             List<TransactionResponse> result = transactionService.getAll();
-            assertThat(result.get(0).getPaymentScreenshot()).isEqualTo(b64);
-            assertThat(result.get(0).getPaymentScreenshotType()).isEqualTo("image/png");
+            assertThat(result.get(0).getScreenshots()).hasSize(1);
+            assertThat(result.get(0).getScreenshots().get(0).getData()).isEqualTo(b64);
+            assertThat(result.get(0).getScreenshots().get(0).getMimeType()).isEqualTo("image/png");
         }
     }
 
@@ -318,8 +340,8 @@ class TransactionServiceTest {
                     .hasMessageContaining("User").hasMessageContaining("nobody");
         }
 
-        @Test @DisplayName("returns null screenshot when none uploaded")
-        void getByUser_noScreenshot_nullInResponse() {
+        @Test @DisplayName("returns empty screenshots list when no screenshot uploaded")
+        void getByUser_noScreenshot_emptyScreenshotsInResponse() {
             Transaction tx = savedTx(buildReq("Standard dispatch order five"));
             TransactionResponse resp = stubResponse(tx);
 
@@ -328,8 +350,7 @@ class TransactionServiceTest {
                     .thenReturn(List.of(tx));
             when(transactionMapper.toResponse(tx)).thenReturn(resp);
 
-            assertThat(transactionService.getByUser("john.doe").get(0).getPaymentScreenshot())
-                    .isNull();
+            assertThat(transactionService.getByUser("john.doe").get(0).getScreenshots()).isEmpty();
         }
     }
 
@@ -430,28 +451,24 @@ class TransactionServiceTest {
                     .hasMessageContaining("User").hasMessageContaining("ghost-admin");
         }
 
-        @Test @DisplayName("preserves payment screenshot after approval")
-        void approve_preservesScreenshot() {
+        @Test @DisplayName("preserves screenshots after approval")
+        void approve_preservesScreenshots() {
             String b64 = Base64.getEncoder().encodeToString("img".getBytes());
-            pendingTx.setPaymentScreenshot(b64);
-            pendingTx.setPaymentScreenshotType("image/png");
 
             when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
             when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
             when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(transactionMapper.toResponse(any())).thenAnswer(inv -> {
-                Transaction t = inv.getArgument(0);
                 TransactionResponse r = new TransactionResponse();
-                r.setPaymentScreenshot(t.getPaymentScreenshot());
-                r.setPaymentScreenshotType(t.getPaymentScreenshotType());
+                r.setScreenshots(List.of(new ScreenshotDto(b64, "image/png")));
                 return r;
             });
 
             ApprovalRequest req = new ApprovalRequest(); req.setApproved(true);
             TransactionResponse res = transactionService.approve(1L, req, "admin");
 
-            assertThat(res.getPaymentScreenshot()).isEqualTo(b64);
-            assertThat(res.getPaymentScreenshotType()).isEqualTo("image/png");
+            assertThat(res.getScreenshots()).hasSize(1);
+            assertThat(res.getScreenshots().get(0).getData()).isEqualTo(b64);
         }
     }
 }

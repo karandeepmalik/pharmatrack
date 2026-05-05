@@ -5,24 +5,34 @@ import { SCREENSHOT_CONSTRAINTS } from '../../constants';
 const makePngFile = (name = 'pay.png', size = 100) =>
   new File(['x'.repeat(size)], name, { type: 'image/png' });
 
-const makeInputEvent = (file) => ({ target: { files: [file] } });
+const makeInputEvent = (...files) => ({ target: { files } });
+
+const mockFileReader = (result = 'data:image/png;base64,x') => {
+  const reader = { readAsDataURL: jest.fn(), onloadend: null, result };
+  jest.spyOn(global, 'FileReader').mockImplementation(() => reader);
+  return reader;
+};
 
 describe('useScreenshot hook', () => {
   beforeEach(() => jest.clearAllMocks());
 
   // ── Initial state ────────────────────────────────────────────────────
   describe('initial state', () => {
-    test('screenshotFile is null', () => {
+    test('screenshots is empty array', () => {
       const { result } = renderHook(() => useScreenshot());
-      expect(result.current.screenshotFile).toBeNull();
+      expect(result.current.screenshots).toEqual([]);
     });
-    test('screenshotPreview is null', () => {
+    test('hasAnyScreenshot is false', () => {
       const { result } = renderHook(() => useScreenshot());
-      expect(result.current.screenshotPreview).toBeNull();
+      expect(result.current.hasAnyScreenshot).toBe(false);
     });
-    test('screenshotError is empty string', () => {
+    test('hasAnyError is false', () => {
       const { result } = renderHook(() => useScreenshot());
-      expect(result.current.screenshotError).toBe('');
+      expect(result.current.hasAnyError).toBe(false);
+    });
+    test('canAddMore is true', () => {
+      const { result } = renderHook(() => useScreenshot());
+      expect(result.current.canAddMore).toBe(true);
     });
     test('fileInputRef is a ref object', () => {
       const { result } = renderHook(() => useScreenshot());
@@ -30,34 +40,30 @@ describe('useScreenshot hook', () => {
     });
   });
 
-  // ── Valid file ────────────────────────────────────────────────────────
-  describe('handleScreenshotChange — valid PNG', () => {
-    test('sets screenshotFile on valid PNG', () => {
+  // ── addScreenshot — valid file ─────────────────────────────────────────
+  describe('addScreenshot — valid PNG', () => {
+    test('adds screenshot entry with the file', () => {
       const { result } = renderHook(() => useScreenshot());
       const file = makePngFile();
-      const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
-      jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
+      mockFileReader();
 
-      act(() => result.current.handleScreenshotChange(makeInputEvent(file)));
-      expect(result.current.screenshotFile).toBe(file);
+      act(() => result.current.addScreenshot(makeInputEvent(file)));
+
+      expect(result.current.screenshots).toHaveLength(1);
+      expect(result.current.screenshots[0].file).toBe(file);
+      expect(result.current.screenshots[0].error).toBe('');
     });
 
-    test('clears screenshotError on valid file', () => {
+    test('hasAnyScreenshot becomes true after adding a valid file', () => {
       const { result } = renderHook(() => useScreenshot());
-      // First set an error
-      act(() => result.current.handleScreenshotChange(
-        makeInputEvent(new File(['x'], 'bad.pdf', { type: 'application/pdf' }))
-      ));
-      expect(result.current.screenshotError).not.toBe('');
+      mockFileReader();
 
-      // Then pick a valid file
-      const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
-      jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
-      act(() => result.current.handleScreenshotChange(makeInputEvent(makePngFile())));
-      expect(result.current.screenshotError).toBe('');
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile())));
+
+      expect(result.current.hasAnyScreenshot).toBe(true);
     });
 
-    test('sets screenshotPreview after FileReader loads', () => {
+    test('sets preview after FileReader loads', () => {
       const { result } = renderHook(() => useScreenshot());
       let capturedReader;
       jest.spyOn(global, 'FileReader').mockImplementation(() => {
@@ -65,85 +71,131 @@ describe('useScreenshot hook', () => {
         return capturedReader;
       });
 
-      act(() => result.current.handleScreenshotChange(makeInputEvent(makePngFile())));
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile())));
       act(() => capturedReader.onloadend());
 
-      expect(result.current.screenshotPreview).toBe('data:image/png;base64,abc');
+      expect(result.current.screenshots[0].preview).toBe('data:image/png;base64,abc');
     });
   });
 
-  // ── Invalid type ──────────────────────────────────────────────────────
-  describe('handleScreenshotChange — invalid MIME type', () => {
+  // ── addScreenshot — multiple files ────────────────────────────────────
+  describe('addScreenshot — multiple files at once', () => {
+    test('adds two files in a single event', () => {
+      const { result } = renderHook(() => useScreenshot());
+      const f1 = makePngFile('a.png');
+      const f2 = makePngFile('b.png');
+      mockFileReader();
+
+      act(() => result.current.addScreenshot(makeInputEvent(f1, f2)));
+
+      expect(result.current.screenshots).toHaveLength(2);
+      expect(result.current.screenshots[0].file).toBe(f1);
+      expect(result.current.screenshots[1].file).toBe(f2);
+    });
+
+    test('adding two files sequentially accumulates them', () => {
+      const { result } = renderHook(() => useScreenshot());
+      mockFileReader();
+
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile('a.png'))));
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile('b.png'))));
+
+      expect(result.current.screenshots).toHaveLength(2);
+    });
+  });
+
+  // ── addScreenshot — invalid type ──────────────────────────────────────
+  describe('addScreenshot — invalid MIME type', () => {
     test.each(['application/pdf', 'text/plain', 'video/mp4'])(
-      'sets screenshotError for %s',
+      'sets error entry for %s',
       (mime) => {
         const { result } = renderHook(() => useScreenshot());
-        act(() => result.current.handleScreenshotChange(
+        act(() => result.current.addScreenshot(
           makeInputEvent(new File(['x'], 'bad', { type: mime }))
         ));
-        expect(result.current.screenshotError).toMatch(/PNG, JPEG/i);
+        expect(result.current.screenshots[0].error).toMatch(/PNG, JPEG/i);
+        expect(result.current.screenshots[0].file).toBeNull();
       }
     );
 
-    test('does not set screenshotFile for invalid type', () => {
+    test('hasAnyError is true when any entry has an error', () => {
       const { result } = renderHook(() => useScreenshot());
-      act(() => result.current.handleScreenshotChange(
+      act(() => result.current.addScreenshot(
         makeInputEvent(new File(['x'], 'bad.pdf', { type: 'application/pdf' }))
       ));
-      expect(result.current.screenshotFile).toBeNull();
+      expect(result.current.hasAnyError).toBe(true);
     });
   });
 
-  // ── Oversized file ────────────────────────────────────────────────────
-  describe('handleScreenshotChange — oversized file', () => {
+  // ── addScreenshot — oversized file ────────────────────────────────────
+  describe('addScreenshot — oversized file', () => {
     test('sets error when file exceeds MAX_BYTES', () => {
       const { result } = renderHook(() => useScreenshot());
       const big = makePngFile('big.png', 1);
       Object.defineProperty(big, 'size', { value: SCREENSHOT_CONSTRAINTS.MAX_BYTES + 1 });
 
-      act(() => result.current.handleScreenshotChange(makeInputEvent(big)));
-      expect(result.current.screenshotError).toMatch(/5 MB/i);
+      act(() => result.current.addScreenshot(makeInputEvent(big)));
+      expect(result.current.screenshots[0].error).toMatch(/5 MB/i);
     });
 
-    test('does not set screenshotFile when oversized', () => {
+    test('does not set file when oversized', () => {
       const { result } = renderHook(() => useScreenshot());
       const big = makePngFile('big.png', 1);
       Object.defineProperty(big, 'size', { value: SCREENSHOT_CONSTRAINTS.MAX_BYTES + 1 });
 
-      act(() => result.current.handleScreenshotChange(makeInputEvent(big)));
-      expect(result.current.screenshotFile).toBeNull();
+      act(() => result.current.addScreenshot(makeInputEvent(big)));
+      expect(result.current.screenshots[0].file).toBeNull();
     });
   });
 
-  // ── Empty event ────────────────────────────────────────────────────────
+  // ── addScreenshot — empty event ────────────────────────────────────────
   test('no-ops when event has no files', () => {
     const { result } = renderHook(() => useScreenshot());
-    act(() => result.current.handleScreenshotChange({ target: { files: [] } }));
-    expect(result.current.screenshotFile).toBeNull();
-    expect(result.current.screenshotError).toBe('');
+    act(() => result.current.addScreenshot({ target: { files: [] } }));
+    expect(result.current.screenshots).toHaveLength(0);
   });
 
-  // ── handleRemoveScreenshot ─────────────────────────────────────────────
-  describe('handleRemoveScreenshot', () => {
-    test('clears file, preview and error', () => {
+  // ── removeScreenshot ──────────────────────────────────────────────────
+  describe('removeScreenshot', () => {
+    test('removes entry at given index', () => {
       const { result } = renderHook(() => useScreenshot());
-      const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
-      jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
+      mockFileReader();
 
-      act(() => result.current.handleScreenshotChange(makeInputEvent(makePngFile())));
-      act(() => readerMock.onloadend());
-      act(() => result.current.handleRemoveScreenshot());
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile('a.png'))));
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile('b.png'))));
+      act(() => result.current.removeScreenshot(0));
 
-      expect(result.current.screenshotFile).toBeNull();
-      expect(result.current.screenshotPreview).toBeNull();
-      expect(result.current.screenshotError).toBe('');
+      expect(result.current.screenshots).toHaveLength(1);
+      expect(result.current.screenshots[0].file?.name).toBe('b.png');
+    });
+
+    test('hasAnyScreenshot becomes false after removing all', () => {
+      const { result } = renderHook(() => useScreenshot());
+      mockFileReader();
+
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile())));
+      act(() => result.current.removeScreenshot(0));
+
+      expect(result.current.hasAnyScreenshot).toBe(false);
+    });
+  });
+
+  // ── clearAll ──────────────────────────────────────────────────────────
+  describe('clearAll', () => {
+    test('clears all screenshots', () => {
+      const { result } = renderHook(() => useScreenshot());
+      mockFileReader();
+
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile())));
+      act(() => result.current.clearAll());
+
+      expect(result.current.screenshots).toHaveLength(0);
     });
 
     test('clears input ref value', () => {
       const { result } = renderHook(() => useScreenshot());
-      // Manually assign a mock DOM element to the ref
       result.current.fileInputRef.current = { value: 'some-file.png' };
-      act(() => result.current.handleRemoveScreenshot());
+      act(() => result.current.clearAll());
       expect(result.current.fileInputRef.current.value).toBe('');
     });
   });

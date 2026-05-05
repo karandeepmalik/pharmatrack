@@ -23,8 +23,7 @@ const makeTx = (overrides = {}) => ({
   pricePerUnit: null,
   submittedAt: '2026-04-01T10:00:00',
   notes: 'Dispatched to Clinic B for FIP treatment',
-  paymentScreenshot: null,
-  paymentScreenshotType: null,
+  screenshots: null,
   approvedByUsername: null,
   approvedAt: null,
   ...overrides,
@@ -145,9 +144,17 @@ describe('ApproveTransactions — no screenshot uploaded', () => {
 
 describe('ApproveTransactions — with screenshot', () => {
   const txWithScreenshot = makeTx({
-    paymentScreenshot: FAKE_B64,
-    paymentScreenshotType: 'image/png',
+    screenshots: [{ data: FAKE_B64, mimeType: 'image/png' }],
   });
+
+  const openThumbnail = async () => {
+    await waitFor(() =>
+      screen.getByRole('button', { name: /view payment screenshot 1 of 1 for transaction #1/i })
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: /view payment screenshot 1 of 1 for transaction #1/i })
+    );
+  };
 
   test('renders screenshot thumbnail button when screenshot is present', async () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
@@ -155,7 +162,7 @@ describe('ApproveTransactions — with screenshot', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: /view payment screenshot for transaction #1/i })
+        screen.getByRole('button', { name: /view payment screenshot 1 of 1 for transaction #1/i })
       ).toBeInTheDocument()
     );
   });
@@ -164,9 +171,11 @@ describe('ApproveTransactions — with screenshot', () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
+    await waitFor(() =>
+      screen.getByRole('button', { name: /view payment screenshot 1 of 1 for transaction #1/i })
+    );
 
-    const img = screen.getByAltText(/payment screenshot for transaction #1/i);
+    const img = screen.getByAltText(/payment screenshot 1 for transaction #1/i);
     expect(img).toHaveAttribute('src', `data:image/png;base64,${FAKE_B64}`);
   });
 
@@ -174,8 +183,7 @@ describe('ApproveTransactions — with screenshot', () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
-    await userEvent.click(screen.getByRole('button', { name: /view payment screenshot/i }));
+    await openThumbnail();
 
     await waitFor(() =>
       expect(screen.getByRole('dialog')).toBeInTheDocument()
@@ -186,11 +194,10 @@ describe('ApproveTransactions — with screenshot', () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
-    await userEvent.click(screen.getByRole('button', { name: /view payment screenshot/i }));
+    await openThumbnail();
 
     await waitFor(() => screen.getByRole('dialog'));
-    const fullImg = screen.getByAltText(/full payment screenshot for transaction #1/i);
+    const fullImg = screen.getByAltText(/full payment screenshot 1 for transaction #1/i);
     expect(fullImg).toHaveAttribute('src', `data:image/png;base64,${FAKE_B64}`);
   });
 
@@ -198,8 +205,7 @@ describe('ApproveTransactions — with screenshot', () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
-    await userEvent.click(screen.getByRole('button', { name: /view payment screenshot/i }));
+    await openThumbnail();
 
     await waitFor(() => screen.getByRole('button', { name: /close screenshot viewer/i }));
     expect(screen.getByRole('button', { name: /close screenshot viewer/i })).toBeInTheDocument();
@@ -209,8 +215,7 @@ describe('ApproveTransactions — with screenshot', () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
-    await userEvent.click(screen.getByRole('button', { name: /view payment screenshot/i }));
+    await openThumbnail();
 
     await waitFor(() => screen.getByRole('dialog'));
     await userEvent.click(screen.getByRole('button', { name: /close screenshot viewer/i }));
@@ -224,8 +229,7 @@ describe('ApproveTransactions — with screenshot', () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
-    await userEvent.click(screen.getByRole('button', { name: /view payment screenshot/i }));
+    await openThumbnail();
 
     const overlay = await waitFor(() => screen.getByRole('dialog'));
     await userEvent.click(overlay);
@@ -239,8 +243,7 @@ describe('ApproveTransactions — with screenshot', () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
-    await userEvent.click(screen.getByRole('button', { name: /view payment screenshot/i }));
+    await openThumbnail();
 
     await waitFor(() => screen.getByRole('dialog'));
     const downloadLink = screen.getByRole('link', { name: /download/i });
@@ -252,8 +255,7 @@ describe('ApproveTransactions — with screenshot', () => {
     api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
-    await userEvent.click(screen.getByRole('button', { name: /view payment screenshot/i }));
+    await openThumbnail();
 
     await waitFor(() =>
       expect(screen.getByText(/payment screenshot.*transaction #1/i)).toBeInTheDocument()
@@ -262,14 +264,15 @@ describe('ApproveTransactions — with screenshot', () => {
 
   test('uses correct MIME type for JPEG screenshot', async () => {
     const jpegTx = makeTx({
-      paymentScreenshot: FAKE_B64,
-      paymentScreenshotType: 'image/jpeg',
+      screenshots: [{ data: FAKE_B64, mimeType: 'image/jpeg' }],
     });
     api.getAllTransactions.mockResolvedValue({ data: [jpegTx] });
     renderPage();
 
-    await waitFor(() => screen.getByRole('button', { name: /view payment screenshot/i }));
-    const img = screen.getByAltText(/payment screenshot for transaction #1/i);
+    await waitFor(() =>
+      screen.getByRole('button', { name: /view payment screenshot 1 of 1 for transaction #1/i })
+    );
+    const img = screen.getByAltText(/payment screenshot 1 for transaction #1/i);
     expect(img).toHaveAttribute('src', `data:image/jpeg;base64,${FAKE_B64}`);
   });
 });
@@ -452,8 +455,8 @@ describe('ApproveTransactions — multiple transactions', () => {
   test('renders screenshot for tx with one, and "No screenshot" for tx without', async () => {
     api.getAllTransactions.mockResolvedValue({
       data: [
-        makeTx({ id: 1, status: 'PENDING', paymentScreenshot: FAKE_B64, paymentScreenshotType: 'image/png' }),
-        makeTx({ id: 2, status: 'PENDING', notes: 'Second dispatch note here', paymentScreenshot: null }),
+        makeTx({ id: 1, status: 'PENDING', screenshots: [{ data: FAKE_B64, mimeType: 'image/png' }] }),
+        makeTx({ id: 2, status: 'PENDING', notes: 'Second dispatch note here', screenshots: null }),
       ],
     });
     renderPage();
@@ -461,7 +464,7 @@ describe('ApproveTransactions — multiple transactions', () => {
     // tx #1 has a screenshot — thumbnail button visible
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: /view payment screenshot for transaction #1/i })
+        screen.getByRole('button', { name: /view payment screenshot 1 of 1 for transaction #1/i })
       ).toBeInTheDocument()
     );
     // tx #2 has no screenshot — "No screenshot" label visible

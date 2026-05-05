@@ -26,7 +26,7 @@ export default function SubmitTransaction() {
   // ── Notes ────────────────────────────────────────────────────────────
   const [notes, setNotes] = useState('');
 
-  // ── Screenshot (all state lives in hook) ─────────────────────────────
+  // ── Screenshots (all state lives in hook) ────────────────────────────
   const screenshot = useScreenshot();
 
   // ── UI feedback ──────────────────────────────────────────────────────
@@ -75,6 +75,7 @@ export default function SubmitTransaction() {
   );
 
   const maxQty = selectedItem?.quantity ?? 0;
+  const validScreenshots = screenshot.screenshots.filter((s) => s.file != null);
 
   const isFormValid =
     Boolean(selectedPharma) &&
@@ -84,8 +85,8 @@ export default function SubmitTransaction() {
     Number(quantity) >= 1 &&
     Number(quantity) <= maxQty &&
     notes.trim().length >= NOTES_CONSTRAINTS.MIN_LENGTH &&
-    Boolean(screenshot.screenshotFile) &&
-    !screenshot.screenshotError;
+    screenshot.hasAnyScreenshot &&
+    !screenshot.hasAnyError;
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const handleInventoryTypeChange = (e) => {
@@ -125,7 +126,7 @@ export default function SubmitTransaction() {
         medicineId: selectedItem.medicineId,
         quantity: Number(quantity),
         notes: notes.trim(),
-        screenshotFile: screenshot.screenshotFile,
+        screenshotFiles: validScreenshots.map((s) => s.file),
         pricePerUnit: priceOverride !== '' ? parseInt(priceOverride, 10) : undefined,
         inventoryType: selectedInventoryType,
       });
@@ -134,7 +135,7 @@ export default function SubmitTransaction() {
       setSelectedInventoryType('REGULAR');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
       setQuantity(''); setNotes(''); setPriceOverride('');
-      screenshot.handleRemoveScreenshot();
+      screenshot.clearAll();
 
       const r = await api.getAvailableInventory();
       setInventory(r.data);
@@ -266,12 +267,11 @@ export default function SubmitTransaction() {
 
         {/* Screenshot upload — mandatory */}
         <ScreenshotUpload
+          screenshots={screenshot.screenshots}
+          canAddMore={screenshot.canAddMore}
           fileInputRef={screenshot.fileInputRef}
-          screenshotPreview={screenshot.screenshotPreview}
-          screenshotError={screenshot.screenshotError}
-          screenshotFile={screenshot.screenshotFile}
-          onFileChange={screenshot.handleScreenshotChange}
-          onRemove={screenshot.handleRemoveScreenshot}
+          onAdd={screenshot.addScreenshot}
+          onRemove={screenshot.removeScreenshot}
           required
         />
 
@@ -280,7 +280,7 @@ export default function SubmitTransaction() {
           item={selectedItem}
           quantity={quantity}
           notes={notes}
-          screenshotFile={screenshot.screenshotFile}
+          screenshotCount={validScreenshots.length}
           pricePerUnit={priceOverride !== '' ? parseInt(priceOverride, 10) : undefined}
         />
 

@@ -48,6 +48,27 @@ async function apiDelete(url, token) {
   return { status: res.status };
 }
 
+async function apiPostForm(url, fields, token) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) {
+    if (Array.isArray(v)) {
+      for (const item of v) form.append(k, item);
+    } else {
+      form.append(k, v);
+    }
+  }
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { method: 'POST', headers, body: form });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  return { status: res.status, data };
+}
+
+function makeFakePng(label = 'A') {
+  return new File([`fake-png-${label}`], `screenshot-${label}.png`, { type: 'image/png' });
+}
+
 async function run() {
   console.log('\nPharmaTrack E2E Tests\n');
 
@@ -706,6 +727,101 @@ async function run() {
   await test('Unauthenticated cannot access reports (401)', async () => {
     const r = await apiGet(`${API}/reports/inventory-valuation`);
     assert(r.status === 401 || r.status === 403, `Expected 401, got ${r.status}`);
+  });
+
+  // ── Multi-Screenshot Transactions ────────────────────────────────────
+  console.log('\n-- Multi-Screenshot Transactions');
+
+  // Find a medicine the user (john.doe) has access to
+  let txMedicineId;
+  await test('User has available inventory to submit against', async () => {
+    const r = await apiGet(`${API}/inventory/available`, userToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const item = r.data.find(i => i.quantity >= 2 && i.inventoryType === 'REGULAR');
+    assert(item, 'No REGULAR inventory item with qty >= 2 found for user');
+    txMedicineId = item.medicineId;
+  });
+
+  let singleShotTxId;
+  await test('User can submit transaction with 1 screenshot', async () => {
+    if (!txMedicineId) return;
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(txMedicineId),
+      quantity: '1',
+      notes: 'E2E single-screenshot test',
+      inventoryType: 'REGULAR',
+      screenshots: [makeFakePng('1')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.id, 'Missing transaction id');
+    singleShotTxId = r.data.id;
+  });
+
+  await test('Single-screenshot transaction response has screenshots array with 1 entry', async () => {
+    if (!singleShotTxId) return;
+    const r = await apiGet(`${API}/transactions/my`, userToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const tx = r.data.find(t => t.id === singleShotTxId);
+    assert(tx, `Transaction #${singleShotTxId} not found in user transactions`);
+    assert(Array.isArray(tx.screenshots), 'screenshots field should be an array');
+    assert(tx.screenshots.length === 1, `Expected 1 screenshot, got ${tx.screenshots.length}`);
+    assert(tx.screenshots[0].data, 'Screenshot entry missing data field');
+    assert(tx.screenshots[0].mimeType === 'image/png', `Expected image/png, got ${tx.screenshots[0].mimeType}`);
+  });
+
+  let multiShotTxId;
+  await test('User can submit transaction with 2 screenshots', async () => {
+    if (!txMedicineId) return;
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(txMedicineId),
+      quantity: '1',
+      notes: 'E2E multi-screenshot test two files',
+      inventoryType: 'REGULAR',
+      screenshots: [makeFakePng('A'), makeFakePng('B')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    multiShotTxId = r.data.id;
+  });
+
+  await test('Multi-screenshot transaction response has screenshots array with 2 entries', async () => {
+    if (!multiShotTxId) return;
+    const r = await apiGet(`${API}/transactions/my`, userToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const tx = r.data.find(t => t.id === multiShotTxId);
+    assert(tx, `Transaction #${multiShotTxId} not found in user transactions`);
+    assert(Array.isArray(tx.screenshots), 'screenshots field should be an array');
+    assert(tx.screenshots.length === 2, `Expected 2 screenshots, got ${tx.screenshots.length}`);
+    assert(tx.screenshots[0].data && tx.screenshots[1].data, 'Both screenshot entries must have data');
+  });
+
+  await test('Admin sees multi-screenshot transaction with both screenshots', async () => {
+    if (!multiShotTxId) return;
+    const r = await apiGet(`${API}/transactions`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const tx = r.data.find(t => t.id === multiShotTxId);
+    assert(tx, `Transaction #${multiShotTxId} not found in admin transaction list`);
+    assert(Array.isArray(tx.screenshots) && tx.screenshots.length === 2,
+      `Expected 2 screenshots in admin view, got ${tx.screenshots?.length}`);
+  });
+
+  await test('Submitting transaction with no screenshots returns 400', async () => {
+    if (!txMedicineId) return;
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(txMedicineId),
+      quantity: '1',
+      notes: 'E2E no-screenshot test should fail',
+      inventoryType: 'REGULAR',
+    }, userToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  // TEARDOWN: Reject created test transactions so inventory is freed
+  await test('[TEARDOWN] Admin rejects screenshot test transactions', async () => {
+    for (const txId of [singleShotTxId, multiShotTxId]) {
+      if (!txId) continue;
+      const r = await apiPost(`${API}/transactions/${txId}/approve`, { approved: false }, adminToken);
+      assert(r.status === 200, `Teardown reject failed for tx #${txId}: ${r.status}`);
+    }
   });
 
   // ── Summary ───────────────────────────────────────────────────────────

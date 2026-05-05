@@ -1,6 +1,7 @@
 package com.pharma.inventory.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pharma.inventory.dto.ScreenshotDto;
 import com.pharma.inventory.dto.TransactionResponse;
 import com.pharma.inventory.config.AppConfig;
 import com.pharma.inventory.config.SecurityConfig;
@@ -70,8 +71,10 @@ class TransactionControllerTest {
 
         @Test
         @WithMockUser(username = "john.doe", roles = "USER")
-        @DisplayName("submit without screenshot returns 400 — screenshot is mandatory")
+        @DisplayName("submit without screenshots returns 400 — screenshot is mandatory")
         void submit_noScreenshot_400() throws Exception {
+            when(screenshotProcessor.encodeAll(any())).thenReturn(List.of());
+
             mockMvc.perform(multipart("/api/transactions")
                     .param("medicineId", "1")
                     .param("quantity", "10")
@@ -82,17 +85,18 @@ class TransactionControllerTest {
 
         @Test
         @WithMockUser(username = "john.doe", roles = "USER")
-        @DisplayName("submit with PNG screenshot encodes it to Base64 and sets MIME type")
-        void submit_withPngScreenshot_encodedAndStored() throws Exception {
-            byte[] pngBytes = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47}; // PNG magic bytes
+        @DisplayName("submit with one PNG screenshot encodes it to Base64 and sets MIME type")
+        void submit_withOnePngScreenshot_encodedAndStored() throws Exception {
+            byte[] pngBytes = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47};
             MockMultipartFile screenshot = new MockMultipartFile(
-                    "screenshot", "payment.png", "image/png", pngBytes);
+                    "screenshots", "payment.png", "image/png", pngBytes);
 
             String expectedB64 = Base64.getEncoder().encodeToString(pngBytes);
 
-            sampleResponse.setPaymentScreenshot(expectedB64);
-            sampleResponse.setPaymentScreenshotType("image/png");
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.<String[]>of(new String[]{expectedB64, "image/png"}));
 
+            sampleResponse.setScreenshots(List.of(new ScreenshotDto(expectedB64, "image/png")));
             when(transactionService.submit(any(), eq("john.doe"))).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart("/api/transactions")
@@ -102,8 +106,40 @@ class TransactionControllerTest {
                     .param("notes", "Dispatched to clinic B for FIP treatment")
                     .with(csrf()))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.paymentScreenshot").value(expectedB64))
-                    .andExpect(jsonPath("$.paymentScreenshotType").value("image/png"));
+                    .andExpect(jsonPath("$.screenshots[0].data").value(expectedB64))
+                    .andExpect(jsonPath("$.screenshots[0].mimeType").value("image/png"));
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("submit with two screenshots stores both in order")
+        void submit_withTwoScreenshots_bothStored() throws Exception {
+            byte[] png1 = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47};
+            byte[] png2 = "jpeg-data".getBytes();
+            MockMultipartFile ss1 = new MockMultipartFile("screenshots", "p1.png", "image/png", png1);
+            MockMultipartFile ss2 = new MockMultipartFile("screenshots", "p2.jpg", "image/jpeg", png2);
+
+            String b64a = Base64.getEncoder().encodeToString(png1);
+            String b64b = Base64.getEncoder().encodeToString(png2);
+
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.of(new String[]{b64a, "image/png"}, new String[]{b64b, "image/jpeg"}));
+
+            sampleResponse.setScreenshots(List.of(
+                    new ScreenshotDto(b64a, "image/png"),
+                    new ScreenshotDto(b64b, "image/jpeg")));
+            when(transactionService.submit(any(), eq("john.doe"))).thenReturn(sampleResponse);
+
+            mockMvc.perform(multipart("/api/transactions")
+                    .file(ss1).file(ss2)
+                    .param("medicineId", "1")
+                    .param("quantity", "10")
+                    .param("notes", "Dispatched to clinic B for FIP treatment")
+                    .with(csrf()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.screenshots", hasSize(2)))
+                    .andExpect(jsonPath("$.screenshots[0].mimeType").value("image/png"))
+                    .andExpect(jsonPath("$.screenshots[1].mimeType").value("image/jpeg"));
         }
 
         @Test
@@ -111,9 +147,12 @@ class TransactionControllerTest {
         @DisplayName("submit with JPEG screenshot is accepted")
         void submit_withJpegScreenshot_200() throws Exception {
             MockMultipartFile screenshot = new MockMultipartFile(
-                    "screenshot", "payment.jpg", "image/jpeg", "jpeg-data".getBytes());
+                    "screenshots", "payment.jpg", "image/jpeg", "jpeg-data".getBytes());
 
-            sampleResponse.setPaymentScreenshotType("image/jpeg");
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.<String[]>of(new String[]{"anY=", "image/jpeg"}));
+
+            sampleResponse.setScreenshots(List.of(new ScreenshotDto("anY=", "image/jpeg")));
             when(transactionService.submit(any(), eq("john.doe"))).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart("/api/transactions")
@@ -123,7 +162,7 @@ class TransactionControllerTest {
                     .param("notes", "Payment confirmed for clinic B dispatch")
                     .with(csrf()))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.paymentScreenshotType").value("image/jpeg"));
+                    .andExpect(jsonPath("$.screenshots[0].mimeType").value("image/jpeg"));
         }
 
         @Test
@@ -131,10 +170,9 @@ class TransactionControllerTest {
         @DisplayName("submit with non-image file returns 400")
         void submit_nonImageFile_400() throws Exception {
             MockMultipartFile badFile = new MockMultipartFile(
-                    "screenshot", "payment.pdf", "application/pdf", "pdf-content".getBytes());
+                    "screenshots", "payment.pdf", "application/pdf", "pdf-content".getBytes());
 
-            when(screenshotProcessor.hasScreenshot(any())).thenReturn(true);
-            when(screenshotProcessor.encodeToBase64(any()))
+            when(screenshotProcessor.encodeAll(any()))
                     .thenThrow(new InvalidScreenshotException("Must be an image file"));
 
             mockMvc.perform(multipart("/api/transactions")
@@ -162,7 +200,10 @@ class TransactionControllerTest {
         @DisplayName("submit with notes too short returns 400")
         void submit_notesTooShort_400() throws Exception {
             MockMultipartFile screenshot = new MockMultipartFile(
-                    "screenshot", "pay.png", "image/png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
+                    "screenshots", "pay.png", "image/png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
+
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.<String[]>of(new String[]{"anY=", "image/png"}));
             when(transactionService.submit(any(), anyString()))
                     .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
 
@@ -207,32 +248,30 @@ class TransactionControllerTest {
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("returns list including paymentScreenshot and paymentScreenshotType")
-        void getAll_includesScreenshotFields() throws Exception {
+        @DisplayName("returns list including screenshots array")
+        void getAll_includesScreenshots() throws Exception {
             String b64 = Base64.getEncoder().encodeToString("img-bytes".getBytes());
-            sampleResponse.setPaymentScreenshot(b64);
-            sampleResponse.setPaymentScreenshotType("image/png");
+            sampleResponse.setScreenshots(List.of(new ScreenshotDto(b64, "image/png")));
 
             when(transactionService.getAll()).thenReturn(List.of(sampleResponse));
 
             mockMvc.perform(get("/api/transactions"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].paymentScreenshot").value(b64))
-                    .andExpect(jsonPath("$[0].paymentScreenshotType").value("image/png"));
+                    .andExpect(jsonPath("$[0].screenshots[0].data").value(b64))
+                    .andExpect(jsonPath("$[0].screenshots[0].mimeType").value("image/png"));
         }
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("returns null paymentScreenshot when none was uploaded")
-        void getAll_noScreenshot_nullField() throws Exception {
-            sampleResponse.setPaymentScreenshot(null);
-            sampleResponse.setPaymentScreenshotType(null);
+        @DisplayName("returns empty screenshots list when none uploaded")
+        void getAll_noScreenshot_emptyArray() throws Exception {
+            sampleResponse.setScreenshots(List.of());
 
             when(transactionService.getAll()).thenReturn(List.of(sampleResponse));
 
             mockMvc.perform(get("/api/transactions"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].paymentScreenshot").doesNotExist());
+                    .andExpect(jsonPath("$[0].screenshots").isEmpty());
         }
 
         @Test
@@ -252,35 +291,33 @@ class TransactionControllerTest {
 
         @Test
         @WithMockUser(username = "john.doe", roles = "USER")
-        @DisplayName("returns user's transactions including screenshot data")
-        void getMy_includesScreenshotFields() throws Exception {
+        @DisplayName("returns user's transactions including screenshots array")
+        void getMy_includesScreenshots() throws Exception {
             String b64 = Base64.getEncoder().encodeToString("my-img".getBytes());
-            sampleResponse.setPaymentScreenshot(b64);
-            sampleResponse.setPaymentScreenshotType("image/jpeg");
+            sampleResponse.setScreenshots(List.of(new ScreenshotDto(b64, "image/jpeg")));
 
             when(transactionService.getByUser("john.doe")).thenReturn(List.of(sampleResponse));
 
             mockMvc.perform(get("/api/transactions/my"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].paymentScreenshot").value(b64))
-                    .andExpect(jsonPath("$[0].paymentScreenshotType").value("image/jpeg"));
+                    .andExpect(jsonPath("$[0].screenshots[0].data").value(b64))
+                    .andExpect(jsonPath("$[0].screenshots[0].mimeType").value("image/jpeg"));
         }
     }
 
     // ── POST /api/transactions/{id}/approve ────────────────────────────
 
     @Nested
-    @DisplayName("POST /api/transactions/{id}/approve — approval preserves screenshot")
+    @DisplayName("POST /api/transactions/{id}/approve — approval preserves screenshots")
     class Approve {
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("approve response includes screenshot from original submission")
-        void approve_responseContainsScreenshot() throws Exception {
+        @DisplayName("approve response includes screenshots from original submission")
+        void approve_responseContainsScreenshots() throws Exception {
             String b64 = Base64.getEncoder().encodeToString("screenshot".getBytes());
             sampleResponse.setStatus("APPROVED");
-            sampleResponse.setPaymentScreenshot(b64);
-            sampleResponse.setPaymentScreenshotType("image/png");
+            sampleResponse.setScreenshots(List.of(new ScreenshotDto(b64, "image/png")));
 
             when(transactionService.approve(eq(1L), any(), eq("admin"))).thenReturn(sampleResponse);
 
@@ -290,8 +327,8 @@ class TransactionControllerTest {
                     .content("{\"approved\": true}"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value("APPROVED"))
-                    .andExpect(jsonPath("$.paymentScreenshot").value(b64))
-                    .andExpect(jsonPath("$.paymentScreenshotType").value("image/png"));
+                    .andExpect(jsonPath("$.screenshots[0].data").value(b64))
+                    .andExpect(jsonPath("$.screenshots[0].mimeType").value("image/png"));
         }
     }
 
