@@ -13,7 +13,7 @@ public class InventoryAdjustment {
     @Column(nullable=false) private String adjustmentType;
     @Column(length=500) private String note;
     @Column(nullable=false) private boolean internalMovement;
-    @Enumerated(EnumType.STRING) @Column(name="inventory_type",nullable=false)
+    @Convert(converter = InventoryTypeConverter.class) @Column(name="inventory_type",nullable=false)
     private Inventory.InventoryType inventoryType;
     @Column(nullable=false) private LocalDateTime adjustedAt;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="adjusted_by_id") private User adjustedBy;
