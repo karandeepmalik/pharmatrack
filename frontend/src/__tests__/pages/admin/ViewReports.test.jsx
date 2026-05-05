@@ -49,7 +49,7 @@ describe('ViewReports — render', () => {
 describe('ViewReports — inventory by user report', () => {
   test('generates inventory-by-user report', async () => {
     api.getReportInventoryByUser.mockResolvedValue(
-      sampleReport('INVENTORY_BY_USER', 'CURRENT INVENTORY LEVEL BY USER\nJohn Doe: 50 units')
+      sampleReport('INVENTORY_BY_USER', 'CURRENT MEDICINE STOCK PER USER\nJohn Doe: 50 units')
     );
     renderPage();
 
@@ -108,7 +108,7 @@ describe('ViewReports — inventory by user report', () => {
 describe('ViewReports — inventory valuation report', () => {
   test('generates inventory-valuation report', async () => {
     api.getReportInventoryValuation.mockResolvedValue(
-      sampleReport('INVENTORY_VALUATION', 'CURRENT INVENTORY VALUATION\nTOTAL VALUATION: Rs 200,000')
+      sampleReport('INVENTORY_VALUATION', 'CURRENT MEDICINE STOCK VALUATION\nTOTAL VALUATION: Rs 200,000')
     );
     renderPage();
 
@@ -126,7 +126,7 @@ describe('ViewReports — inventory valuation report', () => {
 });
 
 describe("ViewReports — today's sales report", () => {
-  test("generates today-sales report with default 1 day", async () => {
+  test("generates today-sales report with default date range (today)", async () => {
     api.getReportTodaySales.mockResolvedValue(
       sampleReport('TODAY_SALES', "TODAY'S SALES\nJohn Doe:\n  Shield FX Vial\nTOTAL: Rs 12,000")
     );
@@ -141,35 +141,48 @@ describe("ViewReports — today's sales report", () => {
     await waitFor(() =>
       expect(screen.getByText(/total: rs 12,000/i)).toBeInTheDocument()
     );
-    expect(api.getReportTodaySales).toHaveBeenCalledWith(1);
+    expect(api.getReportTodaySales).toHaveBeenCalledWith(
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
+    );
   });
 
-  test("shows time period input when today-sales is selected", async () => {
+  test("shows From Date and To Date inputs when today-sales is selected", async () => {
     renderPage();
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
-    expect(screen.getByLabelText(/time period/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/time period/i)).toHaveValue(1);
+    expect(screen.getByLabelText(/from date/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/to date/i)).toBeInTheDocument();
   });
 
-  test("passes selected days to API call", async () => {
+  test("from and to date inputs default to today", async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
+    const today = new Date().toISOString().slice(0, 10);
+    expect(screen.getByLabelText(/from date/i)).toHaveValue(today);
+    expect(screen.getByLabelText(/to date/i)).toHaveValue(today);
+  });
+
+  test("passes selected date range to API call", async () => {
     api.getReportTodaySales.mockResolvedValue(
       sampleReport('TODAY_SALES', 'SALES - 01 May 2026 to 07 May 2026\nTOTAL: Rs 0')
     );
     renderPage();
 
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
-    fireEvent.change(screen.getByLabelText(/time period/i), { target: { value: '7' } });
+    fireEvent.change(screen.getByLabelText(/from date/i), { target: { value: '2026-05-01' } });
+    fireEvent.change(screen.getByLabelText(/to date/i), { target: { value: '2026-05-07' } });
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
-      expect(api.getReportTodaySales).toHaveBeenCalledWith(7)
+      expect(api.getReportTodaySales).toHaveBeenCalledWith('2026-05-01', '2026-05-07')
     );
   });
 
-  test("time period input is not shown for other reports", async () => {
+  test("date range inputs are not shown for other reports", async () => {
     renderPage();
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-by-user');
-    expect(screen.queryByLabelText(/time period/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/from date/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/to date/i)).not.toBeInTheDocument();
   });
 });
 
