@@ -131,7 +131,7 @@ export default function SubmitTransaction() {
         inventoryType: selectedInventoryType,
       });
 
-      setSuccessMessage('Inventory adjustment submitted successfully and is pending admin approval.');
+      setSuccessMessage('Medicine movement submitted successfully and is pending admin approval.');
       setSelectedInventoryType('REGULAR');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
       setQuantity(''); setNotes(''); setPriceOverride('');
@@ -154,7 +154,7 @@ export default function SubmitTransaction() {
   return (
     <div className="page submit-transaction-page">
       <div className="page-header">
-        <h1>Submit Inventory Adjustment</h1>
+        <h1>Submit Medicine Movement</h1>
         <Link to="/user/dashboard" className="btn btn-secondary">← Back</Link>
       </div>
 
@@ -253,10 +253,10 @@ export default function SubmitTransaction() {
         {/* Notes */}
         <div className="form-group">
           <label htmlFor="notes-input">
-            Adjustment Note <span className="required">*</span>
+            Medicine Movement Note <span className="required">*</span>
           </label>
           <textarea id="notes-input" rows={3}
-            placeholder="e.g. Dispatched to clinic B for FIP treatment"
+            placeholder="e.g. Sent to Jari"
             value={notes} onChange={(e) => setNotes(e.target.value)}
             maxLength={NOTES_CONSTRAINTS.MAX_LENGTH} />
           <small>
@@ -285,7 +285,7 @@ export default function SubmitTransaction() {
         />
 
         <button type="submit" disabled={!isFormValid || submitting} className="btn btn-primary">
-          {submitting ? 'Submitting…' : 'Submit Inventory Adjustment'}
+          {submitting ? 'Submitting…' : 'Submit Medicine Movement'}
         </button>
       </form>
     </div>
