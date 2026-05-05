@@ -94,7 +94,7 @@ class TransactionControllerTest {
             String expectedB64 = Base64.getEncoder().encodeToString(pngBytes);
 
             when(screenshotProcessor.encodeAll(any()))
-                    .thenReturn(List.of(new String[]{expectedB64, "image/png"}));
+                    .thenReturn(List.<String[]>of(new String[]{expectedB64, "image/png"}));
 
             sampleResponse.setScreenshots(List.of(new ScreenshotDto(expectedB64, "image/png")));
             when(transactionService.submit(any(), eq("john.doe"))).thenReturn(sampleResponse);
@@ -150,7 +150,7 @@ class TransactionControllerTest {
                     "screenshots", "payment.jpg", "image/jpeg", "jpeg-data".getBytes());
 
             when(screenshotProcessor.encodeAll(any()))
-                    .thenReturn(List.of(new String[]{"anY=", "image/jpeg"}));
+                    .thenReturn(List.<String[]>of(new String[]{"anY=", "image/jpeg"}));
 
             sampleResponse.setScreenshots(List.of(new ScreenshotDto("anY=", "image/jpeg")));
             when(transactionService.submit(any(), eq("john.doe"))).thenReturn(sampleResponse);
@@ -203,7 +203,7 @@ class TransactionControllerTest {
                     "screenshots", "pay.png", "image/png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
 
             when(screenshotProcessor.encodeAll(any()))
-                    .thenReturn(List.of(new String[]{"anY=", "image/png"}));
+                    .thenReturn(List.<String[]>of(new String[]{"anY=", "image/png"}));
             when(transactionService.submit(any(), anyString()))
                     .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
 
