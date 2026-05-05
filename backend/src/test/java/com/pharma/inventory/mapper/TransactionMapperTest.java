@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
@@ -134,7 +135,7 @@ class TransactionMapperTest {
         ss.setData(newB64);
         ss.setMimeType("image/jpeg");
         ss.setDisplayOrder(0);
-        t.getScreenshots().add(ss);
+        t.setScreenshots(new ArrayList<>(List.of(ss)));
 
         TransactionResponse r = mapper.toResponse(t);
         assertThat(r.getScreenshots()).hasSize(1);
