@@ -215,6 +215,7 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.inventoryByUser();
 
+            assertThat(r.getContent()).contains("REGULAR MEDICINE STOCK");
             assertThat(r.getContent()).contains("Shield FX");
             assertThat(r.getContent()).contains("ADMIN MEDICINE STOCK");
         }
@@ -229,8 +230,9 @@ class ReportServiceTest {
             ReportResponse r = reportService.inventoryByUser();
 
             String content = r.getContent();
+            assertThat(content).contains("REGULAR MEDICINE STOCK");
             assertThat(content).contains("ADMIN MEDICINE STOCK");
-            int posRegular = content.indexOf("Shield FX\n");
+            int posRegular = content.indexOf("REGULAR MEDICINE STOCK");
             int posAdmin   = content.indexOf("ADMIN MEDICINE STOCK");
             assertThat(posRegular).isLessThan(posAdmin);
             // Admin section should have the admin stock quantity
@@ -457,8 +459,22 @@ class ReportServiceTest {
 
             assertThat(r.getReportType()).isEqualTo("DAILY_REPORT");
             assertThat(r.getContent()).contains("DAILY REPORT");
+            assertThat(r.getContent()).contains("REGULAR MEDICINE STOCK");
+            assertThat(r.getContent()).contains("ADMIN MEDICINE STOCK");
             assertThat(r.getContent()).contains("Shield FX");
             assertThat(r.getContent()).doesNotContain("INVENTORY COUNTS");
+        }
+
+        @Test
+        void regularSectionAppearsBeforeAdminSection() {
+            stubEmpty();
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            String content = r.getContent();
+            int posRegular = content.indexOf("REGULAR MEDICINE STOCK");
+            int posAdmin   = content.indexOf("ADMIN MEDICINE STOCK");
+            assertThat(posRegular).isLessThan(posAdmin);
         }
 
         @Test
