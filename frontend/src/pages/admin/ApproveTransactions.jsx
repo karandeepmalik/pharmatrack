@@ -220,7 +220,7 @@ export default function ApproveTransactions() {
                       {new Date(tx.approvedAt).toLocaleString()}
                     </p>
                   )}
-                  <p><strong>Medicine Movement Note:</strong>{' '}
+                  <p><strong>Medicine Dispatch Note:</strong>{' '}
                     <span className="tx-notes">{tx.notes}</span>
                   </p>
                 </div>
