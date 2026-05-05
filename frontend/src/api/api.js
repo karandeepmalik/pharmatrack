@@ -83,7 +83,7 @@ export const adminChangePassword = (id, data)   => api.put(`/users/${id}/passwor
 // ── Reports ────────────────────────────────────────────────────────────
 export const getReportInventoryByUser    = ()      => api.get('/reports/inventory-by-user');
 export const getReportInventoryValuation = ()      => api.get('/reports/inventory-valuation');
-export const getReportTodaySales         = ()      => api.get('/reports/today-sales');
+export const getReportTodaySales         = (days = 1) => api.get('/reports/today-sales', { params: { days } });
 
 /**
  * Fetch the daily report.
