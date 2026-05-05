@@ -72,7 +72,7 @@ public class Transaction {
      * The inventory bucket this transaction was deducted from.
      * Null means REGULAR_MEDICINE_STOCK (backward compatible with existing records).
      */
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = InventoryTypeConverter.class)
     @Column(name = "inventory_type", length = 30)
     private Inventory.InventoryType inventoryType;
 

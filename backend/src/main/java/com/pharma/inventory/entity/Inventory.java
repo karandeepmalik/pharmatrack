@@ -17,7 +17,7 @@ public class Inventory {
     @Column(length=500) private String lastNote;
     @Column(nullable=false) private LocalDateTime lastUpdated;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = InventoryTypeConverter.class)
     @Column(name="inventory_type", nullable=false, columnDefinition="VARCHAR(30) DEFAULT 'REGULAR_MEDICINE_STOCK'")
     @Builder.Default
     private InventoryType inventoryType = InventoryType.REGULAR_MEDICINE_STOCK;
