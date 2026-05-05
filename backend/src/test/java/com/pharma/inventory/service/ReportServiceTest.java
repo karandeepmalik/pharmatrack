@@ -422,6 +422,20 @@ class ReportServiceTest {
 
             assertThat(r.getContent()).contains("Special dispatch for FIP treatment");
         }
+
+        @Test
+        void pricePerUnitOverrideIsUsedInsteadOfDefaultMedicinePrice() {
+            Transaction tx = makeTx(1L, john, vial, 1,
+                    Transaction.TransactionStatus.APPROVED, "override price test");
+            tx.setPricePerUnit(3500);
+            when(transactionRepository.findApprovedBetween(any(Transaction.TransactionStatus.class), any(LocalDateTime.class), any(LocalDateTime.class)))
+                    .thenReturn(List.of(tx));
+
+            ReportResponse r = reportService.todaySales();
+
+            assertThat(r.getContent()).contains("3,500");
+            assertThat(r.getContent()).doesNotContain("4,000");
+        }
     }
 
     @Nested @DisplayName("dailyReport")

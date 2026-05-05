@@ -233,7 +233,8 @@ public class ReportService {
             long userTotal = 0;
             for (Transaction tx : entry.getValue()) {
                 Medicine med = tx.getMedicine();
-                long amount = (long) tx.getQuantity() * med.getPrice();
+                int price = tx.getPricePerUnit() != null ? tx.getPricePerUnit() : med.getPrice();
+                long amount = (long) tx.getQuantity() * price;
                 userTotal += amount;
 
                 int specInt = med.getSpecification().intValue();

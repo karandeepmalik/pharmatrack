@@ -71,19 +71,30 @@ public class DataMigrationService {
                 "UPDATE inventory SET inventory_type = 'REGULAR_MEDICINE_STOCK' WHERE inventory_type = 'REGULAR'");
             int n2 = jdbc.update(
                 "UPDATE inventory SET inventory_type = 'ADMIN_MEDICINE_STOCK' WHERE inventory_type = 'ADMIN_STOCK'");
+            if (n1 + n2 > 0)
+                log.info("DataMigration: renamed inventory inventory_type values (regular={}, admin={})", n1, n2);
+        } catch (Exception e) {
+            log.debug("DataMigration: inventory inventory_type rename skipped — {}", e.getMessage());
+        }
+        try {
             int n3 = jdbc.update(
                 "UPDATE transactions SET inventory_type = 'REGULAR_MEDICINE_STOCK' WHERE inventory_type = 'REGULAR'");
             int n4 = jdbc.update(
                 "UPDATE transactions SET inventory_type = 'ADMIN_MEDICINE_STOCK' WHERE inventory_type = 'ADMIN_STOCK'");
+            if (n3 + n4 > 0)
+                log.info("DataMigration: renamed transactions inventory_type values (regular={}, admin={})", n3, n4);
+        } catch (Exception e) {
+            log.debug("DataMigration: transactions inventory_type rename skipped — {}", e.getMessage());
+        }
+        try {
             int n5 = jdbc.update(
                 "UPDATE inventory_adjustments SET inventory_type = 'REGULAR_MEDICINE_STOCK' WHERE inventory_type = 'REGULAR'");
             int n6 = jdbc.update(
                 "UPDATE inventory_adjustments SET inventory_type = 'ADMIN_MEDICINE_STOCK' WHERE inventory_type = 'ADMIN_STOCK'");
-            if (n1 + n2 + n3 + n4 + n5 + n6 > 0)
-                log.info("DataMigration: renamed inventory_type values — inventory({}/{}) transactions({}/{}) adjustments({}/{})",
-                        n1, n2, n3, n4, n5, n6);
+            if (n5 + n6 > 0)
+                log.info("DataMigration: renamed inventory_adjustments inventory_type values (regular={}, admin={})", n5, n6);
         } catch (Exception e) {
-            log.debug("DataMigration: inventory_type rename skipped — {}", e.getMessage());
+            log.debug("DataMigration: inventory_adjustments inventory_type rename skipped — {}", e.getMessage());
         }
     }
 
