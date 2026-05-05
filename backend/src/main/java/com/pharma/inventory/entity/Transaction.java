@@ -69,11 +69,11 @@ public class Transaction {
     private Integer pricePerUnit;
 
     /**
-     * The inventory type this transaction was deducted from (REGULAR or ADMIN_STOCK).
-     * Null means REGULAR (backward compatible with existing records).
+     * The inventory bucket this transaction was deducted from.
+     * Null means REGULAR_MEDICINE_STOCK (backward compatible with existing records).
      */
     @Enumerated(EnumType.STRING)
-    @Column(name = "inventory_type", length = 20)
+    @Column(name = "inventory_type", length = 30)
     private Inventory.InventoryType inventoryType;
 
     @Builder.Default
