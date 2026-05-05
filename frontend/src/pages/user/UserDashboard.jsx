@@ -7,7 +7,7 @@ export default function UserDashboard(){
         <p>Welcome, {user?.fullName}</p>
         <div className="nav-cards">
             <Link to="/user/submit" className="nav-card"><h2>📋 Submit Medicine Movement</h2><p>Request a stock dispatch</p></Link>
-            <Link to="/user/transactions" className="nav-card"><h2>📊 Transactions History</h2><p>View your submission history</p></Link>
+            <Link to="/user/transactions" className="nav-card"><h2>📊 Medicine Dispatch History</h2><p>View your submission history</p></Link>
         </div>
     </div>);
 }
