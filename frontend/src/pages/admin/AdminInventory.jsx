@@ -12,6 +12,8 @@ export default function AdminInventory() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [sortBy, setSortBy] = useState('spec');
+    const [specFilter, setSpecFilter] = useState('');
+    const [userFilter, setUserFilter] = useState('');
 
     useEffect(() => {
         api.getAdminInventory()
@@ -20,8 +22,14 @@ export default function AdminInventory() {
             .finally(() => setLoading(false));
     }, []);
 
-    const items = inventory
-        .filter(item => item.quantity > 0)
+    const nonZero = inventory.filter(item => item.quantity > 0);
+
+    const specOptions = [...new Set(nonZero.map(i => i.medicineName))].sort();
+    const userOptions = [...new Set(nonZero.map(i => i.username))].sort();
+
+    const items = nonZero
+        .filter(item => !specFilter || item.medicineName === specFilter)
+        .filter(item => !userFilter || item.username === userFilter)
         .slice()
         .sort((a, b) => {
             if (sortBy === 'spec') {
@@ -42,6 +50,35 @@ export default function AdminInventory() {
             </div>
 
             {error && <div role="alert" className="alert alert-error">{error}</div>}
+
+            <div className="form-card" style={{ marginBottom: '1rem' }}>
+                <div className="form-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div className="form-group" style={{ flex: 1 }}>
+                        <label htmlFor="spec-filter-select">Medicine Specification</label>
+                        <select
+                            id="spec-filter-select"
+                            value={specFilter}
+                            onChange={e => setSpecFilter(e.target.value)}>
+                            <option value="">All Specifications</option>
+                            {specOptions.map(s => (
+                                <option key={s} value={s}>{s}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group" style={{ flex: 1 }}>
+                        <label htmlFor="user-filter-select">Username</label>
+                        <select
+                            id="user-filter-select"
+                            value={userFilter}
+                            onChange={e => setUserFilter(e.target.value)}>
+                            <option value="">All Users</option>
+                            {userOptions.map(u => (
+                                <option key={u} value={u}>{u}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            </div>
 
             <div className="filter-tabs" role="group" aria-label="Sort stock by">
                 <button

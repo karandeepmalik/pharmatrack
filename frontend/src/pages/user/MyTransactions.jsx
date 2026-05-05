@@ -10,7 +10,7 @@ export default function MyTransactions(){
     if(loading) return <div className="loading">Loading…</div>;
     return(<div className="page">
         <div className="page-header">
-            <h1>Transactions History</h1>
+            <h1>Medicine Dispatch History</h1>
             <Link to="/user/dashboard" className="btn btn-secondary">← Back</Link>
         </div>
         <div className="filter-tabs" role="group">

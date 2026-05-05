@@ -4,8 +4,8 @@ import * as api from '../../api/api';
 
 const REPORTS = [
     { value: '', label: '-- Select a Report --' },
-    { value: 'inventory-by-user', label: 'Current Inventory Level By User' },
-    { value: 'inventory-valuation', label: 'Current Inventory Valuation' },
+    { value: 'inventory-by-user', label: 'Current Medicine Stock Per User' },
+    { value: 'inventory-valuation', label: 'Current Medicine Stock Valuation' },
     { value: 'today-sales', label: "Today's Sales" },
     { value: 'daily', label: 'Daily Report' },
 ];
@@ -16,7 +16,8 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 export default function ViewReports() {
     const [selected, setSelected] = useState('');
     const [dailyDate, setDailyDate] = useState(todayStr());
-    const [salesDays, setSalesDays] = useState(1);
+    const [salesFrom, setSalesFrom] = useState(todayStr());
+    const [salesTo, setSalesTo] = useState(todayStr());
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -30,7 +31,7 @@ export default function ViewReports() {
             let res;
             if (selected === 'inventory-by-user') res = await api.getReportInventoryByUser();
             else if (selected === 'inventory-valuation') res = await api.getReportInventoryValuation();
-            else if (selected === 'today-sales') res = await api.getReportTodaySales(salesDays);
+            else if (selected === 'today-sales') res = await api.getReportTodaySales(salesFrom, salesTo);
             else if (selected === 'daily') res = await api.getReportDaily(dailyDate || null);
             setContent(res.data.content);
         } catch {
@@ -51,6 +52,8 @@ export default function ViewReports() {
             document.body.removeChild(ta);
         });
     };
+
+    const salesDateValid = salesFrom && salesTo && salesFrom <= salesTo;
 
     return (
         <div className="page">
@@ -75,17 +78,32 @@ export default function ViewReports() {
                 </div>
 
                 {selected === 'today-sales' && (
-                    <div className="form-group">
-                        <label htmlFor="sales-days-input">Time Period (days)</label>
-                        <input
-                            id="sales-days-input"
-                            type="number"
-                            min="1"
-                            max="365"
-                            value={salesDays}
-                            onChange={e => { setSalesDays(Math.max(1, Number(e.target.value))); setContent(''); }}
-                        />
+                    <div className="form-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        <div className="form-group" style={{ flex: 1 }}>
+                            <label htmlFor="sales-from-input">From Date</label>
+                            <input
+                                id="sales-from-input"
+                                type="date"
+                                value={salesFrom}
+                                onChange={e => { setSalesFrom(e.target.value); setContent(''); }}
+                            />
+                        </div>
+                        <div className="form-group" style={{ flex: 1 }}>
+                            <label htmlFor="sales-to-input">To Date</label>
+                            <input
+                                id="sales-to-input"
+                                type="date"
+                                value={salesTo}
+                                onChange={e => { setSalesTo(e.target.value); setContent(''); }}
+                            />
+                        </div>
                     </div>
+                )}
+
+                {selected === 'today-sales' && salesFrom > salesTo && (
+                    <p className="form-error" role="alert" style={{ color: 'var(--color-error, red)', marginBottom: '0.5rem' }}>
+                        "From" date must be before or equal to "To" date.
+                    </p>
                 )}
 
                 {selected === 'daily' && (
@@ -103,7 +121,7 @@ export default function ViewReports() {
                 <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={!selected || loading}
+                    disabled={!selected || loading || (selected === 'today-sales' && !salesDateValid)}
                     onClick={handleGenerate}>
                     {loading ? 'Generating…' : 'Generate Report'}
                 </button>

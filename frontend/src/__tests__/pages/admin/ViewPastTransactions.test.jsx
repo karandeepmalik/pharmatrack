@@ -37,7 +37,7 @@ beforeEach(() => jest.clearAllMocks());
 describe('ViewPastTransactions — render', () => {
   test('renders page heading', () => {
     renderPage();
-    expect(screen.getByRole('heading', { name: /view past transactions/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /view past medicine dispatches/i })).toBeInTheDocument();
   });
 
   test('renders Back link to admin dashboard', () => {
@@ -57,6 +57,11 @@ describe('ViewPastTransactions — render', () => {
     expect(screen.getByRole('option', { name: /^all$/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /^approved$/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /^rejected$/i })).toBeInTheDocument();
+  });
+
+  test('defaults to APPROVED status', () => {
+    renderPage();
+    expect(screen.getByLabelText(/status/i)).toHaveValue('APPROVED');
   });
 
   test('renders Search button', () => {
@@ -129,11 +134,10 @@ describe('ViewPastTransactions — search', () => {
     );
   });
 
-  test('calls API with correct status parameter', async () => {
+  test('calls API with APPROVED by default on first search', async () => {
     api.getTransactionHistory.mockResolvedValue({ data: [] });
     renderPage();
 
-    await userEvent.selectOptions(screen.getByLabelText(/status/i), 'APPROVED');
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
@@ -141,6 +145,22 @@ describe('ViewPastTransactions — search', () => {
         expect.any(String),
         expect.any(String),
         'APPROVED'
+      )
+    );
+  });
+
+  test('calls API with ALL when status changed to All', async () => {
+    api.getTransactionHistory.mockResolvedValue({ data: [] });
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/status/i), 'ALL');
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        'ALL'
       )
     );
   });

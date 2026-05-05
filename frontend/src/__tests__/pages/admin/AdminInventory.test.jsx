@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import AdminInventory from '../../../pages/admin/AdminInventory';
@@ -28,14 +28,27 @@ const renderPage = () =>
     </MemoryRouter>
   );
 
+/** Returns rows from the data table (excluding header row). */
+const dataRows = () => screen.getAllByRole('row').slice(1);
+
 beforeEach(() => jest.clearAllMocks());
 
 describe('AdminInventory — render', () => {
+  test('shows page heading as View Available Medicine Stock', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [makeItem()] });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /view available medicine stock/i })).toBeInTheDocument()
+    );
+  });
+
   test('shows inventory items', async () => {
     api.getAdminInventory.mockResolvedValue({ data: [makeItem()] });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Shield FX Vial 10 ml')).toBeInTheDocument());
-    expect(screen.getByText('john.doe')).toBeInTheDocument();
+    await waitFor(() => screen.getByRole('table'));
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Shield FX Vial 10 ml')).toBeInTheDocument();
+    expect(within(table).getByText('john.doe')).toBeInTheDocument();
   });
 
   test('shows empty message when no inventory', async () => {
@@ -64,10 +77,10 @@ describe('AdminInventory — zero quantity filtering', () => {
       ],
     });
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByText('Shield FX Vial 10 ml')).toBeInTheDocument()
-    );
-    expect(screen.queryByText('Shield FX Tablet 25 mg')).not.toBeInTheDocument();
+    await waitFor(() => screen.getByRole('table'));
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Shield FX Vial 10 ml')).toBeInTheDocument();
+    expect(within(table).queryByText('Shield FX Tablet 25 mg')).not.toBeInTheDocument();
   });
 
   test('shows empty message when all items have quantity 0', async () => {
@@ -85,8 +98,9 @@ describe('AdminInventory — zero quantity filtering', () => {
       data: [makeItem({ quantity: 5 })],
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText(/shield fx vial 10 ml/i)).toBeInTheDocument());
-    expect(screen.getByText('5')).toBeInTheDocument();
+    await waitFor(() => screen.getByRole('table'));
+    expect(within(screen.getByRole('table')).getByText(/shield fx vial 10 ml/i)).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('5')).toBeInTheDocument();
   });
 });
 
@@ -97,7 +111,7 @@ describe('AdminInventory — sort toggle', () => {
   test('"By Spec" tab is active by default', async () => {
     api.getAdminInventory.mockResolvedValue({ data: [alpha, beta] });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Alpha Med')).toBeInTheDocument());
+    await waitFor(() => screen.getByRole('table'));
     expect(screen.getByRole('button', { name: /by spec/i })).toHaveClass('active');
     expect(screen.getByRole('button', { name: /by user/i })).not.toHaveClass('active');
   });
@@ -105,8 +119,8 @@ describe('AdminInventory — sort toggle', () => {
   test('default sort orders rows by medicine name', async () => {
     api.getAdminInventory.mockResolvedValue({ data: [beta, alpha] });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Alpha Med')).toBeInTheDocument());
-    const rows = screen.getAllByRole('row').slice(1);
+    await waitFor(() => screen.getByRole('table'));
+    const rows = dataRows();
     expect(rows[0]).toHaveTextContent('Alpha Med');
     expect(rows[1]).toHaveTextContent('Beta Med');
   });
@@ -114,11 +128,11 @@ describe('AdminInventory — sort toggle', () => {
   test('"By User" tab reorders rows by username', async () => {
     api.getAdminInventory.mockResolvedValue({ data: [alpha, beta] });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Alpha Med')).toBeInTheDocument());
+    await waitFor(() => screen.getByRole('table'));
 
     await userEvent.click(screen.getByRole('button', { name: /by user/i }));
 
-    const rows = screen.getAllByRole('row').slice(1);
+    const rows = dataRows();
     expect(rows[0]).toHaveTextContent('alice.wang');
     expect(rows[1]).toHaveTextContent('zara.jones');
   });
@@ -126,13 +140,83 @@ describe('AdminInventory — sort toggle', () => {
   test('clicking "By Spec" after "By User" restores medicine-name order', async () => {
     api.getAdminInventory.mockResolvedValue({ data: [beta, alpha] });
     renderPage();
-    await waitFor(() => expect(screen.getByText('Alpha Med')).toBeInTheDocument());
+    await waitFor(() => screen.getByRole('table'));
 
     await userEvent.click(screen.getByRole('button', { name: /by user/i }));
     await userEvent.click(screen.getByRole('button', { name: /by spec/i }));
 
-    const rows = screen.getAllByRole('row').slice(1);
+    const rows = dataRows();
     expect(rows[0]).toHaveTextContent('Alpha Med');
     expect(rows[1]).toHaveTextContent('Beta Med');
+  });
+});
+
+describe('AdminInventory — spec and username filters', () => {
+  const vial   = makeItem({ id: 1, medicineName: 'Shield FX Vial 10 ml',   username: 'john.doe',   quantity: 5 });
+  const tablet = makeItem({ id: 2, medicineName: 'Shield FX Tablet 25 mg', username: 'jane.smith', quantity: 3 });
+
+  test('renders Medicine Specification filter dropdown', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [vial] });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/medicine specification/i)).toBeInTheDocument()
+    );
+  });
+
+  test('renders Username filter dropdown', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [vial] });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/username/i)).toBeInTheDocument()
+    );
+  });
+
+  test('spec filter shows only matching rows', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [vial, tablet] });
+    renderPage();
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(/medicine specification/i),
+      'Shield FX Vial 10 ml'
+    );
+
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Shield FX Vial 10 ml')).toBeInTheDocument();
+    expect(within(table).queryByText('Shield FX Tablet 25 mg')).not.toBeInTheDocument();
+  });
+
+  test('username filter shows only matching rows', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [vial, tablet] });
+    renderPage();
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(/username/i),
+      'jane.smith'
+    );
+
+    const table = screen.getByRole('table');
+    expect(within(table).queryByText('john.doe')).not.toBeInTheDocument();
+    expect(within(table).getByText('jane.smith')).toBeInTheDocument();
+  });
+
+  test('All Specifications option shows all rows', async () => {
+    api.getAdminInventory.mockResolvedValue({ data: [vial, tablet] });
+    renderPage();
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(/medicine specification/i),
+      'Shield FX Vial 10 ml'
+    );
+    await userEvent.selectOptions(
+      screen.getByLabelText(/medicine specification/i),
+      ''
+    );
+
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Shield FX Vial 10 ml')).toBeInTheDocument();
+    expect(within(table).getByText('Shield FX Tablet 25 mg')).toBeInTheDocument();
   });
 });

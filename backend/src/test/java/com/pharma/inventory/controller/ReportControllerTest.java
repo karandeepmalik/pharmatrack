@@ -18,6 +18,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import org.mockito.ArgumentMatchers;
 
+import java.time.LocalDate;
+
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -88,17 +90,21 @@ class ReportControllerTest {
     class TodaySales {
 
         @Test @WithMockUser(roles = "ADMIN")
-        void adminCanGetTodaySales() throws Exception {
-            when(reportService.todaySales(1)).thenReturn(sampleReport("TODAY_SALES"));
+        void adminCanGetTodaySalesWithNoParams() throws Exception {
+            when(reportService.todaySales(ArgumentMatchers.isNull(), ArgumentMatchers.isNull()))
+                    .thenReturn(sampleReport("TODAY_SALES"));
             mockMvc.perform(get("/api/reports/today-sales"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.reportType").value("TODAY_SALES"));
         }
 
         @Test @WithMockUser(roles = "ADMIN")
-        void adminCanGetSalesForMultipleDays() throws Exception {
-            when(reportService.todaySales(7)).thenReturn(sampleReport("TODAY_SALES"));
-            mockMvc.perform(get("/api/reports/today-sales").param("days", "7"))
+        void adminCanGetSalesForDateRange() throws Exception {
+            when(reportService.todaySales(ArgumentMatchers.any(LocalDate.class), ArgumentMatchers.any(LocalDate.class)))
+                    .thenReturn(sampleReport("TODAY_SALES"));
+            mockMvc.perform(get("/api/reports/today-sales")
+                            .param("from", "2026-05-01")
+                            .param("to", "2026-05-07"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.reportType").value("TODAY_SALES"));
         }

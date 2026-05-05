@@ -192,31 +192,31 @@ public class ReportService {
     }
 
     /** Convenience overload — defaults to today only. */
-    public ReportResponse todaySales() { return todaySales(1); }
+    public ReportResponse todaySales() { return todaySales(todayIST(), todayIST()); }
 
     @Transactional(readOnly = true)
-    public ReportResponse todaySales(int days) {
-        LocalDate today = todayIST();
-        int effectiveDays = Math.max(1, days);
-        LocalDate startDate = today.minusDays(effectiveDays - 1);
-        LocalDateTime start = startDate.atStartOfDay();
-        LocalDateTime end = today.plusDays(1).atStartOfDay();
+    public ReportResponse todaySales(LocalDate from, LocalDate to) {
+        LocalDate effectiveFrom = from != null ? from : todayIST();
+        LocalDate effectiveTo   = to   != null ? to   : todayIST();
+
+        LocalDateTime start = effectiveFrom.atStartOfDay();
+        LocalDateTime end   = effectiveTo.plusDays(1).atStartOfDay();
 
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
 
         StringBuilder sb = new StringBuilder();
-        if (effectiveDays == 1) {
-            sb.append("TODAY'S SALES - ").append(today.format(DATE_FMT)).append("\n");
+        if (effectiveFrom.equals(effectiveTo)) {
+            sb.append("TODAY'S SALES - ").append(effectiveFrom.format(DATE_FMT)).append("\n");
         } else {
-            sb.append("SALES - ").append(startDate.format(DATE_FMT))
-              .append(" to ").append(today.format(DATE_FMT)).append("\n");
+            sb.append("SALES - ").append(effectiveFrom.format(DATE_FMT))
+              .append(" to ").append(effectiveTo.format(DATE_FMT)).append("\n");
         }
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
 
         if (txList.isEmpty()) {
-            sb.append(effectiveDays == 1 ? "No sales recorded today.\n" : "No sales recorded in this period.\n");
+            sb.append(effectiveFrom.equals(effectiveTo) ? "No sales recorded today.\n" : "No sales recorded in this period.\n");
             return new ReportResponse("TODAY_SALES", nowIST(), sb.toString());
         }
 

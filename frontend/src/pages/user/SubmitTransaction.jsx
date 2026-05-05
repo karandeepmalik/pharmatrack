@@ -37,7 +37,13 @@ export default function SubmitTransaction() {
   // ── Data fetch ───────────────────────────────────────────────────────
   useEffect(() => {
     api.getAvailableInventory()
-      .then((r) => setInventory(r.data))
+      .then((r) => {
+        setInventory(r.data);
+        const shieldFx = r.data.find(
+          (i) => i.inventoryType === 'REGULAR_MEDICINE_STOCK' && i.pharmaName === 'Shield FX'
+        );
+        if (shieldFx) setSelectedPharma(String(shieldFx.pharmaId));
+      })
       .catch(() => setErrorMessage('Failed to load stock'))
       .finally(() => setLoading(false));
   }, []);
@@ -131,7 +137,7 @@ export default function SubmitTransaction() {
         inventoryType: selectedInventoryType,
       });
 
-      setSuccessMessage('Medicine movement submitted successfully and is pending admin approval.');
+      setSuccessMessage('Medicine dispatch submitted successfully and is pending admin approval.');
       setSelectedInventoryType('REGULAR_MEDICINE_STOCK');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
       setQuantity(''); setNotes(''); setPriceOverride('');
@@ -154,7 +160,7 @@ export default function SubmitTransaction() {
   return (
     <div className="page submit-transaction-page">
       <div className="page-header">
-        <h1>Submit Medicine Movement</h1>
+        <h1>Submit Medicine Dispatch</h1>
         <Link to="/user/dashboard" className="btn btn-secondary">← Back</Link>
       </div>
 
@@ -253,7 +259,7 @@ export default function SubmitTransaction() {
         {/* Notes */}
         <div className="form-group">
           <label htmlFor="notes-input">
-            Medicine Movement Note <span className="required">*</span>
+            Medicine Dispatch Note <span className="required">*</span>
           </label>
           <textarea id="notes-input" rows={3}
             placeholder="e.g. Sent to Jari"
@@ -285,7 +291,7 @@ export default function SubmitTransaction() {
         />
 
         <button type="submit" disabled={!isFormValid || submitting} className="btn btn-primary">
-          {submitting ? 'Submitting…' : 'Submit Medicine Movement'}
+          {submitting ? 'Submitting…' : 'Submit Medicine Dispatch'}
         </button>
       </form>
     </div>
