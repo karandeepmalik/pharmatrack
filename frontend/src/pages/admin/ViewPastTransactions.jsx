@@ -22,7 +22,7 @@ const specLabel = (type, spec) =>
 export default function ViewPastTransactions() {
     const [from, setFrom]             = useState(weekAgoStr());
     const [to, setTo]                 = useState(todayStr());
-    const [status, setStatus]         = useState('ALL');
+    const [status, setStatus]         = useState('APPROVED');
     const [transactions, setTransactions] = useState([]);
     const [searched, setSearched]     = useState(false);
     const [loading, setLoading]       = useState(false);
@@ -55,7 +55,7 @@ export default function ViewPastTransactions() {
     return (
         <div className="page">
             <div className="page-header">
-                <h1>View Past Transactions</h1>
+                <h1>View Past Medicine Dispatches</h1>
                 <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
             </div>
 

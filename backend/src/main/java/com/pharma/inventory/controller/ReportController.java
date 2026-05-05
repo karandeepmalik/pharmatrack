@@ -33,8 +33,11 @@ public class ReportController {
 
     @GetMapping("/today-sales")
     public ResponseEntity<ReportResponse> todaySales(
-            @RequestParam(value = "days", required = false, defaultValue = "1") int days) {
-        return ResponseEntity.ok(reportService.todaySales(days));
+            @RequestParam(value = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(value = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(reportService.todaySales(from, to));
     }
 
     /**
