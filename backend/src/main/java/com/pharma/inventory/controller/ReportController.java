@@ -32,8 +32,9 @@ public class ReportController {
     }
 
     @GetMapping("/today-sales")
-    public ResponseEntity<ReportResponse> todaySales() {
-        return ResponseEntity.ok(reportService.todaySales());
+    public ResponseEntity<ReportResponse> todaySales(
+            @RequestParam(value = "days", required = false, defaultValue = "1") int days) {
+        return ResponseEntity.ok(reportService.todaySales(days));
     }
 
     /**

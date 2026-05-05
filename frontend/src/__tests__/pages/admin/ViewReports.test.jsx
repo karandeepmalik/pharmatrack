@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import ViewReports from '../../../pages/admin/ViewReports';
@@ -126,7 +126,7 @@ describe('ViewReports — inventory valuation report', () => {
 });
 
 describe("ViewReports — today's sales report", () => {
-  test("generates today-sales report", async () => {
+  test("generates today-sales report with default 1 day", async () => {
     api.getReportTodaySales.mockResolvedValue(
       sampleReport('TODAY_SALES', "TODAY'S SALES\nJohn Doe:\n  Shield FX Vial\nTOTAL: Rs 12,000")
     );
@@ -141,7 +141,35 @@ describe("ViewReports — today's sales report", () => {
     await waitFor(() =>
       expect(screen.getByText(/total: rs 12,000/i)).toBeInTheDocument()
     );
-    expect(api.getReportTodaySales).toHaveBeenCalledTimes(1);
+    expect(api.getReportTodaySales).toHaveBeenCalledWith(1);
+  });
+
+  test("shows time period input when today-sales is selected", async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
+    expect(screen.getByLabelText(/time period/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/time period/i)).toHaveValue(1);
+  });
+
+  test("passes selected days to API call", async () => {
+    api.getReportTodaySales.mockResolvedValue(
+      sampleReport('TODAY_SALES', 'SALES - 01 May 2026 to 07 May 2026\nTOTAL: Rs 0')
+    );
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
+    fireEvent.change(screen.getByLabelText(/time period/i), { target: { value: '7' } });
+    await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
+
+    await waitFor(() =>
+      expect(api.getReportTodaySales).toHaveBeenCalledWith(7)
+    );
+  });
+
+  test("time period input is not shown for other reports", async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-by-user');
+    expect(screen.queryByLabelText(/time period/i)).not.toBeInTheDocument();
   });
 });
 

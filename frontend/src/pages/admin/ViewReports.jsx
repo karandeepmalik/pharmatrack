@@ -16,6 +16,7 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 export default function ViewReports() {
     const [selected, setSelected] = useState('');
     const [dailyDate, setDailyDate] = useState(todayStr());
+    const [salesDays, setSalesDays] = useState(1);
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -29,7 +30,7 @@ export default function ViewReports() {
             let res;
             if (selected === 'inventory-by-user') res = await api.getReportInventoryByUser();
             else if (selected === 'inventory-valuation') res = await api.getReportInventoryValuation();
-            else if (selected === 'today-sales') res = await api.getReportTodaySales();
+            else if (selected === 'today-sales') res = await api.getReportTodaySales(salesDays);
             else if (selected === 'daily') res = await api.getReportDaily(dailyDate || null);
             setContent(res.data.content);
         } catch {
@@ -72,6 +73,20 @@ export default function ViewReports() {
                         ))}
                     </select>
                 </div>
+
+                {selected === 'today-sales' && (
+                    <div className="form-group">
+                        <label htmlFor="sales-days-input">Time Period (days)</label>
+                        <input
+                            id="sales-days-input"
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={salesDays}
+                            onChange={e => { setSalesDays(Math.max(1, Number(e.target.value))); setContent(''); }}
+                        />
+                    </div>
+                )}
 
                 {selected === 'daily' && (
                     <div className="form-group">

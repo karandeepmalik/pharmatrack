@@ -89,8 +89,16 @@ class ReportControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanGetTodaySales() throws Exception {
-            when(reportService.todaySales()).thenReturn(sampleReport("TODAY_SALES"));
+            when(reportService.todaySales(1)).thenReturn(sampleReport("TODAY_SALES"));
             mockMvc.perform(get("/api/reports/today-sales"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reportType").value("TODAY_SALES"));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanGetSalesForMultipleDays() throws Exception {
+            when(reportService.todaySales(7)).thenReturn(sampleReport("TODAY_SALES"));
+            mockMvc.perform(get("/api/reports/today-sales").param("days", "7"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.reportType").value("TODAY_SALES"));
         }
