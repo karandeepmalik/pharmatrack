@@ -1,8 +1,12 @@
 package com.pharma.inventory.mapper;
 
+import com.pharma.inventory.dto.ScreenshotDto;
 import com.pharma.inventory.dto.TransactionResponse;
 import com.pharma.inventory.entity.Transaction;
+import com.pharma.inventory.entity.TransactionScreenshot;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * Maps Transaction entities to TransactionResponse DTOs.
@@ -50,9 +54,16 @@ public class TransactionMapper {
         r.setSubmittedAt(t.getSubmittedAt());
         r.setNotes(t.getNotes());
 
-        // Optional screenshot
-        r.setPaymentScreenshot(t.getPaymentScreenshot());
-        r.setPaymentScreenshotType(t.getPaymentScreenshotType());
+        // Screenshots — prefer new table; fall back to legacy columns for old records
+        List<TransactionScreenshot> shots = t.getScreenshots();
+        if (shots != null && !shots.isEmpty()) {
+            r.setScreenshots(shots.stream()
+                    .map(s -> new ScreenshotDto(s.getData(), s.getMimeType()))
+                    .toList());
+        } else if (t.getPaymentScreenshot() != null) {
+            r.setScreenshots(List.of(
+                    new ScreenshotDto(t.getPaymentScreenshot(), t.getPaymentScreenshotType())));
+        }
 
         // Optional approver (only set after APPROVED or REJECTED)
         if (t.getApprovedBy() != null) {

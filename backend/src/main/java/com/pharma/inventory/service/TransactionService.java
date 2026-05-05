@@ -11,10 +11,12 @@ import com.pharma.inventory.entity.User;
 import com.pharma.inventory.exception.InsufficientInventoryException;
 import com.pharma.inventory.exception.InvalidStateTransitionException;
 import com.pharma.inventory.exception.ResourceNotFoundException;
+import com.pharma.inventory.entity.TransactionScreenshot;
 import com.pharma.inventory.mapper.TransactionMapper;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.MedicineRepository;
 import com.pharma.inventory.repository.TransactionRepository;
+import com.pharma.inventory.repository.TransactionScreenshotRepository;
 import com.pharma.inventory.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,17 +29,20 @@ import java.util.List;
 public class TransactionService {
 
     private final TransactionRepository transactionRepository;
+    private final TransactionScreenshotRepository screenshotRepository;
     private final UserRepository userRepository;
     private final MedicineRepository medicineRepository;
     private final InventoryRepository inventoryRepository;
     private final TransactionMapper transactionMapper;
 
     public TransactionService(TransactionRepository transactionRepository,
+                              TransactionScreenshotRepository screenshotRepository,
                               UserRepository userRepository,
                               MedicineRepository medicineRepository,
                               InventoryRepository inventoryRepository,
                               TransactionMapper transactionMapper) {
         this.transactionRepository = transactionRepository;
+        this.screenshotRepository = screenshotRepository;
         this.userRepository = userRepository;
         this.medicineRepository = medicineRepository;
         this.inventoryRepository = inventoryRepository;
@@ -62,11 +67,21 @@ public class TransactionService {
         Transaction saved = transactionRepository.save(Transaction.builder()
                 .submittedBy(user).medicine(medicine).quantity(req.getQuantity())
                 .status(TransactionStatus.PENDING).notes(req.getNotes())
-                .paymentScreenshot(req.getPaymentScreenshot())
-                .paymentScreenshotType(req.getPaymentScreenshotType())
                 .pricePerUnit(req.getPricePerUnit())
                 .inventoryType(invType)
                 .build());
+
+        List<String> dataList = req.getPaymentScreenshots();
+        List<String> mimeList = req.getPaymentScreenshotTypes();
+        for (int i = 0; i < dataList.size(); i++) {
+            screenshotRepository.save(TransactionScreenshot.builder()
+                    .transaction(saved)
+                    .data(dataList.get(i))
+                    .mimeType(mimeList.get(i))
+                    .displayOrder(i)
+                    .build());
+        }
+
         return transactionMapper.toResponse(saved);
     }
 

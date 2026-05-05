@@ -1,6 +1,8 @@
 package com.pharma.inventory.dto;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Response DTO for a transaction / adjustment record.
@@ -27,14 +29,8 @@ public class TransactionResponse {
     private LocalDateTime approvedAt;
     private String notes;
 
-    /**
-     * Base64-encoded payment screenshot. May be null when no screenshot was uploaded.
-     * Frontend should check for null before rendering.
-     */
-    private String paymentScreenshot;
-
-    /** MIME type for the screenshot data URI, e.g. "image/png". */
-    private String paymentScreenshotType;
+    /** All payment screenshots attached to this transaction (may be empty for old records). */
+    private List<ScreenshotDto> screenshots = new ArrayList<>();
 
     private Integer price;
 
@@ -100,15 +96,8 @@ public class TransactionResponse {
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
 
-    public String getPaymentScreenshot() { return paymentScreenshot; }
-    public void setPaymentScreenshot(String paymentScreenshot) {
-        this.paymentScreenshot = paymentScreenshot;
-    }
-
-    public String getPaymentScreenshotType() { return paymentScreenshotType; }
-    public void setPaymentScreenshotType(String paymentScreenshotType) {
-        this.paymentScreenshotType = paymentScreenshotType;
-    }
+    public List<ScreenshotDto> getScreenshots() { return screenshots; }
+    public void setScreenshots(List<ScreenshotDto> screenshots) { this.screenshots = screenshots; }
 
     public Integer getPrice() { return price; }
     public void setPrice(Integer price) { this.price = price; }

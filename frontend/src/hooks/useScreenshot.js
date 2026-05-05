@@ -1,66 +1,81 @@
 import { useState, useRef, useCallback } from 'react';
 import { SCREENSHOT_CONSTRAINTS } from '../constants';
 
+const MAX_SCREENSHOTS = 5;
+
 /**
- * Custom hook encapsulating all screenshot upload state and behaviour.
- *
- * Extracted from SubmitTransaction to uphold the Single Responsibility Principle:
- * the page component handles form orchestration; this hook owns the screenshot lifecycle.
+ * Custom hook encapsulating multiple-screenshot upload state and behaviour.
  *
  * @returns {{
- *   screenshotFile: File|null,
- *   screenshotPreview: string|null,
- *   screenshotError: string,
+ *   screenshots: Array<{file: File, preview: string, error: string}>,
+ *   addScreenshot: function,
+ *   removeScreenshot: function,
+ *   clearAll: function,
+ *   hasAnyError: boolean,
+ *   hasAnyScreenshot: boolean,
  *   fileInputRef: React.RefObject,
- *   handleScreenshotChange: function,
- *   handleRemoveScreenshot: function,
  * }}
  */
 export default function useScreenshot() {
-  const [screenshotFile, setScreenshotFile]       = useState(null);
-  const [screenshotPreview, setScreenshotPreview] = useState(null);
-  const [screenshotError, setScreenshotError]     = useState('');
+  const [screenshots, setScreenshots] = useState([]);
   const fileInputRef = useRef(null);
 
-  const handleScreenshotChange = useCallback((e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const addScreenshot = useCallback((e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-    if (!SCREENSHOT_CONSTRAINTS.ALLOWED_TYPES.includes(file.type)) {
-      setScreenshotError('Only PNG, JPEG, WebP, or GIF images are allowed.');
-      setScreenshotFile(null);
-      setScreenshotPreview(null);
-      return;
-    }
+    const toAdd = files.slice(0, MAX_SCREENSHOTS - screenshots.length);
 
-    if (file.size > SCREENSHOT_CONSTRAINTS.MAX_BYTES) {
-      setScreenshotError(`File must be smaller than ${SCREENSHOT_CONSTRAINTS.MAX_LABEL}.`);
-      setScreenshotFile(null);
-      setScreenshotPreview(null);
-      return;
-    }
+    const newEntries = toAdd.map((file) => {
+      if (!SCREENSHOT_CONSTRAINTS.ALLOWED_TYPES.includes(file.type)) {
+        return { file: null, preview: null, error: 'Only PNG, JPEG, WebP, or GIF images are allowed.' };
+      }
+      if (file.size > SCREENSHOT_CONSTRAINTS.MAX_BYTES) {
+        return { file: null, preview: null, error: `File must be smaller than ${SCREENSHOT_CONSTRAINTS.MAX_LABEL}.` };
+      }
+      return { file, preview: null, error: '' };
+    });
 
-    setScreenshotError('');
-    setScreenshotFile(file);
+    setScreenshots((prev) => [...prev, ...newEntries]);
 
-    const reader = new FileReader();
-    reader.onloadend = () => setScreenshotPreview(reader.result);
-    reader.readAsDataURL(file);
+    // Generate previews for valid entries
+    newEntries.forEach((entry, idx) => {
+      if (!entry.file) return;
+      const globalIdx = screenshots.length + idx;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setScreenshots((prev) => {
+          const next = [...prev];
+          if (next[globalIdx]) {
+            next[globalIdx] = { ...next[globalIdx], preview: reader.result };
+          }
+          return next;
+        });
+      };
+      reader.readAsDataURL(entry.file);
+    });
+
+    // Reset input so the same file can be re-added after removing
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [screenshots]);
+
+  const removeScreenshot = useCallback((index) => {
+    setScreenshots((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleRemoveScreenshot = useCallback(() => {
-    setScreenshotFile(null);
-    setScreenshotPreview(null);
-    setScreenshotError('');
+  const clearAll = useCallback(() => {
+    setScreenshots([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
   return {
-    screenshotFile,
-    screenshotPreview,
-    screenshotError,
+    screenshots,
+    addScreenshot,
+    removeScreenshot,
+    clearAll,
+    hasAnyError: screenshots.some((s) => s.error),
+    hasAnyScreenshot: screenshots.some((s) => s.file != null),
+    canAddMore: screenshots.length < MAX_SCREENSHOTS,
     fileInputRef,
-    handleScreenshotChange,
-    handleRemoveScreenshot,
   };
 }

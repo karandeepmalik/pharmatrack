@@ -158,23 +158,33 @@ describe('api.js', () => {
       expect(appendSpy).toHaveBeenCalledWith('notes', 'Ward B dispatch');
     });
 
-    test('appends screenshot file when provided', async () => {
-      const file = new File(['x'], 'pay.png', { type: 'image/png' });
-      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFile: file });
-      expect(appendSpy).toHaveBeenCalledWith('screenshot', file);
+    test('appends each screenshot file under the screenshots field', async () => {
+      const f1 = new File(['x'], 'pay1.png', { type: 'image/png' });
+      const f2 = new File(['x'], 'pay2.png', { type: 'image/png' });
+      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFiles: [f1, f2] });
+      const screenshotCalls = appendSpy.mock.calls.filter(([k]) => k === 'screenshots');
+      expect(screenshotCalls).toHaveLength(2);
+      expect(screenshotCalls[0][1]).toBe(f1);
+      expect(screenshotCalls[1][1]).toBe(f2);
     });
 
-    test('screenshot is always appended (mandatory field)', async () => {
+    test('appends single screenshot file under the screenshots field', async () => {
       const file = new File(['x'], 'proof.png', { type: 'image/png' });
-      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFile: file });
-      const screenshotCalls = appendSpy.mock.calls.filter(([k]) => k === 'screenshot');
+      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFiles: [file] });
+      const screenshotCalls = appendSpy.mock.calls.filter(([k]) => k === 'screenshots');
       expect(screenshotCalls).toHaveLength(1);
       expect(screenshotCalls[0][1]).toBe(file);
     });
 
+    test('appends no screenshot fields when screenshotFiles is empty', async () => {
+      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFiles: [] });
+      const screenshotCalls = appendSpy.mock.calls.filter(([k]) => k === 'screenshots');
+      expect(screenshotCalls).toHaveLength(0);
+    });
+
     test('posts to /transactions endpoint', async () => {
       const file = new File(['x'], 'pay.png', { type: 'image/png' });
-      await submitTransaction({ medicineId: 1, quantity: 1, notes: 'Note', screenshotFile: file });
+      await submitTransaction({ medicineId: 1, quantity: 1, notes: 'Note', screenshotFiles: [file] });
       expect(mockPost).toHaveBeenCalledWith(
         '/transactions',
         expect.any(FormData),
@@ -184,13 +194,13 @@ describe('api.js', () => {
 
     test('appends pricePerUnit when provided', async () => {
       const file = new File(['x'], 'pay.png', { type: 'image/png' });
-      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFile: file, pricePerUnit: 3500 });
+      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFiles: [file], pricePerUnit: 3500 });
       expect(appendSpy).toHaveBeenCalledWith('pricePerUnit', '3500');
     });
 
     test('does not append pricePerUnit when null', async () => {
       const file = new File(['x'], 'pay.png', { type: 'image/png' });
-      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFile: file, pricePerUnit: null });
+      await submitTransaction({ medicineId: 1, quantity: 2, notes: 'Note', screenshotFiles: [file], pricePerUnit: null });
       const priceCall = appendSpy.mock.calls.find(([k]) => k === 'pricePerUnit');
       expect(priceCall).toBeUndefined();
     });

@@ -44,12 +44,12 @@ public class TransactionController {
             @RequestParam("medicineId") Long medicineId,
             @RequestParam("quantity") Integer quantity,
             @RequestParam("notes") String notes,
-            @RequestParam("screenshot") MultipartFile screenshot,
+            @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots,
             @RequestParam(value = "pricePerUnit", required = false) Integer pricePerUnit,
             @RequestParam(value = "inventoryType", required = false) String inventoryType,
             @AuthenticationPrincipal UserDetails userDetails) throws IOException {
 
-        TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshot, pricePerUnit, inventoryType);
+        TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshots, pricePerUnit, inventoryType);
         return ResponseEntity.ok(transactionService.submit(req, userDetails.getUsername()));
     }
 
@@ -95,7 +95,7 @@ public class TransactionController {
     // ── Assembly helper (no logic — only construction) ─────────────────
 
     private TransactionRequest buildRequest(Long medicineId, Integer quantity,
-                                             String notes, MultipartFile screenshot,
+                                             String notes, List<MultipartFile> screenshots,
                                              Integer pricePerUnit, String inventoryType)
             throws IOException {
         TransactionRequest req = new TransactionRequest();
@@ -105,10 +105,13 @@ public class TransactionController {
         req.setPricePerUnit(pricePerUnit);
         req.setInventoryType(inventoryType);
 
-        if (screenshotProcessor.hasScreenshot(screenshot)) {
-            req.setPaymentScreenshot(screenshotProcessor.encodeToBase64(screenshot));
-            req.setPaymentScreenshotType(screenshot.getContentType());
+        List<String[]> encoded = screenshotProcessor.encodeAll(screenshots);
+        if (encoded.isEmpty()) {
+            throw new com.pharma.inventory.exception.InvalidScreenshotException(
+                    "At least one payment screenshot is required.");
         }
+        req.setPaymentScreenshots(encoded.stream().map(e -> e[0]).toList());
+        req.setPaymentScreenshotTypes(encoded.stream().map(e -> e[1]).toList());
         return req;
     }
 }

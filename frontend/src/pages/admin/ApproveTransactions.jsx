@@ -4,54 +4,94 @@ import * as api from '../../api/api';
 import { TRANSACTION_STATUSES } from '../../constants';
 
 /**
- * Lightbox viewer for payment screenshots.
+ * Gallery lightbox viewer for multiple payment screenshots.
  * Extracted as a named component within this file for clarity.
  */
-function PaymentScreenshotViewer({ screenshot, screenshotType, transactionId }) {
+function PaymentScreenshotViewer({ screenshots, transactionId }) {
   const [open, setOpen] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
 
-  if (!screenshot) return <span className="no-screenshot">No screenshot</span>;
+  if (!screenshots || screenshots.length === 0) {
+    return <span className="no-screenshot">No screenshot</span>;
+  }
 
-  const dataUri = `data:${screenshotType || 'image/png'};base64,${screenshot}`;
+  const active = screenshots[activeIdx] || screenshots[0];
+  const dataUri = `data:${active.mimeType || 'image/png'};base64,${active.data}`;
+  const total = screenshots.length;
 
   return (
     <>
-      <button
-        type="button"
-        className="screenshot-thumb-btn"
-        onClick={() => setOpen(true)}
-        aria-label={`View payment screenshot for transaction #${transactionId}`}
-        title="Click to view full screenshot"
-      >
-        <img
-          src={dataUri}
-          alt={`Payment screenshot for transaction #${transactionId}`}
-          className="screenshot-thumb-img"
-        />
-        <span className="screenshot-badge">🔍 View</span>
-      </button>
+      {/* Thumbnail strip */}
+      <div className="screenshot-thumbs">
+        {screenshots.map((ss, idx) => {
+          const uri = `data:${ss.mimeType || 'image/png'};base64,${ss.data}`;
+          return (
+            <button
+              key={idx}
+              type="button"
+              className="screenshot-thumb-btn"
+              onClick={() => { setActiveIdx(idx); setOpen(true); }}
+              aria-label={`View payment screenshot ${idx + 1} of ${total} for transaction #${transactionId}`}
+              title="Click to view full screenshot"
+            >
+              <img
+                src={uri}
+                alt={`Payment screenshot ${idx + 1} for transaction #${transactionId}`}
+                className="screenshot-thumb-img"
+              />
+              <span className="screenshot-badge">🔍 View</span>
+            </button>
+          );
+        })}
+      </div>
 
       {open && (
         <div
           className="screenshot-lightbox-overlay"
           role="dialog" aria-modal="true"
-          aria-label={`Payment screenshot for transaction #${transactionId}`}
+          aria-label={`Payment screenshots for transaction #${transactionId}`}
           onClick={() => setOpen(false)}
         >
           <div className="screenshot-lightbox-content" onClick={(e) => e.stopPropagation()}>
             <div className="lightbox-header">
-              <h3>Payment Screenshot — Transaction #{transactionId}</h3>
+              <h3>
+                Payment Screenshot {total > 1 ? `${activeIdx + 1} / ${total} — ` : '— '}
+                Transaction #{transactionId}
+              </h3>
               <button type="button" className="lightbox-close"
                 onClick={() => setOpen(false)} aria-label="Close screenshot viewer">
                 ✕
               </button>
             </div>
             <img src={dataUri}
-              alt={`Full payment screenshot for transaction #${transactionId}`}
+              alt={`Full payment screenshot ${activeIdx + 1} for transaction #${transactionId}`}
               className="screenshot-full-img" />
             <div className="lightbox-footer">
+              {total > 1 && (
+                <div className="lightbox-nav">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    disabled={activeIdx === 0}
+                    onClick={() => setActiveIdx((i) => i - 1)}
+                    aria-label="Previous screenshot"
+                  >
+                    ← Prev
+                  </button>
+                  <span className="lightbox-counter">{activeIdx + 1} / {total}</span>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    disabled={activeIdx === total - 1}
+                    onClick={() => setActiveIdx((i) => i + 1)}
+                    aria-label="Next screenshot"
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
               <a href={dataUri}
-                download={`payment-screenshot-tx-${transactionId}.png`}
+                download={`payment-screenshot-tx-${transactionId}-${activeIdx + 1}.png`}
                 className="btn btn-sm btn-download">
                 ⬇ Download
               </a>
@@ -186,10 +226,9 @@ export default function ApproveTransactions() {
                 </div>
 
                 <div className="tx-screenshot-col">
-                  <p className="screenshot-label"><strong>Payment Screenshot:</strong></p>
+                  <p className="screenshot-label"><strong>Payment Screenshot{tx.screenshots?.length > 1 ? 's' : ''}:</strong></p>
                   <PaymentScreenshotViewer
-                    screenshot={tx.paymentScreenshot}
-                    screenshotType={tx.paymentScreenshotType}
+                    screenshots={tx.screenshots}
                     transactionId={tx.id}
                   />
                 </div>

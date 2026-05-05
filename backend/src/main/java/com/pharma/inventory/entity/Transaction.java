@@ -7,6 +7,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "transactions")
@@ -73,6 +75,11 @@ public class Transaction {
     @Enumerated(EnumType.STRING)
     @Column(name = "inventory_type", length = 20)
     private Inventory.InventoryType inventoryType;
+
+    @OneToMany(mappedBy = "transaction", cascade = CascadeType.ALL,
+               fetch = FetchType.EAGER, orphanRemoval = true)
+    @OrderBy("displayOrder ASC")
+    private List<TransactionScreenshot> screenshots = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

@@ -2,77 +2,98 @@ import React from 'react';
 import { SCREENSHOT_CONSTRAINTS } from '../constants';
 
 /**
- * Reusable payment screenshot upload widget.
+ * Multi-file payment screenshot upload widget.
  *
- * Extracted from SubmitTransaction to uphold SRP:
- * this component owns the upload UI; the page owns form orchestration.
- *
- * @param {Object}   props
- * @param {React.Ref} props.fileInputRef     - ref forwarded to the <input>
- * @param {string}   props.screenshotPreview - data URI for live preview (null = no file)
- * @param {string}   props.screenshotError   - validation error message (empty = no error)
- * @param {File|null} props.screenshotFile   - current File object (used for filename display)
- * @param {function} props.onFileChange      - change handler for <input type="file">
- * @param {function} props.onRemove          - called when the Remove button is clicked
+ * @param {Object}    props
+ * @param {Array}     props.screenshots    - array of {file, preview, error}
+ * @param {boolean}   props.canAddMore     - whether the user can add more screenshots
+ * @param {React.Ref} props.fileInputRef   - ref forwarded to the hidden <input>
+ * @param {function}  props.onAdd          - change handler for <input type="file">
+ * @param {function}  props.onRemove       - called with (index) when Remove is clicked
+ * @param {boolean}   props.required       - whether at least one screenshot is required
  */
 export default function ScreenshotUpload({
+  screenshots,
+  canAddMore,
   fileInputRef,
-  screenshotPreview,
-  screenshotError,
-  screenshotFile,
-  onFileChange,
+  onAdd,
   onRemove,
   required = false,
 }) {
+  const validCount = screenshots.filter((s) => s.file != null).length;
+
   return (
     <div className="form-group screenshot-upload">
-      <label htmlFor="screenshot-input">
-        Payment Screenshot{' '}
+      <label>
+        Payment Screenshots{' '}
         {required
           ? <span className="required">*</span>
           : <span className="optional">(optional)</span>}
       </label>
 
       <p className="field-hint">
-        Attach a screenshot of your payment confirmation.
-        Accepted: PNG, JPEG, WebP, GIF — max {SCREENSHOT_CONSTRAINTS.MAX_LABEL}.
+        Attach one or more screenshots of your payment confirmation (max 5).
+        Accepted: PNG, JPEG, WebP, GIF — max {SCREENSHOT_CONSTRAINTS.MAX_LABEL} each.
       </p>
 
+      {/* Uploaded screenshots list */}
+      {screenshots.length > 0 && (
+        <div className="screenshot-list">
+          {screenshots.map((s, idx) => (
+            <div key={idx} className="screenshot-item">
+              {s.error ? (
+                <p role="alert" className="field-error">{s.error}</p>
+              ) : (
+                <>
+                  {s.preview && (
+                    <img
+                      src={s.preview}
+                      alt={`Payment screenshot ${idx + 1} preview`}
+                      className="screenshot-thumb"
+                    />
+                  )}
+                  {s.file && <span className="screenshot-filename">{s.file.name}</span>}
+                </>
+              )}
+              <button
+                type="button"
+                className="btn btn-sm btn-remove"
+                onClick={() => onRemove(idx)}
+                aria-label={`Remove screenshot ${idx + 1}`}
+              >
+                ✕ Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Hidden file input */}
       <input
         id="screenshot-input"
         ref={fileInputRef}
         type="file"
         accept={SCREENSHOT_CONSTRAINTS.ACCEPT_ATTR}
-        onChange={onFileChange}
+        onChange={onAdd}
         aria-label="Upload payment screenshot"
-        aria-describedby={screenshotError ? 'screenshot-error' : undefined}
+        style={{ display: 'none' }}
+        multiple
       />
 
-      {screenshotError && (
-        <p id="screenshot-error" role="alert" className="field-error">
-          {screenshotError}
-        </p>
+      {/* Add button — only shown when more can be added */}
+      {canAddMore && (
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => fileInputRef.current?.click()}
+          aria-label={validCount === 0 ? 'Add payment screenshot' : 'Add another payment screenshot'}
+        >
+          {validCount === 0 ? '+ Add Screenshot' : '+ Add Another Screenshot'}
+        </button>
       )}
 
-      {screenshotPreview && (
-        <div className="screenshot-preview">
-          <img
-            src={screenshotPreview}
-            alt="Payment screenshot preview"
-            className="screenshot-thumb"
-          />
-          <button
-            type="button"
-            className="btn btn-sm btn-remove"
-            onClick={onRemove}
-            aria-label="Remove screenshot"
-          >
-            ✕ Remove
-          </button>
-          {screenshotFile && (
-            <p className="screenshot-filename">{screenshotFile.name}</p>
-          )}
-        </div>
+      {validCount > 0 && (
+        <p className="screenshot-count">{validCount} screenshot{validCount !== 1 ? 's' : ''} attached</p>
       )}
     </div>
   );

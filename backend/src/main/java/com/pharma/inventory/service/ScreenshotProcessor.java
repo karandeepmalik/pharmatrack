@@ -5,7 +5,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -46,6 +48,27 @@ public class ScreenshotProcessor {
      */
     public boolean hasScreenshot(MultipartFile file) {
         return file != null && !file.isEmpty();
+    }
+
+    /**
+     * Validates and Base64-encodes a list of screenshots.
+     * Each element of the returned list is a two-element array: [base64Data, mimeType].
+     * Files that are null or empty are skipped.
+     *
+     * @param files list of uploaded files (may be null or contain nulls)
+     * @return list of encoded screenshots; never null
+     * @throws InvalidScreenshotException if any file has an invalid MIME type or exceeds 5 MB
+     * @throws IOException                if any file's bytes cannot be read
+     */
+    public List<String[]> encodeAll(List<MultipartFile> files) throws IOException {
+        List<String[]> result = new ArrayList<>();
+        if (files == null) return result;
+        for (MultipartFile file : files) {
+            if (hasScreenshot(file)) {
+                result.add(new String[]{encodeToBase64(file), file.getContentType()});
+            }
+        }
+        return result;
     }
 
     // ── Private validation ────────────────────────────────────────────

@@ -3,13 +3,15 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import ScreenshotUpload from '../../components/ScreenshotUpload';
 import { SCREENSHOT_CONSTRAINTS } from '../../constants';
 
+const makeFile = (name = 'pay.png') => new File(['x'], name, { type: 'image/png' });
+
 const defaultProps = {
+  screenshots: [],
+  canAddMore: true,
   fileInputRef: createRef(),
-  screenshotPreview: null,
-  screenshotError: '',
-  screenshotFile: null,
-  onFileChange: jest.fn(),
+  onAdd: jest.fn(),
   onRemove: jest.fn(),
+  required: false,
 };
 
 const renderComponent = (overrides = {}) =>
@@ -18,105 +20,182 @@ const renderComponent = (overrides = {}) =>
 describe('ScreenshotUpload component', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  // ── Renders ───────────────────────────────────────────────────────────
-  test('renders file input with correct aria-label', () => {
-    renderComponent();
-    expect(screen.getByLabelText(/upload payment screenshot/i)).toBeInTheDocument();
-  });
-
-  test('renders "optional" label text', () => {
-    renderComponent();
-    expect(screen.getByText(/optional/i)).toBeInTheDocument();
-  });
-
-  test(`renders hint mentioning max size (${SCREENSHOT_CONSTRAINTS.MAX_LABEL})`, () => {
-    renderComponent();
-    expect(screen.getByText(new RegExp(SCREENSHOT_CONSTRAINTS.MAX_LABEL))).toBeInTheDocument();
-  });
-
-  test('file input has correct accept attribute', () => {
-    renderComponent();
-    const input = screen.getByLabelText(/upload payment screenshot/i);
-    expect(input).toHaveAttribute('accept', SCREENSHOT_CONSTRAINTS.ACCEPT_ATTR);
-  });
-
-  // ── No preview ────────────────────────────────────────────────────────
-  test('does not render preview img when screenshotPreview is null', () => {
-    renderComponent();
-    expect(screen.queryByAltText(/payment screenshot preview/i)).not.toBeInTheDocument();
-  });
-
-  test('does not render remove button when no preview', () => {
-    renderComponent();
-    expect(screen.queryByRole('button', { name: /remove screenshot/i }))
-      .not.toBeInTheDocument();
-  });
-
-  // ── With preview ──────────────────────────────────────────────────────
-  test('renders preview image when screenshotPreview is provided', () => {
-    renderComponent({ screenshotPreview: 'data:image/png;base64,abc' });
-    expect(screen.getByAltText(/payment screenshot preview/i)).toBeInTheDocument();
-  });
-
-  test('preview image src matches screenshotPreview prop', () => {
-    const preview = 'data:image/png;base64,abc123';
-    renderComponent({ screenshotPreview: preview });
-    expect(screen.getByAltText(/payment screenshot preview/i))
-      .toHaveAttribute('src', preview);
-  });
-
-  test('renders remove button when preview is present', () => {
-    renderComponent({ screenshotPreview: 'data:image/png;base64,x' });
-    expect(screen.getByRole('button', { name: /remove screenshot/i })).toBeInTheDocument();
-  });
-
-  test('calls onRemove when remove button is clicked', () => {
-    const onRemove = jest.fn();
-    renderComponent({ screenshotPreview: 'data:image/png;base64,x', onRemove });
-    fireEvent.click(screen.getByRole('button', { name: /remove screenshot/i }));
-    expect(onRemove).toHaveBeenCalledTimes(1);
-  });
-
-  test('renders filename when screenshotFile is provided', () => {
-    const file = new File(['x'], 'proof.png', { type: 'image/png' });
-    renderComponent({
-      screenshotPreview: 'data:image/png;base64,x',
-      screenshotFile: file,
+  // ── Label / hint ─────────────────────────────────────────────────────
+  describe('label and hint', () => {
+    test('shows "(optional)" when not required', () => {
+      renderComponent();
+      expect(screen.getByText(/optional/i)).toBeInTheDocument();
     });
-    expect(screen.getByText('proof.png')).toBeInTheDocument();
-  });
 
-  // ── Error state ───────────────────────────────────────────────────────
-  test('renders error message with role="alert" when screenshotError set', () => {
-    renderComponent({ screenshotError: 'Only PNG, JPEG images allowed.' });
-    const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('Only PNG, JPEG images allowed.');
-  });
-
-  test('does not render error when screenshotError is empty', () => {
-    renderComponent({ screenshotError: '' });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  test('input has aria-describedby when error is present', () => {
-    renderComponent({ screenshotError: 'Bad file' });
-    const input = screen.getByLabelText(/upload payment screenshot/i);
-    expect(input).toHaveAttribute('aria-describedby', 'screenshot-error');
-  });
-
-  test('input has no aria-describedby when no error', () => {
-    renderComponent({ screenshotError: '' });
-    const input = screen.getByLabelText(/upload payment screenshot/i);
-    expect(input).not.toHaveAttribute('aria-describedby');
-  });
-
-  // ── Callbacks ─────────────────────────────────────────────────────────
-  test('calls onFileChange when file is selected', () => {
-    const onFileChange = jest.fn();
-    renderComponent({ onFileChange });
-    fireEvent.change(screen.getByLabelText(/upload payment screenshot/i), {
-      target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+    test('shows required asterisk and hides optional when required prop is true', () => {
+      renderComponent({ required: true });
+      expect(screen.queryByText(/optional/i)).not.toBeInTheDocument();
+      expect(screen.getByText('*')).toBeInTheDocument();
     });
-    expect(onFileChange).toHaveBeenCalledTimes(1);
+
+    test(`renders hint mentioning max size (${SCREENSHOT_CONSTRAINTS.MAX_LABEL})`, () => {
+      renderComponent();
+      expect(screen.getByText(new RegExp(SCREENSHOT_CONSTRAINTS.MAX_LABEL))).toBeInTheDocument();
+    });
+
+    test('renders hint mentioning max count (5)', () => {
+      renderComponent();
+      expect(screen.getByText(/max 5/i)).toBeInTheDocument();
+    });
+  });
+
+  // ── File input ────────────────────────────────────────────────────────
+  describe('file input', () => {
+    test('file input accessible via aria-label', () => {
+      renderComponent();
+      expect(screen.getByLabelText(/upload payment screenshot/i)).toBeInTheDocument();
+    });
+
+    test('file input has correct accept attribute', () => {
+      renderComponent();
+      expect(screen.getByLabelText(/upload payment screenshot/i))
+        .toHaveAttribute('accept', SCREENSHOT_CONSTRAINTS.ACCEPT_ATTR);
+    });
+
+    test('file input has multiple attribute', () => {
+      renderComponent();
+      expect(screen.getByLabelText(/upload payment screenshot/i)).toHaveAttribute('multiple');
+    });
+
+    test('calls onAdd when file input changes', () => {
+      const onAdd = jest.fn();
+      renderComponent({ onAdd });
+      fireEvent.change(screen.getByLabelText(/upload payment screenshot/i), {
+        target: { files: [makeFile()] },
+      });
+      expect(onAdd).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── Add button ────────────────────────────────────────────────────────
+  describe('add button', () => {
+    test('shows "Add Screenshot" button when canAddMore and no valid screenshots', () => {
+      renderComponent({ canAddMore: true, screenshots: [] });
+      expect(screen.getByRole('button', { name: /add payment screenshot/i })).toBeInTheDocument();
+    });
+
+    test('shows "Add Another Screenshot" label when canAddMore and one valid screenshot exists', () => {
+      renderComponent({
+        canAddMore: true,
+        screenshots: [{ file: makeFile(), preview: 'data:image/png;base64,x', error: '' }],
+      });
+      expect(screen.getByRole('button', { name: /add another payment screenshot/i })).toBeInTheDocument();
+    });
+
+    test('does not show add button when canAddMore is false', () => {
+      renderComponent({ canAddMore: false });
+      expect(screen.queryByRole('button', { name: /add.*screenshot/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Empty screenshots array ────────────────────────────────────────────
+  describe('empty screenshots array', () => {
+    test('renders no preview images', () => {
+      renderComponent();
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    test('renders no remove buttons', () => {
+      renderComponent();
+      expect(screen.queryByRole('button', { name: /remove screenshot/i })).not.toBeInTheDocument();
+    });
+
+    test('does not show count label', () => {
+      renderComponent();
+      expect(screen.queryByText(/screenshot.*attached/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Valid screenshot entry ─────────────────────────────────────────────
+  describe('single valid screenshot entry', () => {
+    const validEntry = { file: makeFile('proof.png'), preview: 'data:image/png;base64,abc', error: '' };
+
+    test('renders preview image with correct alt text', () => {
+      renderComponent({ screenshots: [validEntry] });
+      expect(screen.getByAltText(/payment screenshot 1 preview/i)).toBeInTheDocument();
+    });
+
+    test('preview image has correct src', () => {
+      renderComponent({ screenshots: [validEntry] });
+      expect(screen.getByAltText(/payment screenshot 1 preview/i))
+        .toHaveAttribute('src', 'data:image/png;base64,abc');
+    });
+
+    test('renders filename', () => {
+      renderComponent({ screenshots: [validEntry] });
+      expect(screen.getByText('proof.png')).toBeInTheDocument();
+    });
+
+    test('renders remove button with index-specific aria-label', () => {
+      renderComponent({ screenshots: [validEntry] });
+      expect(screen.getByRole('button', { name: /remove screenshot 1/i })).toBeInTheDocument();
+    });
+
+    test('calls onRemove with index 0 when remove button clicked', () => {
+      const onRemove = jest.fn();
+      renderComponent({ screenshots: [validEntry], onRemove });
+      fireEvent.click(screen.getByRole('button', { name: /remove screenshot 1/i }));
+      expect(onRemove).toHaveBeenCalledWith(0);
+    });
+
+    test('shows singular count label', () => {
+      renderComponent({ screenshots: [validEntry] });
+      expect(screen.getByText(/1 screenshot attached/i)).toBeInTheDocument();
+    });
+  });
+
+  // ── Error screenshot entry ─────────────────────────────────────────────
+  describe('error screenshot entry', () => {
+    const errorEntry = { file: null, preview: null, error: 'Only PNG, JPEG images allowed.' };
+
+    test('renders error message with role="alert"', () => {
+      renderComponent({ screenshots: [errorEntry] });
+      expect(screen.getByRole('alert')).toHaveTextContent('Only PNG, JPEG images allowed.');
+    });
+
+    test('does not render preview image for error entry', () => {
+      renderComponent({ screenshots: [errorEntry] });
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    test('error entry does not contribute to attached count', () => {
+      renderComponent({ screenshots: [errorEntry] });
+      expect(screen.queryByText(/screenshot.*attached/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Multiple entries ───────────────────────────────────────────────────
+  describe('two valid screenshot entries', () => {
+    const twoValid = [
+      { file: makeFile('a.png'), preview: 'data:image/png;base64,a', error: '' },
+      { file: makeFile('b.png'), preview: 'data:image/png;base64,b', error: '' },
+    ];
+
+    test('renders two preview images', () => {
+      renderComponent({ screenshots: twoValid });
+      expect(screen.getAllByRole('img')).toHaveLength(2);
+    });
+
+    test('renders two remove buttons', () => {
+      renderComponent({ screenshots: twoValid });
+      expect(screen.getAllByRole('button', { name: /remove screenshot \d/i })).toHaveLength(2);
+    });
+
+    test('calls onRemove with index 1 when second remove button clicked', () => {
+      const onRemove = jest.fn();
+      renderComponent({ screenshots: twoValid, onRemove });
+      fireEvent.click(screen.getByRole('button', { name: /remove screenshot 2/i }));
+      expect(onRemove).toHaveBeenCalledWith(1);
+    });
+
+    test('shows plural count label', () => {
+      renderComponent({ screenshots: twoValid });
+      expect(screen.getByText(/2 screenshots attached/i)).toBeInTheDocument();
+    });
   });
 });
