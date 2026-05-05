@@ -143,7 +143,7 @@ class InventoryControllerTest {
         void adminCanAddInventory() throws Exception {
             InventoryResponse added = new InventoryResponse();
             added.setQuantity(110); added.setUsername("john.doe");
-            when(inventoryService.adjustInventory(any())).thenReturn(added);
+            when(inventoryService.adjustInventory(any(), any())).thenReturn(added);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validAddReq())))
@@ -155,7 +155,7 @@ class InventoryControllerTest {
         void adminCanReduceInventory() throws Exception {
             InventoryResponse reduced = new InventoryResponse();
             reduced.setQuantity(45); reduced.setUsername("john.doe");
-            when(inventoryService.adjustInventory(any())).thenReturn(reduced);
+            when(inventoryService.adjustInventory(any(), any())).thenReturn(reduced);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validReduceReq())))
@@ -165,7 +165,7 @@ class InventoryControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void returnsConflictWhenInsufficientStock() throws Exception {
-            when(inventoryService.adjustInventory(any()))
+            when(inventoryService.adjustInventory(any(), any()))
                     .thenThrow(new InsufficientInventoryException(3, 5));
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)

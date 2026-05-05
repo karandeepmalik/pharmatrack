@@ -11,7 +11,7 @@ export default function ModifyInventory() {
     const [inventory, setInventory] = useState([]);
     const [form, setForm]           = useState({
         userId: '', medicineId: '', adjustmentType: 'ADD',
-        quantity: '', note: '', inventoryType: 'REGULAR',
+        quantity: '', note: '', inventoryType: 'REGULAR', internalMovement: false,
     });
     const [msg, setMsg]             = useState('');
     const [err, setErr]             = useState('');
@@ -51,12 +51,13 @@ export default function ModifyInventory() {
         setMsg(''); setErr(''); setSubmitting(true);
         try {
             await api.adjustInventory({
-                userId:         Number(form.userId),
-                medicineId:     Number(form.medicineId),
-                adjustmentType: form.adjustmentType,
-                quantity:       Number(form.quantity),
-                note:           form.note.trim(),
-                inventoryType:  form.inventoryType,
+                userId:          Number(form.userId),
+                medicineId:      Number(form.medicineId),
+                adjustmentType:  form.adjustmentType,
+                quantity:        Number(form.quantity),
+                note:            form.note.trim(),
+                inventoryType:   form.inventoryType,
+                internalMovement: form.internalMovement,
             });
             setMsg(`Inventory ${form.adjustmentType === 'ADD' ? 'added' : 'reduced'} successfully.`);
             setForm(f => ({ ...f, quantity: '', note: '' }));
@@ -201,10 +202,23 @@ export default function ModifyInventory() {
                             Reason for Modification <span className="required">*</span>
                         </label>
                         <textarea id="note-input" rows={3}
-                            placeholder="e.g. Restocking for Ward 3 monthly supply"
+                            placeholder="e.g. Sent to Suma"
                             value={form.note} onChange={set('note')}
                             maxLength={500} />
                         <small>{form.note.length}/500 characters (minimum 5)</small>
+                    </div>
+
+                    <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                            id="internal-movement-checkbox"
+                            type="checkbox"
+                            checked={form.internalMovement}
+                            onChange={e => setForm(f => ({ ...f, internalMovement: e.target.checked }))}
+                            style={{ width: 'auto', cursor: 'pointer' }}
+                        />
+                        <label htmlFor="internal-movement-checkbox" style={{ marginBottom: 0, cursor: 'pointer' }}>
+                            Internal Movement
+                        </label>
                     </div>
 
                     <button type="submit" className="btn btn-primary"

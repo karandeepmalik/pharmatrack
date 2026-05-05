@@ -2,8 +2,10 @@ package com.pharma.inventory.service;
 
 import com.pharma.inventory.dto.ReportResponse;
 import com.pharma.inventory.entity.Inventory;
+import com.pharma.inventory.entity.InventoryAdjustment;
 import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Transaction;
+import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ public class ReportService {
 
     private final InventoryRepository inventoryRepository;
     private final TransactionRepository transactionRepository;
+    private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
 
     private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
     private static final DateTimeFormatter DT_FMT   = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
@@ -84,6 +87,11 @@ public class ReportService {
         sb.append("\n").append("=".repeat(40)).append("\n");
         sb.append("ADMIN INVENTORY\n");
         sb.append("-".repeat(15)).append("\n");
+        if (!adminStockRecords.isEmpty()) {
+            String adminPharma = adminStockRecords.get(0).getMedicine().getPharmaCompany().getName();
+            sb.append(adminPharma).append("\n");
+            sb.append("-".repeat(adminPharma.length())).append("\n");
+        }
         appendInventoryByUserSection(sb, adminStockRecords);
 
         return new ReportResponse("INVENTORY_BY_USER", nowIST(), sb.toString());
@@ -94,26 +102,21 @@ public class ReportService {
      * Uses full medicine name as header; skips specs with no data.
      */
     private void appendInventoryByUserSection(StringBuilder sb, List<Inventory> records) {
-        // Build maps: specKey → list of inventory records, specKey → full medicine name header
         Map<String, List<Inventory>> bySpec = new LinkedHashMap<>();
-        Map<String, String> specKeyToHeader = new LinkedHashMap<>();
         for (Inventory inv : records) {
-            Medicine m = inv.getMedicine();
-            String key = specKey(m);
-            String header = m.getType() == Medicine.MedicineType.VIAL
-                    ? m.getName() + " | " + vialConc(m) + " mg/ml"
-                    : m.getName();
-            bySpec.computeIfAbsent(key, k -> new ArrayList<>()).add(inv);
-            specKeyToHeader.putIfAbsent(key, header);
+            bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
         }
 
-        // Iterate in fixed spec order, skip specs with no data
         for (String[] spec : DAILY_SPEC_ORDER) {
             String key = spec[0] + "|" + spec[1];
             List<Inventory> entries = bySpec.get(key);
             if (entries == null || entries.isEmpty()) continue;
 
-            String header = specKeyToHeader.get(key);
+            // Short format: "Vial 10 ml | 20 mg/ml" or "Tablet 50 mg (10 Tablets)"
+            String header = "VIAL".equals(spec[0])
+                    ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
+                    : spec[2];
+
             sb.append(header).append("\n");
             sb.append("-".repeat(35)).append("\n");
             int total = 0;
@@ -267,6 +270,7 @@ public class ReportService {
         List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_STOCK);
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
+        List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findByDateRange(start, end);
 
         // Derive pharma name from either inventory set
         String pharmaName = regularRecords.stream()
@@ -291,6 +295,11 @@ public class ReportService {
         sb.append("\n").append("=".repeat(40)).append("\n");
         sb.append("ADMIN INVENTORY\n");
         sb.append("-".repeat(15)).append("\n");
+        if (!adminStockRecords.isEmpty()) {
+            String adminPharma = adminStockRecords.get(0).getMedicine().getPharmaCompany().getName();
+            sb.append(adminPharma).append("\n");
+            sb.append("-".repeat(adminPharma.length())).append("\n");
+        }
         appendInventoryAdminSection(sb, adminStockRecords);
 
         // ── DAILY TRANSACTION SUMMARY ─────────────────────────────────
@@ -314,6 +323,27 @@ public class ReportService {
                     sb.append("  ").append(tx.getNotes());
                 }
                 sb.append("\n");
+            }
+        }
+
+        // ── Inventory adjustments ─────────────────────────────────────
+        List<InventoryAdjustment> regular = adjustments.stream()
+                .filter(a -> !a.isInternalMovement()).toList();
+        List<InventoryAdjustment> internal = adjustments.stream()
+                .filter(InventoryAdjustment::isInternalMovement).toList();
+
+        if (!regular.isEmpty()) {
+            sb.append("\n");
+            for (InventoryAdjustment a : regular) {
+                appendAdjustmentLine(sb, a);
+            }
+        }
+
+        if (!internal.isEmpty()) {
+            sb.append("\nInternal Movement\n");
+            sb.append("-".repeat(17)).append("\n");
+            for (InventoryAdjustment a : internal) {
+                appendAdjustmentLine(sb, a);
             }
         }
 
@@ -370,8 +400,11 @@ public class ReportService {
         for (String[] spec : DAILY_SPEC_ORDER) {
             String key = spec[0] + "|" + spec[1];
             List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
-            if (entries.isEmpty()) continue; // skip zero-quantity specs
-            sb.append("\n").append(spec[2]).append("\n");
+            if (entries.isEmpty()) continue;
+            String header = "VIAL".equals(spec[0])
+                    ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
+                    : spec[2];
+            sb.append("\n").append(header).append("\n");
             int total = 0;
             for (Inventory inv : entries) {
                 sb.append("  ").append(inv.getUser().getUsername())
@@ -380,5 +413,20 @@ public class ReportService {
             }
             sb.append("  TOTAL: ").append(total).append("\n");
         }
+    }
+
+    private void appendAdjustmentLine(StringBuilder sb, InventoryAdjustment a) {
+        Medicine m = a.getMedicine();
+        int specInt = m.getSpecification().intValue();
+        String specLabel = m.getType() == Medicine.MedicineType.VIAL
+                ? specInt + " ml" : specInt + " mg";
+        String sign = "ADD".equals(a.getAdjustmentType()) ? "+" : "-";
+        sb.append(a.getUser().getUsername())
+          .append("  ")
+          .append(sign).append(a.getQuantity()).append(" x ").append(specLabel);
+        if (a.getNote() != null && !a.getNote().isBlank()) {
+            sb.append("  ").append(a.getNote());
+        }
+        sb.append("\n");
     }
 }
