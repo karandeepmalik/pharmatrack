@@ -15,12 +15,16 @@ public class DataInitializer {
     private final MedicineRepository medicines;
     private final InventoryRepository inventory;
     private final TransactionRepository txRepo;
+    private final InventoryAdjustmentRepository adjustments;
     private final PasswordEncoder encoder;
 
     @Bean @Profile("!test")
     public CommandLineRunner seed() {
         return args -> {
-            if (medicines.existsByName("Shield FX Tablet 50 mg (10 Tablets)")) {
+            // Reseed if medicines are missing OR if the admin account is gone
+            // (guards against a partial reseed that cleared users but not medicines)
+            if (medicines.existsByName("Shield FX Tablet 50 mg (10 Tablets)")
+                    && users.existsByUsername("admin")) {
                 log.info("Data already seeded — patching vial concentrations if missing.");
                 patchVialConcentration();
                 return;
@@ -37,6 +41,8 @@ public class DataInitializer {
 
     public void reseed() {
         log.info("Clearing existing data and seeding fresh demo data with Shield FX medicines...");
+        // Clear in FK-safe order: adjustments before medicines/users, screenshots cascade from transactions
+        adjustments.deleteAll();
         txRepo.deleteAll();
         inventory.deleteAll();
         medicines.deleteAll();

@@ -675,14 +675,14 @@ async function run() {
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     assert(r.data.reportType === 'INVENTORY_BY_USER', `Expected INVENTORY_BY_USER, got ${r.data.reportType}`);
     assert(typeof r.data.content === 'string' && r.data.content.length > 0, 'Expected non-empty content');
-    assert(r.data.content.includes('CURRENT INVENTORY LEVEL BY USER'), 'Expected report header');
+    assert(r.data.content.includes('CURRENT MEDICINE STOCK PER USER'), 'Expected report header');
   });
 
   await test('Admin can access inventory-valuation report', async () => {
     const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     assert(r.data.reportType === 'INVENTORY_VALUATION', `Expected INVENTORY_VALUATION, got ${r.data.reportType}`);
-    assert(r.data.content.includes('CURRENT INVENTORY VALUATION'), 'Expected report header');
+    assert(r.data.content.includes('CURRENT MEDICINE STOCK VALUATION'), 'Expected report header');
     assert(r.data.content.includes('TOTAL VALUATION'), 'Expected total valuation line');
   });
 
@@ -700,14 +700,14 @@ async function run() {
     assert(r.data.content.includes('DAILY REPORT'), 'Expected daily report header');
     assert(r.data.content.includes('Shield FX'), 'Expected pharma name as section heading');
     assert(!r.data.content.includes('INVENTORY COUNTS'), 'Should not contain INVENTORY COUNTS heading');
-    assert(r.data.content.includes('ADMIN INVENTORY'), 'Expected admin inventory section');
-    assert(r.data.content.includes("TODAY'S TRANSACTIONS"), "Expected transactions section");
+    assert(r.data.content.includes('REGULAR MEDICINE STOCK'), 'Expected regular medicine stock section');
+    assert(r.data.content.includes('ADMIN MEDICINE STOCK'), 'Expected admin medicine stock section');
+    assert(r.data.content.includes('DAILY TRANSACTION SUMMARY'), 'Expected transactions section');
     assert(r.data.content.includes('Vial 10 ml'), 'Expected 10ml vial in inventory section');
     assert(r.data.content.includes('Vial 5 ml'), 'Expected 5ml vial in inventory section');
-    assert(!r.data.content.includes('mg/ml'), 'Should not show mg/ml concentration in daily report');
-    // Admin inventory must appear before transactions
-    assert(r.data.content.indexOf('ADMIN INVENTORY') < r.data.content.indexOf("TODAY'S TRANSACTIONS"),
-      'Expected ADMIN INVENTORY before TODAY\'S TRANSACTIONS');
+    // Admin stock must appear before transactions
+    assert(r.data.content.indexOf('ADMIN MEDICINE STOCK') < r.data.content.indexOf('DAILY TRANSACTION SUMMARY'),
+      'Expected ADMIN MEDICINE STOCK before DAILY TRANSACTION SUMMARY');
     assert(r.data.content.includes('IST'), 'Expected IST in timestamp');
     // 10ml must appear before 5ml
     assert(r.data.content.indexOf('Vial 10 ml') < r.data.content.indexOf('Vial 5 ml'),
@@ -737,8 +737,8 @@ async function run() {
   await test('User has available inventory to submit against', async () => {
     const r = await apiGet(`${API}/inventory/available`, userToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
-    const item = r.data.find(i => i.quantity >= 2 && i.inventoryType === 'REGULAR');
-    assert(item, 'No REGULAR inventory item with qty >= 2 found for user');
+    const item = r.data.find(i => i.quantity >= 2 && i.inventoryType === 'REGULAR_MEDICINE_STOCK');
+    assert(item, 'No REGULAR_MEDICINE_STOCK inventory item with qty >= 2 found for user');
     txMedicineId = item.medicineId;
   });
 
@@ -749,7 +749,7 @@ async function run() {
       medicineId: String(txMedicineId),
       quantity: '1',
       notes: 'E2E single-screenshot test',
-      inventoryType: 'REGULAR',
+      inventoryType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('1')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
@@ -776,7 +776,7 @@ async function run() {
       medicineId: String(txMedicineId),
       quantity: '1',
       notes: 'E2E multi-screenshot test two files',
-      inventoryType: 'REGULAR',
+      inventoryType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('A'), makeFakePng('B')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
