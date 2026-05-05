@@ -78,15 +78,17 @@ public class ReportService {
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
 
-        // ── REGULAR inventory section ─────────────────────────────────────
+        // ── REGULAR MEDICINE STOCK section ──────────────────────────────
+        sb.append("REGULAR MEDICINE STOCK\n");
+        sb.append("-".repeat(22)).append("\n");
         sb.append(pharmaName).append("\n");
         sb.append("-".repeat(pharmaName.length())).append("\n");
         appendInventoryByUserSection(sb, regularRecords);
 
-        // ── ADMIN MEDICINE STOCK section ───────────────────────────────────────
+        // ── ADMIN MEDICINE STOCK section ────────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
         sb.append("ADMIN MEDICINE STOCK\n");
-        sb.append("-".repeat(15)).append("\n");
+        sb.append("-".repeat(20)).append("\n");
         if (!adminStockRecords.isEmpty()) {
             String adminPharma = adminStockRecords.get(0).getMedicine().getPharmaCompany().getName();
             sb.append(adminPharma).append("\n");
@@ -297,15 +299,17 @@ public class ReportService {
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
 
-        // ── INVENTORY section ──────────────────────────────────────────
+        // ── REGULAR MEDICINE STOCK section ────────────────────────────
+        sb.append("REGULAR MEDICINE STOCK\n");
+        sb.append("-".repeat(22)).append("\n");
         sb.append(pharmaName).append("\n");
         sb.append("-".repeat(pharmaName.length())).append("\n");
         appendInventorySection(sb, regularRecords);
 
-        // ── ADMIN MEDICINE STOCK section ───────────────────────────────────
+        // ── ADMIN MEDICINE STOCK section ───────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
         sb.append("ADMIN MEDICINE STOCK\n");
-        sb.append("-".repeat(15)).append("\n");
+        sb.append("-".repeat(20)).append("\n");
         if (!adminStockRecords.isEmpty()) {
             String adminPharma = adminStockRecords.get(0).getMedicine().getPharmaCompany().getName();
             sb.append(adminPharma).append("\n");
