@@ -206,9 +206,18 @@ class MedicineSpecValidationTest {
             assertThat(active).isEqualTo(3);
         }
 
-        @Test @DisplayName("No inventory records exist after seed (no system inventory)")
-        void noInventoryAfterSeed() {
-            assertThat(inventoryRepository.findAll()).isEmpty();
+        @Test @DisplayName("Seed creates 15 inventory records: 5 admin stock + 5 john.doe + 5 jane.smith")
+        void inventorySeededCorrectly() {
+            var all = inventoryRepository.findAll();
+            assertThat(all).hasSize(15);
+            long adminRows = all.stream()
+                .filter(i -> i.getInventoryType() == com.pharma.inventory.entity.Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                .count();
+            long userRows = all.stream()
+                .filter(i -> i.getInventoryType() == com.pharma.inventory.entity.Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                .count();
+            assertThat(adminRows).isEqualTo(5);
+            assertThat(userRows).isEqualTo(10);
         }
     }
 }
