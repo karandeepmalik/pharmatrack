@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Runs one-time schema and data migrations at application startup.
@@ -26,12 +27,39 @@ public class DataMigrationService {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onStartup() {
+        dropInventoryTypeCheckConstraints();
         widenInventoryTypeColumns();
         setDefaultInventoryType();
         renameInventoryTypeValues();
         dropLegacyUniqueConstraint();
         createTransactionScreenshotsTable();
         seedInventoryIfEmpty();
+    }
+
+    /**
+     * Drop CHECK constraints that Hibernate 6 auto-generates for @Enumerated(EnumType.STRING) fields.
+     * Hibernate 6 creates CHECK (inventory_type IN ('REGULAR', 'ADMIN_STOCK')) using the original enum
+     * names. These constraints block the rename UPDATEs that follow, causing them to fail silently
+     * and leaving stale values that JPQL queries can't match.
+     */
+    private void dropInventoryTypeCheckConstraints() {
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT con.conname, rel.relname " +
+                "FROM pg_constraint con " +
+                "JOIN pg_class rel ON rel.oid = con.conrelid " +
+                "JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = ANY(con.conkey) " +
+                "WHERE rel.relname IN ('inventory', 'transactions', 'inventory_adjustments') " +
+                "AND con.contype = 'c' AND att.attname = 'inventory_type'");
+            for (Map<String, Object> row : rows) {
+                String table = (String) row.get("relname");
+                String constraint = (String) row.get("conname");
+                jdbc.execute("ALTER TABLE \"" + table + "\" DROP CONSTRAINT IF EXISTS \"" + constraint + "\"");
+                log.info("DataMigration: dropped check constraint '{}' on {}", constraint, table);
+            }
+        } catch (Exception e) {
+            log.debug("DataMigration: check constraint drop skipped — {}", e.getMessage());
+        }
     }
 
     /**
