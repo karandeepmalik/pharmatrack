@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import java.util.List;
 @Configuration @RequiredArgsConstructor @Slf4j
 public class DataInitializer {
     private final UserRepository users;
@@ -65,17 +66,37 @@ public class DataInitializer {
             .description("Shield FX treatment specialist").active(true).build());
 
         // ── Medicines — VIAL: 5 ml / 10 ml at 20 mg/ml | Tablet: 12, 25, 50 mg (10 Tablets) ──
-        medicines.save(Medicine.builder().name("Shield FX Vial 5 ml")
+        Medicine vial5  = medicines.save(Medicine.builder().name("Shield FX Vial 5 ml")
             .type(Medicine.MedicineType.VIAL).specification(5.0).concentrationMgPerMl(20.0).price(2000).pharmaCompany(shieldFx).active(true).build());
-        medicines.save(Medicine.builder().name("Shield FX Vial 10 ml")
+        Medicine vial10 = medicines.save(Medicine.builder().name("Shield FX Vial 10 ml")
             .type(Medicine.MedicineType.VIAL).specification(10.0).concentrationMgPerMl(20.0).price(4000).pharmaCompany(shieldFx).active(true).build());
-        medicines.save(Medicine.builder().name("Shield FX Tablet 12 mg (10 Tablets)")
+        Medicine tab12  = medicines.save(Medicine.builder().name("Shield FX Tablet 12 mg (10 Tablets)")
             .type(Medicine.MedicineType.TABLET).specification(12.0).price(1750).pharmaCompany(shieldFx).active(true).build());
-        medicines.save(Medicine.builder().name("Shield FX Tablet 25 mg (10 Tablets)")
+        Medicine tab25  = medicines.save(Medicine.builder().name("Shield FX Tablet 25 mg (10 Tablets)")
             .type(Medicine.MedicineType.TABLET).specification(25.0).price(4000).pharmaCompany(shieldFx).active(true).build());
-        medicines.save(Medicine.builder().name("Shield FX Tablet 50 mg (10 Tablets)")
+        Medicine tab50  = medicines.save(Medicine.builder().name("Shield FX Tablet 50 mg (10 Tablets)")
             .type(Medicine.MedicineType.TABLET).specification(50.0).price(8000).pharmaCompany(shieldFx).active(true).build());
 
-        log.info("Seeded: 3 users (admin, john.doe, jane.smith), 1 pharma (Shield FX), 5 medicines with prices.");
+        // ── Seed initial admin inventory (system stock) ───────────────
+        User adminUser = users.findByUsername("admin").orElseThrow();
+        for (Medicine m : List.of(vial5, vial10, tab12, tab25, tab50)) {
+            inventory.save(Inventory.builder().user(adminUser).medicine(m)
+                .quantity(100).inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                .lastNote("Initial stock").build());
+        }
+
+        // ── Seed initial user inventory (regular allocations) ─────────
+        User john = users.findByUsername("john.doe").orElseThrow();
+        User jane = users.findByUsername("jane.smith").orElseThrow();
+        for (Medicine m : List.of(vial5, vial10, tab12, tab25, tab50)) {
+            inventory.save(Inventory.builder().user(john).medicine(m)
+                .quantity(20).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                .lastNote("Initial allocation").build());
+            inventory.save(Inventory.builder().user(jane).medicine(m)
+                .quantity(15).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                .lastNote("Initial allocation").build());
+        }
+
+        log.info("Seeded: 3 users, 1 pharma, 5 medicines, admin stock (100 each), user allocations (john=20, jane=15 each).");
     }
 }

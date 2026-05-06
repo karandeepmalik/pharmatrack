@@ -30,7 +30,6 @@ public class DataMigrationService {
         setDefaultInventoryType();
         renameInventoryTypeValues();
         dropLegacyUniqueConstraint();
-        removeAdminInventory();
         createTransactionScreenshotsTable();
     }
 
@@ -143,15 +142,4 @@ public class DataMigrationService {
         }
     }
 
-    /** Remove any inventory rows that belong to the admin user (admin has no inventory). */
-    private void removeAdminInventory() {
-        try {
-            int n = jdbc.update(
-                "DELETE FROM inventory WHERE user_id IN " +
-                "(SELECT id FROM users WHERE role = 'ADMIN')");
-            if (n > 0) log.info("DataMigration: removed {} admin inventory rows", n);
-        } catch (Exception e) {
-            log.debug("DataMigration: admin inventory removal skipped — {}", e.getMessage());
-        }
-    }
 }
