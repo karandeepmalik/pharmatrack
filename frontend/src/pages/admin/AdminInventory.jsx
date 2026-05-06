@@ -7,11 +7,46 @@ const specDisplay = (item) =>
         ? `${item.concentrationMgPerMl ?? item.specification} mg/ml`
         : `${item.specification} ${item.specUnit}`;
 
+function StockTable({ items }) {
+    if (items.length === 0) {
+        return <p className="empty-message">No stock records found.</p>;
+    }
+    return (
+        <div className="table-wrapper">
+            <table className="data-table">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Medicine</th>
+                        <th>Type</th>
+                        <th>Specification</th>
+                        <th>Price</th>
+                        <th>Pharma Company</th>
+                        <th>Quantity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items.map(item => (
+                        <tr key={item.id}>
+                            <td>{item.username}</td>
+                            <td>{item.medicineName}</td>
+                            <td>{item.medicineType}</td>
+                            <td>{specDisplay(item)}</td>
+                            <td>Rs {item.price?.toLocaleString('en-IN')}</td>
+                            <td>{item.pharmaName}</td>
+                            <td><span className="qty-badge">{item.quantity}</span></td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 export default function AdminInventory() {
     const [inventory, setInventory] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [sortBy, setSortBy] = useState('spec');
     const [specFilter, setSpecFilter] = useState('');
     const [userFilter, setUserFilter] = useState('');
 
@@ -24,21 +59,19 @@ export default function AdminInventory() {
 
     const nonZero = inventory.filter(item => item.quantity > 0);
 
-    const specOptions = [...new Set(nonZero.map(i => i.medicineName))].sort();
-    const userOptions = [...new Set(nonZero.map(i => i.username))].sort();
+    const regularItems = nonZero.filter(i => i.inventoryType === 'REGULAR_MEDICINE_STOCK');
+    const adminItems   = nonZero.filter(i => i.inventoryType === 'ADMIN_MEDICINE_STOCK');
 
-    const items = nonZero
-        .filter(item => !specFilter || item.medicineName === specFilter)
-        .filter(item => !userFilter || item.username === userFilter)
-        .slice()
-        .sort((a, b) => {
-            if (sortBy === 'spec') {
-                return a.medicineName.localeCompare(b.medicineName)
-                    || a.username.localeCompare(b.username);
-            }
-            return a.username.localeCompare(b.username)
-                || a.medicineName.localeCompare(b.medicineName);
-        });
+    const specOptions = [...new Set(nonZero.map(i => i.medicineName))].sort();
+    const userOptions = [...new Set(regularItems.map(i => i.username))].sort();
+
+    const applyFilters = (list) =>
+        list
+            .filter(item => !specFilter || item.medicineName === specFilter)
+            .filter(item => !userFilter || item.username === userFilter)
+            .sort((a, b) =>
+                a.medicineName.localeCompare(b.medicineName) ||
+                a.username.localeCompare(b.username));
 
     if (loading) return <div className="loading">Loading inventory…</div>;
 
@@ -51,22 +84,22 @@ export default function AdminInventory() {
 
             {error && <div role="alert" className="alert alert-error">{error}</div>}
 
-            <div className="form-card" style={{ marginBottom: '1rem' }}>
+            <div className="form-card" style={{ marginBottom: '1.5rem' }}>
                 <div className="form-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                     <div className="form-group" style={{ flex: 1 }}>
-                        <label htmlFor="spec-filter-select">Medicine Specification</label>
+                        <label htmlFor="spec-filter-select">Filter by Medicine</label>
                         <select
                             id="spec-filter-select"
                             value={specFilter}
                             onChange={e => setSpecFilter(e.target.value)}>
-                            <option value="">All Specifications</option>
+                            <option value="">All Medicines</option>
                             {specOptions.map(s => (
                                 <option key={s} value={s}>{s}</option>
                             ))}
                         </select>
                     </div>
                     <div className="form-group" style={{ flex: 1 }}>
-                        <label htmlFor="user-filter-select">Username</label>
+                        <label htmlFor="user-filter-select">Filter by User</label>
                         <select
                             id="user-filter-select"
                             value={userFilter}
@@ -80,53 +113,15 @@ export default function AdminInventory() {
                 </div>
             </div>
 
-            <div className="filter-tabs" role="group" aria-label="Sort stock by">
-                <button
-                    type="button"
-                    className={`filter-tab ${sortBy === 'spec' ? 'active' : ''}`}
-                    onClick={() => setSortBy('spec')}>
-                    By Spec
-                </button>
-                <button
-                    type="button"
-                    className={`filter-tab ${sortBy === 'user' ? 'active' : ''}`}
-                    onClick={() => setSortBy('user')}>
-                    By User
-                </button>
-            </div>
+            <section style={{ marginBottom: '2rem' }}>
+                <h2 style={{ marginBottom: '0.75rem' }}>Regular Stock (User Allocations)</h2>
+                <StockTable items={applyFilters(regularItems)} />
+            </section>
 
-            {items.length === 0 ? (
-                <p className="empty-message">No medicine stock records found.</p>
-            ) : (
-                <div className="table-wrapper">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Medicine</th>
-                                <th>Type</th>
-                                <th>Specification</th>
-                                <th>Price</th>
-                                <th>Pharma Company</th>
-                                <th>Quantity</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {items.map(item => (
-                                <tr key={item.id}>
-                                    <td>{item.username}</td>
-                                    <td>{item.medicineName}</td>
-                                    <td>{item.medicineType}</td>
-                                    <td>{specDisplay(item)}</td>
-                                    <td>Rs {item.price?.toLocaleString('en-IN')}</td>
-                                    <td>{item.pharmaName}</td>
-                                    <td><span className="qty-badge">{item.quantity}</span></td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+            <section>
+                <h2 style={{ marginBottom: '0.75rem' }}>Admin Stock (System Stock)</h2>
+                <StockTable items={applyFilters(adminItems)} />
+            </section>
         </div>
     );
 }

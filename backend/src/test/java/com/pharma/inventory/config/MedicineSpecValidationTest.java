@@ -1,10 +1,12 @@
 package com.pharma.inventory.config;
 
+import com.pharma.inventory.entity.Inventory;
 import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Medicine.MedicineType;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.MedicineRepository;
 import com.pharma.inventory.repository.UserRepository;
+import com.pharma.inventory.service.DataMigrationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Set;
 
+import static com.pharma.inventory.entity.Inventory.InventoryType.*;
 import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest
@@ -26,6 +29,7 @@ import static org.assertj.core.api.Assertions.*;
 class MedicineSpecValidationTest {
 
     @Autowired DataInitializer dataInitializer;
+    @Autowired DataMigrationService dataMigrationService;
     @Autowired MedicineRepository medicineRepository;
     @Autowired InventoryRepository inventoryRepository;
     @Autowired UserRepository userRepository;
@@ -211,13 +215,113 @@ class MedicineSpecValidationTest {
             var all = inventoryRepository.findAll();
             assertThat(all).hasSize(15);
             long adminRows = all.stream()
-                .filter(i -> i.getInventoryType() == com.pharma.inventory.entity.Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                .filter(i -> i.getInventoryType() == Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
                 .count();
             long userRows = all.stream()
-                .filter(i -> i.getInventoryType() == com.pharma.inventory.entity.Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                .filter(i -> i.getInventoryType() == Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
                 .count();
             assertThat(adminRows).isEqualTo(5);
             assertThat(userRows).isEqualTo(10);
+        }
+    }
+
+    /**
+     * These tests specifically guard against the production bug where inventory_type values
+     * remained as legacy strings ('REGULAR', 'ADMIN_STOCK') in the database, causing JPQL
+     * queries that bind enum parameters (which map to 'REGULAR_MEDICINE_STOCK' /
+     * 'ADMIN_MEDICINE_STOCK') to return zero rows — making all reports show empty data.
+     */
+    @Nested @DisplayName("Inventory JPQL enum queries")
+    class InventoryEnumQueries {
+
+        @Test @DisplayName("findAllNonZeroByInventoryType returns rows for REGULAR_MEDICINE_STOCK")
+        void regularStockIsReturnedByJpqlEnumQuery() {
+            List<Inventory> rows = inventoryRepository.findAllNonZeroByInventoryType(REGULAR_MEDICINE_STOCK);
+            assertThat(rows)
+                .as("JPQL query for REGULAR_MEDICINE_STOCK must return rows — if empty, inventory_type " +
+                    "column may contain legacy values ('REGULAR') that the converter cannot match")
+                .isNotEmpty();
+        }
+
+        @Test @DisplayName("findAllNonZeroByInventoryType returns rows for ADMIN_MEDICINE_STOCK")
+        void adminStockIsReturnedByJpqlEnumQuery() {
+            List<Inventory> rows = inventoryRepository.findAllNonZeroByInventoryType(ADMIN_MEDICINE_STOCK);
+            assertThat(rows)
+                .as("JPQL query for ADMIN_MEDICINE_STOCK must return rows — if empty, inventory_type " +
+                    "column may contain legacy values ('ADMIN_STOCK') that the converter cannot match")
+                .isNotEmpty();
+        }
+
+        @Test @DisplayName("findAllNonZeroOrderByMedicineAndUser returns regular rows sorted correctly")
+        void orderByMedicineAndUserQueryWorksForRegularStock() {
+            List<Inventory> rows = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(REGULAR_MEDICINE_STOCK);
+            assertThat(rows).isNotEmpty();
+            for (int i = 0; i < rows.size() - 1; i++) {
+                int cmp = rows.get(i).getMedicine().getName()
+                    .compareTo(rows.get(i + 1).getMedicine().getName());
+                assertThat(cmp).as("Rows must be ordered by medicine name").isLessThanOrEqualTo(0);
+            }
+        }
+
+        @Test @DisplayName("findAllNonZeroForValuation returns regular rows (used by inventory-valuation report)")
+        void valuationQueryWorksForRegularStock() {
+            List<Inventory> rows = inventoryRepository.findAllNonZeroForValuation(REGULAR_MEDICINE_STOCK);
+            assertThat(rows)
+                .as("Valuation JPQL query for REGULAR_MEDICINE_STOCK must return rows")
+                .isNotEmpty();
+        }
+
+        @Test @DisplayName("All returned REGULAR_MEDICINE_STOCK rows have a positive quantity")
+        void regularStockRowsHavePositiveQuantity() {
+            inventoryRepository.findAllNonZeroByInventoryType(REGULAR_MEDICINE_STOCK)
+                .forEach(i -> assertThat(i.getQuantity()).as("quantity must be positive").isPositive());
+        }
+
+        @Test @DisplayName("All returned ADMIN_MEDICINE_STOCK rows have a positive quantity")
+        void adminStockRowsHavePositiveQuantity() {
+            inventoryRepository.findAllNonZeroByInventoryType(ADMIN_MEDICINE_STOCK)
+                .forEach(i -> assertThat(i.getQuantity()).as("quantity must be positive").isPositive());
+        }
+    }
+
+    /**
+     * Guards against the bug where DataMigrationService.onStartup() was wiping all
+     * ADMIN_MEDICINE_STOCK rows on every startup (via a removeAdminInventory() call).
+     * Running onStartup() a second time must leave all inventory quantities unchanged.
+     */
+    @Nested @DisplayName("DataMigration startup idempotency")
+    class MigrationIdempotency {
+
+        @Test @DisplayName("Admin stock count is unchanged after running onStartup() a second time")
+        void adminStockCountUnchangedAfterSecondStartup() {
+            long adminBefore = inventoryRepository.findAllNonZeroByInventoryType(ADMIN_MEDICINE_STOCK).size();
+
+            dataMigrationService.onStartup();
+
+            long adminAfter = inventoryRepository.findAllNonZeroByInventoryType(ADMIN_MEDICINE_STOCK).size();
+            assertThat(adminAfter)
+                .as("Admin stock must not be wiped by repeated onStartup() calls")
+                .isEqualTo(adminBefore);
+        }
+
+        @Test @DisplayName("Total inventory count is unchanged after running onStartup() a second time")
+        void totalInventoryCountUnchangedAfterSecondStartup() {
+            long countBefore = inventoryRepository.count();
+
+            dataMigrationService.onStartup();
+
+            long countAfter = inventoryRepository.count();
+            assertThat(countAfter)
+                .as("Inventory count must not change on repeated onStartup() calls (seedInventoryIfEmpty must skip)")
+                .isEqualTo(countBefore);
+        }
+
+        @Test @DisplayName("Regular stock is still queryable by enum after second onStartup()")
+        void regularStockStillQueryableAfterSecondStartup() {
+            dataMigrationService.onStartup();
+            assertThat(inventoryRepository.findAllNonZeroByInventoryType(REGULAR_MEDICINE_STOCK))
+                .as("JPQL enum query for REGULAR_MEDICINE_STOCK must still return rows after second startup")
+                .isNotEmpty();
         }
     }
 }

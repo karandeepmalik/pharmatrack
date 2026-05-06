@@ -277,6 +277,52 @@ async function run() {
     });
   });
 
+  // ── Inventory type integrity ──────────────────────────────────────────
+  // These tests guard against the production bug where DataMigrationService failed
+  // to rename legacy inventory_type values ('REGULAR', 'ADMIN_STOCK') because a
+  // Hibernate 6 CHECK constraint silently blocked the UPDATE. The symptom was that
+  // JPQL queries for REGULAR_MEDICINE_STOCK returned zero rows, making all reports empty.
+  console.log('\n-- Inventory Type Integrity');
+  let allInventory;
+  await test('Admin can fetch all inventory rows', async () => {
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(Array.isArray(r.data), 'Expected array');
+    allInventory = r.data;
+  });
+  await test('All inventory rows have an inventoryType field', async () => {
+    assert(allInventory && allInventory.length > 0, 'No inventory rows to check');
+    allInventory.forEach(i => {
+      assert(i.inventoryType !== undefined && i.inventoryType !== null,
+        `Row id=${i.id} is missing inventoryType field`);
+    });
+  });
+  await test('No legacy inventory_type values exist (REGULAR or ADMIN_STOCK)', async () => {
+    const legacyRows = allInventory.filter(i =>
+      i.inventoryType === 'REGULAR' || i.inventoryType === 'ADMIN_STOCK');
+    assert(legacyRows.length === 0,
+      `Found ${legacyRows.length} row(s) with legacy inventory_type: ` +
+      legacyRows.map(i => `id=${i.id} type=${i.inventoryType}`).join(', ') +
+      ' — DataMigrationService rename may have been blocked by a CHECK constraint');
+  });
+  await test('REGULAR_MEDICINE_STOCK rows exist and have positive quantity', async () => {
+    const regularRows = allInventory.filter(i => i.inventoryType === 'REGULAR_MEDICINE_STOCK');
+    assert(regularRows.length > 0,
+      'No REGULAR_MEDICINE_STOCK rows found — migration may have failed or inventory was not seeded');
+    regularRows.forEach(i => {
+      assert(i.quantity >= 0, `Row id=${i.id} has negative quantity: ${i.quantity}`);
+    });
+  });
+  await test('ADMIN_MEDICINE_STOCK rows exist and are not wiped by startup', async () => {
+    const adminRows = allInventory.filter(i => i.inventoryType === 'ADMIN_MEDICINE_STOCK');
+    assert(adminRows.length > 0,
+      'No ADMIN_MEDICINE_STOCK rows found — admin stock may have been wiped on startup ' +
+      '(removeAdminInventory bug) or inventory was not seeded');
+    const totalAdminQty = adminRows.reduce((sum, i) => sum + i.quantity, 0);
+    assert(totalAdminQty > 0,
+      `All ADMIN_MEDICINE_STOCK rows have quantity 0 — admin stock may have been wiped (total=${totalAdminQty})`);
+  });
+
   // ── Admin: Adjust User Inventory ───────────────────────────��────────
   console.log('\n-- Admin: Adjust User Inventory');
   let johnId;
@@ -633,12 +679,38 @@ async function run() {
     assert(r.data.content.includes('CURRENT MEDICINE STOCK PER USER'), 'Expected report header');
   });
 
+  // Report content quality — verifies the JPQL enum queries used by ReportService
+  // actually return rows. If inventory_type column holds legacy values ('REGULAR'),
+  // the JPQL query for REGULAR_MEDICINE_STOCK returns nothing and the report shows
+  // empty sections. This is the production bug that caused "(none) / TOTAL: 0".
+  await test('Inventory-by-user report lists actual seeded users', async () => {
+    const r = await apiGet(`${API}/reports/inventory-by-user`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    const content = r.data.content;
+    assert(
+      content.includes('john.doe') || content.includes('jane.smith') || content.includes('John') || content.includes('Jane'),
+      'Inventory-by-user report must list at least one seeded user — if empty, JPQL enum query returned zero rows'
+    );
+  });
+
   await test('Admin can access inventory-valuation report', async () => {
     const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     assert(r.data.reportType === 'INVENTORY_VALUATION', `Expected INVENTORY_VALUATION, got ${r.data.reportType}`);
     assert(r.data.content.includes('CURRENT MEDICINE STOCK VALUATION'), 'Expected report header');
     assert(r.data.content.includes('TOTAL VALUATION'), 'Expected total valuation line');
+  });
+
+  await test('Inventory-valuation total is non-zero', async () => {
+    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    // Extract the TOTAL VALUATION line and verify it is not zero
+    const match = r.data.content.match(/TOTAL VALUATION[^\n]*Rs\s*([\d,]+)/);
+    assert(match, 'Could not find TOTAL VALUATION Rs amount in report content');
+    const total = parseInt(match[1].replace(/,/g, ''), 10);
+    assert(total > 0,
+      `TOTAL VALUATION is Rs ${total} — expected > 0. If zero, JPQL valuation query returned no rows ` +
+      '(possible inventory_type enum mismatch in DB)');
   });
 
   await test("Admin can access today-sales report", async () => {
@@ -667,6 +739,42 @@ async function run() {
     // 10ml must appear before 5ml
     assert(r.data.content.indexOf('Vial 10 ml') < r.data.content.indexOf('Vial 5 ml'),
       'Expected 10ml vial before 5ml vial');
+  });
+
+  await test('Daily report regular stock section is not empty (catches JPQL enum mismatch)', async () => {
+    const r = await apiGet(`${API}/reports/daily`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    const content = r.data.content;
+    // The regular stock section should list medicine names with user allocations.
+    // If JPQL enum query returned zero rows, the section would be empty or contain "(none)".
+    assert(
+      !content.includes('(none)'),
+      'Daily report contains "(none)" — the regular/admin medicine stock section is empty. ' +
+      'Likely cause: inventory_type column holds legacy values not matched by JPQL enum query.'
+    );
+    // Verify the regular stock section actually has a TOTAL line with a positive number
+    const regularIdx  = content.indexOf('REGULAR MEDICINE STOCK');
+    const adminIdx    = content.indexOf('ADMIN MEDICINE STOCK');
+    const regularSection = content.slice(regularIdx, adminIdx > regularIdx ? adminIdx : undefined);
+    assert(
+      regularSection.includes('TOTAL:') && !regularSection.match(/TOTAL:\s*0\b/),
+      'Daily report REGULAR MEDICINE STOCK section has TOTAL: 0 or no TOTAL line — ' +
+      'JPQL query may be returning no rows (inventory_type enum mismatch)'
+    );
+  });
+
+  await test('Daily report admin stock section has positive totals', async () => {
+    const r = await apiGet(`${API}/reports/daily`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    const content = r.data.content;
+    const adminIdx = content.indexOf('ADMIN MEDICINE STOCK');
+    const txIdx    = content.indexOf('DAILY TRANSACTION SUMMARY');
+    const adminSection = content.slice(adminIdx, txIdx > adminIdx ? txIdx : undefined);
+    assert(
+      adminSection.includes('TOTAL:') && !adminSection.match(/TOTAL:\s*0\b/),
+      'Daily report ADMIN MEDICINE STOCK section has TOTAL: 0 or no TOTAL line — ' +
+      'admin stock may have been wiped on startup or JPQL query returned no rows'
+    );
   });
 
   await test('Reports include generatedAt timestamp with IST', async () => {
