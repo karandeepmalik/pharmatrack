@@ -17,9 +17,9 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
     @Query("UPDATE Transaction t SET t.approvedBy = null WHERE t.approvedBy.id = :userId")
     void nullifyApprovedBy(Long userId);
 
-    /** Transactions approved on a given day — used by daily report. */
+    /** Approved transactions whose dispatch date (submittedAt) falls on a given day — used by daily report. */
     @Query("SELECT t FROM Transaction t JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE t.status = :status AND t.approvedAt >= :start AND t.approvedAt < :end " +
+           "WHERE t.status = :status AND t.submittedAt >= :start AND t.submittedAt < :end " +
            "ORDER BY u.fullName, m.name")
     List<Transaction> findApprovedBetween(
             @Param("status") Transaction.TransactionStatus status,

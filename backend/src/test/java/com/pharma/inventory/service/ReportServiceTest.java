@@ -18,8 +18,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -76,9 +80,13 @@ class ReportServiceTest {
     }
 
     private Transaction makeTx(Long id, User u, Medicine m, int qty, Transaction.TransactionStatus status, String notes) {
+        return makeTx(id, u, m, qty, status, notes, LocalDateTime.now());
+    }
+
+    private Transaction makeTx(Long id, User u, Medicine m, int qty, Transaction.TransactionStatus status, String notes, LocalDateTime submittedAt) {
         Transaction tx = Transaction.builder()
                 .id(id).submittedBy(u).medicine(m).quantity(qty)
-                .status(status).notes(notes).build();
+                .status(status).notes(notes).submittedAt(submittedAt).build();
         if (status == Transaction.TransactionStatus.APPROVED) tx.setApprovedAt(LocalDateTime.now());
         return tx;
     }
@@ -734,6 +742,51 @@ class ReportServiceTest {
 
             assertThat(r.getReportType()).isEqualTo("DAILY_REPORT");
             assertThat(r.getContent()).contains("DAILY REPORT");
+        }
+
+        @Test
+        void transactionSummaryFiltersOnDispatchDate() {
+            // The repo must be queried with the report date's day boundaries so that
+            // the SQL filters by submittedAt (dispatch date), not approvedAt.
+            // A transaction dispatched on May 7 must not appear in the May 8 report.
+            stubEmpty();
+            LocalDate reportDate = LocalDate.of(2026, 5, 8);
+            ArgumentCaptor<LocalDateTime> startCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+            ArgumentCaptor<LocalDateTime> endCaptor   = ArgumentCaptor.forClass(LocalDateTime.class);
+
+            reportService.dailyReport(reportDate);
+
+            verify(transactionRepository).findApprovedBetween(
+                    eq(Transaction.TransactionStatus.APPROVED),
+                    startCaptor.capture(),
+                    endCaptor.capture());
+            assertThat(startCaptor.getValue()).isEqualTo(LocalDateTime.of(2026, 5, 8, 0, 0));
+            assertThat(endCaptor.getValue()).isEqualTo(LocalDateTime.of(2026, 5, 9, 0, 0));
+        }
+
+        @Test
+        void transactionDispatchedOnPreviousDayIsExcludedFromReport() {
+            // A transaction submitted (dispatched) on May 7 must NOT appear in the May 8 report.
+            // The repo returns only transactions whose submittedAt falls within the day range.
+            LocalDate reportDate = LocalDate.of(2026, 5, 8);
+            LocalDateTime may7 = LocalDateTime.of(2026, 5, 7, 10, 0);
+            Transaction may7tx = makeTx(1L, john, vial, 3, Transaction.TransactionStatus.APPROVED, "old", may7);
+
+            // Simulate the repo correctly excluding may7tx (it's outside the May 8 range)
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(
+                    eq(Transaction.TransactionStatus.APPROVED),
+                    eq(LocalDateTime.of(2026, 5, 8, 0, 0)),
+                    eq(LocalDateTime.of(2026, 5, 9, 0, 0))))
+                    .thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport(reportDate);
+
+            assertThat(r.getContent()).contains("no transactions today");
+            assertThat(r.getContent()).doesNotContain("john.doe  3 x 10 ml");
         }
     }
 }
