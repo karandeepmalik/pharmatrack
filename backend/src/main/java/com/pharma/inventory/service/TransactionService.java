@@ -53,6 +53,7 @@ public class TransactionService {
     @Transactional
     public TransactionResponse submit(TransactionRequest req, String username) {
         validateNotes(req.getNotes());
+        validateSubmittedDate(req.getSubmittedDate());
         User user = findUserByUsername(username);
         Medicine medicine = findMedicineById(req.getMedicineId());
 
@@ -65,11 +66,16 @@ public class TransactionService {
         inventory.setQuantity(inventory.getQuantity() - req.getQuantity());
         inventoryRepository.save(inventory);
 
+        LocalDateTime submittedAt = req.getSubmittedDate() != null
+                ? req.getSubmittedDate().atStartOfDay()
+                : null; // @PrePersist will default to now()
+
         Transaction saved = transactionRepository.save(Transaction.builder()
                 .submittedBy(user).medicine(medicine).quantity(req.getQuantity())
                 .status(TransactionStatus.PENDING).notes(req.getNotes())
                 .pricePerUnit(req.getPricePerUnit())
                 .inventoryType(invType)
+                .submittedAt(submittedAt)
                 .build());
 
         List<String> dataList = req.getPaymentScreenshots();
@@ -177,6 +183,11 @@ public class TransactionService {
         String t = notes.trim();
         if (t.length() < 5 || t.length() > 500)
             throw new IllegalArgumentException("Note must be between 5 and 500 characters");
+    }
+
+    private void validateSubmittedDate(LocalDate date) {
+        if (date != null && date.isAfter(LocalDate.now()))
+            throw new IllegalArgumentException("Dispatch date cannot be in the future");
     }
 
     private User findUserByUsername(String username) {

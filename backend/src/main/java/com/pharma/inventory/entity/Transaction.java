@@ -84,7 +84,7 @@ public class Transaction {
 
     @PrePersist
     protected void onCreate() {
-        submittedAt = LocalDateTime.now();
+        if (submittedAt == null) submittedAt = LocalDateTime.now();
     }
 
     public enum TransactionStatus {
