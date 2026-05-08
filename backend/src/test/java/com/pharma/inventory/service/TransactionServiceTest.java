@@ -4,6 +4,7 @@ import com.pharma.inventory.dto.ApprovalRequest;
 import com.pharma.inventory.dto.ScreenshotDto;
 import com.pharma.inventory.dto.TransactionRequest;
 import com.pharma.inventory.dto.TransactionResponse;
+import com.pharma.inventory.dto.UpdateTransactionRequest;
 import com.pharma.inventory.entity.*;
 import com.pharma.inventory.entity.Transaction.TransactionStatus;
 import com.pharma.inventory.exception.InsufficientInventoryException;
@@ -469,6 +470,141 @@ class TransactionServiceTest {
 
             assertThat(res.getScreenshots()).hasSize(1);
             assertThat(res.getScreenshots().get(0).getData()).isEqualTo(b64);
+        }
+    }
+
+    // ── deleteTransaction() ───────────────────────────────────────────
+
+    @Nested @DisplayName("deleteTransaction()")
+    class DeleteTransaction {
+
+        private Transaction pendingTx;
+
+        @BeforeEach
+        void setup() {
+            pendingTx = Transaction.builder()
+                    .id(1L).submittedBy(regularUser).medicine(medicine)
+                    .quantity(10).status(TransactionStatus.PENDING)
+                    .notes("Clinic dispatch confirmed")
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .build();
+            pendingTx.setSubmittedAt(LocalDateTime.now());
+        }
+
+        @Test @DisplayName("deletes PENDING transaction and restores inventory")
+        void delete_pendingTx_restoresInventoryAndDeletes() {
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(inventory));
+            when(inventoryRepository.save(any())).thenReturn(inventory);
+
+            transactionService.deleteTransaction(1L);
+
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 60)); // 50+10
+            verify(transactionRepository).delete(pendingTx);
+        }
+
+        @Test @DisplayName("deletes APPROVED transaction and restores inventory")
+        void delete_approvedTx_restoresInventoryAndDeletes() {
+            pendingTx.setStatus(TransactionStatus.APPROVED);
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(inventory));
+            when(inventoryRepository.save(any())).thenReturn(inventory);
+
+            transactionService.deleteTransaction(1L);
+
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 60));
+            verify(transactionRepository).delete(pendingTx);
+        }
+
+        @Test @DisplayName("deletes REJECTED transaction without restoring inventory")
+        void delete_rejectedTx_doesNotRestoreInventory() {
+            pendingTx.setStatus(TransactionStatus.REJECTED);
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
+
+            transactionService.deleteTransaction(1L);
+
+            verify(inventoryRepository, never()).save(any());
+            verify(transactionRepository).delete(pendingTx);
+        }
+
+        @Test @DisplayName("throws ResourceNotFoundException when transaction not found")
+        void delete_notFound_throwsResourceNotFound() {
+            when(transactionRepository.findById(99L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> transactionService.deleteTransaction(99L))
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("Transaction").hasMessageContaining("99");
+        }
+    }
+
+    // ── updateNotes() ─────────────────────────────────────────────────
+
+    @Nested @DisplayName("updateNotes()")
+    class UpdateNotes {
+
+        private Transaction existingTx;
+
+        @BeforeEach
+        void setup() {
+            existingTx = Transaction.builder()
+                    .id(1L).submittedBy(regularUser).medicine(medicine)
+                    .quantity(5).status(TransactionStatus.PENDING)
+                    .notes("Original notes here at dispatch").build();
+            existingTx.setSubmittedAt(LocalDateTime.now());
+        }
+
+        @Test @DisplayName("updates notes and returns updated response")
+        void updateNotes_valid_savesAndReturns() {
+            UpdateTransactionRequest req = new UpdateTransactionRequest();
+            req.setNotes("Updated notes for this record");
+
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(existingTx));
+            when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            when(transactionMapper.toResponse(any())).thenAnswer(inv -> {
+                Transaction t = inv.getArgument(0);
+                TransactionResponse r = new TransactionResponse();
+                r.setNotes(t.getNotes()); return r;
+            });
+
+            TransactionResponse res = transactionService.updateNotes(1L, req);
+
+            assertThat(res.getNotes()).isEqualTo("Updated notes for this record");
+            verify(transactionRepository).save(argThat(t -> "Updated notes for this record".equals(t.getNotes())));
+        }
+
+        @Test @DisplayName("throws ResourceNotFoundException when transaction not found")
+        void updateNotes_notFound_throwsResourceNotFound() {
+            when(transactionRepository.findById(99L)).thenReturn(Optional.empty());
+            UpdateTransactionRequest req = new UpdateTransactionRequest();
+            req.setNotes("Valid note here");
+
+            assertThatThrownBy(() -> transactionService.updateNotes(99L, req))
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("Transaction").hasMessageContaining("99");
+        }
+
+        @Test @DisplayName("throws IllegalArgumentException when notes are blank")
+        void updateNotes_blankNotes_throwsIllegalArgument() {
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(existingTx));
+            UpdateTransactionRequest req = new UpdateTransactionRequest();
+            req.setNotes("   ");
+
+            assertThatThrownBy(() -> transactionService.updateNotes(1L, req))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("adjustment note is required");
+        }
+
+        @Test @DisplayName("throws IllegalArgumentException when notes are too short")
+        void updateNotes_tooShort_throwsIllegalArgument() {
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(existingTx));
+            UpdateTransactionRequest req = new UpdateTransactionRequest();
+            req.setNotes("Hi");
+
+            assertThatThrownBy(() -> transactionService.updateNotes(1L, req))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("5 and 500");
         }
     }
 }

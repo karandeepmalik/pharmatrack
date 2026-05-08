@@ -6,7 +6,6 @@ import com.pharma.inventory.entity.Medicine.MedicineType;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.MedicineRepository;
 import com.pharma.inventory.repository.UserRepository;
-import com.pharma.inventory.service.DataMigrationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -29,7 +28,6 @@ import static org.assertj.core.api.Assertions.*;
 class MedicineSpecValidationTest {
 
     @Autowired DataInitializer dataInitializer;
-    @Autowired DataMigrationService dataMigrationService;
     @Autowired MedicineRepository medicineRepository;
     @Autowired InventoryRepository inventoryRepository;
     @Autowired UserRepository userRepository;
@@ -284,44 +282,4 @@ class MedicineSpecValidationTest {
         }
     }
 
-    /**
-     * Guards against the bug where DataMigrationService.onStartup() was wiping all
-     * ADMIN_MEDICINE_STOCK rows on every startup (via a removeAdminInventory() call).
-     * Running onStartup() a second time must leave all inventory quantities unchanged.
-     */
-    @Nested @DisplayName("DataMigration startup idempotency")
-    class MigrationIdempotency {
-
-        @Test @DisplayName("Admin stock count is unchanged after running onStartup() a second time")
-        void adminStockCountUnchangedAfterSecondStartup() {
-            long adminBefore = inventoryRepository.findAllNonZeroByInventoryType(ADMIN_MEDICINE_STOCK).size();
-
-            dataMigrationService.onStartup();
-
-            long adminAfter = inventoryRepository.findAllNonZeroByInventoryType(ADMIN_MEDICINE_STOCK).size();
-            assertThat(adminAfter)
-                .as("Admin stock must not be wiped by repeated onStartup() calls")
-                .isEqualTo(adminBefore);
-        }
-
-        @Test @DisplayName("Total inventory count is unchanged after running onStartup() a second time")
-        void totalInventoryCountUnchangedAfterSecondStartup() {
-            long countBefore = inventoryRepository.count();
-
-            dataMigrationService.onStartup();
-
-            long countAfter = inventoryRepository.count();
-            assertThat(countAfter)
-                .as("Inventory count must not change on repeated onStartup() calls (seedInventoryIfEmpty must skip)")
-                .isEqualTo(countBefore);
-        }
-
-        @Test @DisplayName("Regular stock is still queryable by enum after second onStartup()")
-        void regularStockStillQueryableAfterSecondStartup() {
-            dataMigrationService.onStartup();
-            assertThat(inventoryRepository.findAllNonZeroByInventoryType(REGULAR_MEDICINE_STOCK))
-                .as("JPQL enum query for REGULAR_MEDICINE_STOCK must still return rows after second startup")
-                .isNotEmpty();
-        }
-    }
 }

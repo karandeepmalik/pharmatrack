@@ -6,7 +6,7 @@ const REPORTS = [
     { value: '', label: '-- Select a Report --' },
     { value: 'inventory-by-user', label: 'Current Medicine Stock Per User' },
     { value: 'inventory-valuation', label: 'Current Medicine Stock Valuation' },
-    { value: 'today-sales', label: "Today's Sales" },
+    { value: 'today-sales', label: "Sales Report" },
     { value: 'daily', label: 'Daily Report' },
 ];
 
