@@ -23,6 +23,10 @@ export default function SubmitTransaction() {
   // ── Price override ───────────────────────────────────────────────────
   const [priceOverride, setPriceOverride] = useState('');
 
+  // ── Dispatch date ────────────────────────────────────────────────────
+  const today = new Date().toISOString().slice(0, 10);
+  const [dispatchDate, setDispatchDate] = useState(today);
+
   // ── Notes ────────────────────────────────────────────────────────────
   const [notes, setNotes] = useState('');
 
@@ -135,12 +139,14 @@ export default function SubmitTransaction() {
         screenshotFiles: validScreenshots.map((s) => s.file),
         pricePerUnit: priceOverride !== '' ? parseInt(priceOverride, 10) : undefined,
         inventoryType: selectedInventoryType,
+        submittedDate: dispatchDate,
       });
 
       setSuccessMessage('Medicine dispatch submitted successfully and is pending admin approval.');
       setSelectedInventoryType('REGULAR_MEDICINE_STOCK');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
       setQuantity(''); setNotes(''); setPriceOverride('');
+      setDispatchDate(new Date().toISOString().slice(0, 10));
       screenshot.clearAll();
 
       const r = await api.getAvailableInventory();
@@ -255,6 +261,18 @@ export default function SubmitTransaction() {
             />
           </div>
         )}
+
+        {/* Dispatch Date */}
+        <div className="form-group">
+          <label htmlFor="dispatch-date-input">Dispatch Date</label>
+          <input
+            id="dispatch-date-input"
+            type="date"
+            max={today}
+            value={dispatchDate}
+            onChange={(e) => setDispatchDate(e.target.value)}
+          />
+        </div>
 
         {/* Notes */}
         <div className="form-group">

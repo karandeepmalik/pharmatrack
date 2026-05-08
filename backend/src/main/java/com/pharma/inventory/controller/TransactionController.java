@@ -48,9 +48,12 @@ public class TransactionController {
             @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots,
             @RequestParam(value = "pricePerUnit", required = false) Integer pricePerUnit,
             @RequestParam(value = "inventoryType", required = false) String inventoryType,
+            @RequestParam(value = "submittedDate", required = false)
+                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedDate,
             @AuthenticationPrincipal UserDetails userDetails) throws IOException {
 
         TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshots, pricePerUnit, inventoryType);
+        req.setSubmittedDate(submittedDate);
         return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
                 .body(transactionService.submit(req, userDetails.getUsername()));
     }
