@@ -358,7 +358,8 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.todaySales();
 
-            assertThat(r.getReportType()).isEqualTo("TODAY_SALES");
+            assertThat(r.getReportType()).isEqualTo("SALES_REPORT");
+            assertThat(r.getContent()).contains("SALES REPORT");
             assertThat(r.getContent()).contains("John Doe");
             assertThat(r.getContent()).contains("john.doe");
             assertThat(r.getContent()).contains("10 ml");
@@ -374,7 +375,7 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.todaySales();
 
-            assertThat(r.getContent()).contains("john.doe  10 ml  sent to Vandana");
+            assertThat(r.getContent()).contains("john.doe  3 x 10 ml  sent to Vandana");
         }
 
         @Test
@@ -386,7 +387,7 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.todaySales();
 
-            assertThat(r.getContent()).contains("john.doe  25 mg  for clinic");
+            assertThat(r.getContent()).contains("john.doe  2 x 25 mg  for clinic");
         }
 
         @Test

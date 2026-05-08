@@ -125,6 +125,14 @@ describe('ViewReports — inventory valuation report', () => {
   });
 });
 
+describe("ViewReports — sales report label", () => {
+  test('dropdown shows "Sales Report" option (not "Today\'s Sales")', () => {
+    renderPage();
+    expect(screen.getByRole('option', { name: /^sales report$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /today's sales/i })).not.toBeInTheDocument();
+  });
+});
+
 describe("ViewReports — today's sales report", () => {
   test("generates today-sales report with default date range (today)", async () => {
     api.getReportTodaySales.mockResolvedValue(

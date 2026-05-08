@@ -71,6 +71,9 @@ export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/
 export const getTransactionHistory = (from, to, status = 'ALL') =>
   api.get('/transactions/history', { params: { from, to, status } });
 
+export const deleteTransaction  = (id)      => api.delete(`/transactions/${id}`);
+export const updateTransaction  = (id, data) => api.patch(`/transactions/${id}`, data);
+
 // ── Users ──────────────────────────────────────────────────────────────
 export const getUsers            = ()           => api.get('/users');
 export const createUser          = (data)       => api.post('/users', data);

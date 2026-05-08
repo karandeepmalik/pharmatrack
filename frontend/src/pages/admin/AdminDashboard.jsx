@@ -13,6 +13,7 @@ export default function AdminDashboard(){
             <Link to="/admin/modify-inventory" className="nav-card"><h2>🔄 Modify Medicine Stock</h2><p>Add or reduce user medicine stock</p></Link>
             <Link to="/admin/users" className="nav-card"><h2>👥 Manage Users</h2><p>Add users, manage access and passwords</p></Link>
             <Link to="/admin/medicines" className="nav-card"><h2>💊 Manage Medicines</h2><p>Add pharma companies and medicines</p></Link>
+            <Link to="/admin/dispatch-records" className="nav-card"><h2>✏️ Modify or Delete a Medicine Dispatch Record</h2><p>Search, edit notes or delete past dispatch records</p></Link>
         </div>
     </div>);
 }

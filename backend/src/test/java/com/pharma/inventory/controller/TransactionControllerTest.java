@@ -389,4 +389,85 @@ class TransactionControllerTest {
                     .andExpect(status().isForbidden());
         }
     }
+
+    // ── DELETE /api/transactions/{id} ─────────────────────────────────
+
+    @Nested
+    @DisplayName("DELETE /api/transactions/{id} — admin delete")
+    class Delete {
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("admin deletes a transaction — returns 204")
+        void delete_admin_204() throws Exception {
+            doNothing().when(transactionService).deleteTransaction(1L);
+
+            mockMvc.perform(delete("/api/transactions/1").with(csrf()))
+                    .andExpect(status().isNoContent());
+
+            verify(transactionService).deleteTransaction(1L);
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("USER role cannot delete — returns 403")
+        void delete_userRole_403() throws Exception {
+            mockMvc.perform(delete("/api/transactions/1").with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("unauthenticated delete returns 401")
+        void delete_noAuth_401() throws Exception {
+            mockMvc.perform(delete("/api/transactions/1").with(csrf()))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    // ── PATCH /api/transactions/{id} ──────────────────────────────────
+
+    @Nested
+    @DisplayName("PATCH /api/transactions/{id} — admin update notes")
+    class UpdateNotes {
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("admin updates notes — returns 200 with updated response")
+        void updateNotes_admin_200() throws Exception {
+            sampleResponse.setNotes("Updated dispatch note for this record");
+            when(transactionService.updateNotes(eq(1L), any())).thenReturn(sampleResponse);
+
+            mockMvc.perform(patch("/api/transactions/1")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"notes\": \"Updated dispatch note for this record\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.notes").value("Updated dispatch note for this record"));
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("USER role cannot update notes — returns 403")
+        void updateNotes_userRole_403() throws Exception {
+            mockMvc.perform(patch("/api/transactions/1")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"notes\": \"some note here\"}"))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("invalid notes returns 400 from service validation")
+        void updateNotes_invalidNotes_400() throws Exception {
+            when(transactionService.updateNotes(eq(1L), any()))
+                    .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
+
+            mockMvc.perform(patch("/api/transactions/1")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"notes\": \"Hi\"}"))
+                    .andExpect(status().isBadRequest());
+        }
+    }
 }

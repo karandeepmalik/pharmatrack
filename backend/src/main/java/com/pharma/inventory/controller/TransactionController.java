@@ -3,6 +3,7 @@ package com.pharma.inventory.controller;
 import com.pharma.inventory.dto.ApprovalRequest;
 import com.pharma.inventory.dto.TransactionRequest;
 import com.pharma.inventory.dto.TransactionResponse;
+import com.pharma.inventory.dto.UpdateTransactionRequest;
 import com.pharma.inventory.service.ScreenshotProcessor;
 import com.pharma.inventory.service.TransactionService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -91,6 +92,21 @@ public class TransactionController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(
                 transactionService.approve(id, req, userDetails.getUsername()));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        transactionService.deleteTransaction(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<TransactionResponse> updateNotes(
+            @PathVariable Long id,
+            @RequestBody UpdateTransactionRequest req) {
+        return ResponseEntity.ok(transactionService.updateNotes(id, req));
     }
 
     // ── Assembly helper (no logic — only construction) ─────────────────

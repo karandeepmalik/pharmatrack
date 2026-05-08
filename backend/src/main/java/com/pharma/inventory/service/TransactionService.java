@@ -3,6 +3,7 @@ package com.pharma.inventory.service;
 import com.pharma.inventory.dto.ApprovalRequest;
 import com.pharma.inventory.dto.TransactionRequest;
 import com.pharma.inventory.dto.TransactionResponse;
+import com.pharma.inventory.dto.UpdateTransactionRequest;
 import com.pharma.inventory.entity.Inventory;
 import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Transaction;
@@ -141,6 +142,32 @@ public class TransactionService {
         }
         tx.setApprovedBy(admin);
         tx.setApprovedAt(LocalDateTime.now());
+        return transactionMapper.toResponse(transactionRepository.save(tx));
+    }
+
+    @Transactional
+    public void deleteTransaction(Long id) {
+        Transaction tx = transactionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction", id));
+
+        if (tx.getStatus() == TransactionStatus.PENDING || tx.getStatus() == TransactionStatus.APPROVED) {
+            Inventory.InventoryType rollbackType = tx.getInventoryType() != null
+                    ? tx.getInventoryType()
+                    : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
+            Inventory inv = findInventoryByType(
+                    tx.getSubmittedBy().getId(), tx.getMedicine().getId(), rollbackType);
+            inv.setQuantity(inv.getQuantity() + tx.getQuantity());
+            inventoryRepository.save(inv);
+        }
+        transactionRepository.delete(tx);
+    }
+
+    @Transactional
+    public TransactionResponse updateNotes(Long id, UpdateTransactionRequest req) {
+        Transaction tx = transactionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction", id));
+        validateNotes(req.getNotes());
+        tx.setNotes(req.getNotes().trim());
         return transactionMapper.toResponse(transactionRepository.save(tx));
     }
 

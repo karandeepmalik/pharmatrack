@@ -209,9 +209,9 @@ public class ReportService {
 
         StringBuilder sb = new StringBuilder();
         if (effectiveFrom.equals(effectiveTo)) {
-            sb.append("TODAY'S SALES - ").append(effectiveFrom.format(DATE_FMT)).append("\n");
+            sb.append("SALES REPORT - ").append(effectiveFrom.format(DATE_FMT)).append("\n");
         } else {
-            sb.append("SALES - ").append(effectiveFrom.format(DATE_FMT))
+            sb.append("SALES REPORT - ").append(effectiveFrom.format(DATE_FMT))
               .append(" to ").append(effectiveTo.format(DATE_FMT)).append("\n");
         }
         sb.append("Generated: ").append(nowIST()).append("\n");
@@ -248,7 +248,7 @@ public class ReportService {
                 String notes = (tx.getNotes() != null && !tx.getNotes().isBlank())
                         ? tx.getNotes() : "";
 
-                sb.append("  ").append(username).append("  ").append(specLabel);
+                sb.append("  ").append(username).append("  ").append(tx.getQuantity()).append(" x ").append(specLabel);
                 if (!notes.isBlank()) {
                     sb.append("  ").append(notes);
                 }
@@ -262,7 +262,7 @@ public class ReportService {
         sb.append("-".repeat(40)).append("\n");
         sb.append("TOTAL: Rs ").append(String.format("%,d", grandTotal)).append("\n");
 
-        return new ReportResponse("TODAY_SALES", nowIST(), sb.toString());
+        return new ReportResponse("SALES_REPORT", nowIST(), sb.toString());
     }
 
     /**
