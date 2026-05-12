@@ -758,6 +758,13 @@ async function run() {
     const adminBlock   = r.data.content.slice(adminIdx, txIdx);
     assert(regularBlock.includes('Shield FX'), 'Expected pharma name inside REGULAR MEDICINE STOCK section');
     assert(adminBlock.includes('Shield FX'), 'Expected pharma name inside ADMIN MEDICINE STOCK section');
+    // Transaction summary must contain "no transactions today" OR subsection headers
+    const txSection = r.data.content.slice(txIdx);
+    const hasNoTx       = txSection.includes('no transactions today');
+    const hasSubsection = txSection.includes('Regular Stock Transactions') ||
+                          txSection.includes('Admin Stock Transactions');
+    assert(hasNoTx || hasSubsection,
+      'Transaction summary must show "no transactions today" or subsection headers (Regular/Admin Stock Transactions)');
   });
 
   await test('Daily report regular stock section is not empty (catches JPQL enum mismatch)', async () => {

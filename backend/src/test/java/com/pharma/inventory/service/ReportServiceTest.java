@@ -677,6 +677,83 @@ class ReportServiceTest {
         }
 
         @Test
+        void regularTransactionAppearsUnderRegularStockSection() {
+            stubEmpty();
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(makeTx(1L, john, vial, 3,
+                            Transaction.TransactionStatus.APPROVED, "Clinic B")));
+
+            ReportResponse r = reportService.dailyReport(null);
+            String content = r.getContent();
+
+            assertThat(content).contains("Regular Stock Transactions");
+            assertThat(content).contains("john.doe  3 x 10 ml  Clinic B");
+            assertThat(content).doesNotContain("Admin Stock Transactions");
+        }
+
+        @Test
+        void adminTransactionAppearsUnderAdminStockSection() {
+            stubEmpty();
+            Transaction adminTx = Transaction.builder()
+                    .id(1L).submittedBy(john).medicine(vial).quantity(2)
+                    .status(Transaction.TransactionStatus.APPROVED).notes("emergency")
+                    .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                    .submittedAt(LocalDateTime.now()).build();
+            adminTx.setApprovedAt(LocalDateTime.now());
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(adminTx));
+
+            ReportResponse r = reportService.dailyReport(null);
+            String content = r.getContent();
+
+            assertThat(content).contains("Admin Stock Transactions");
+            assertThat(content).contains("john.doe  2 x 10 ml  emergency");
+            assertThat(content).doesNotContain("Regular Stock Transactions");
+        }
+
+        @Test
+        void bothSubsectionsPresentWhenBothTypesExist() {
+            stubEmpty();
+            Transaction regularTx = makeTx(1L, john, vial, 3,
+                    Transaction.TransactionStatus.APPROVED, "clinic");
+            Transaction adminTx = Transaction.builder()
+                    .id(2L).submittedBy(jane).medicine(tablet).quantity(1)
+                    .status(Transaction.TransactionStatus.APPROVED).notes("admin")
+                    .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                    .submittedAt(LocalDateTime.now()).build();
+            adminTx.setApprovedAt(LocalDateTime.now());
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(regularTx, adminTx));
+
+            ReportResponse r = reportService.dailyReport(null);
+            String content = r.getContent();
+
+            assertThat(content).contains("Regular Stock Transactions");
+            assertThat(content).contains("Admin Stock Transactions");
+            int posRegular = content.indexOf("Regular Stock Transactions");
+            int posAdmin   = content.indexOf("Admin Stock Transactions");
+            assertThat(posRegular).isLessThan(posAdmin);
+        }
+
+        @Test
+        void regularSubsectionAbsentWhenOnlyAdminTransactionsExist() {
+            stubEmpty();
+            Transaction adminTx = Transaction.builder()
+                    .id(1L).submittedBy(john).medicine(vial).quantity(4)
+                    .status(Transaction.TransactionStatus.APPROVED).notes("admin only")
+                    .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                    .submittedAt(LocalDateTime.now()).build();
+            adminTx.setApprovedAt(LocalDateTime.now());
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(adminTx));
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            assertThat(r.getContent()).doesNotContain("Regular Stock Transactions");
+            assertThat(r.getContent()).contains("Admin Stock Transactions");
+        }
+
+        @Test
         void multipleUsersForSameSpecShowSeparateLines() {
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
