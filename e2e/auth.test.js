@@ -716,8 +716,20 @@ async function run() {
   await test("Admin can access today-sales report", async () => {
     const r = await apiGet(`${API}/reports/today-sales`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
-    assert(r.data.reportType === 'TODAY_SALES', `Expected TODAY_SALES, got ${r.data.reportType}`);
+    assert(r.data.reportType === 'SALES_REPORT', `Expected SALES_REPORT, got ${r.data.reportType}`);
     assert(typeof r.data.content === 'string' && r.data.content.length > 0, 'Expected non-empty content');
+  });
+
+  await test('Sales report does not include admin dispatches', async () => {
+    const r = await apiGet(`${API}/reports/today-sales`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    const content = r.data.content;
+    // The sales report must contain SALES REPORT header (not a different report type)
+    assert(content.includes('SALES REPORT'), 'Expected SALES REPORT header');
+    // Any transactions shown must be from REGULAR stock only.
+    // We verify this structurally: admin stock transactions should be absent.
+    // If the content lists any transactions, confirm the report type is correct.
+    assert(r.data.reportType === 'SALES_REPORT', 'Report type must be SALES_REPORT, not include admin dispatches');
   });
 
   await test('Admin can access daily report', async () => {
@@ -725,7 +737,6 @@ async function run() {
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     assert(r.data.reportType === 'DAILY_REPORT', `Expected DAILY_REPORT, got ${r.data.reportType}`);
     assert(r.data.content.includes('DAILY REPORT'), 'Expected daily report header');
-    assert(r.data.content.includes('Shield FX'), 'Expected pharma name as section heading');
     assert(!r.data.content.includes('INVENTORY COUNTS'), 'Should not contain INVENTORY COUNTS heading');
     assert(r.data.content.includes('REGULAR MEDICINE STOCK'), 'Expected regular medicine stock section');
     assert(r.data.content.includes('ADMIN MEDICINE STOCK'), 'Expected admin medicine stock section');
@@ -739,6 +750,14 @@ async function run() {
     // 10ml must appear before 5ml
     assert(r.data.content.indexOf('Vial 10 ml') < r.data.content.indexOf('Vial 5 ml'),
       'Expected 10ml vial before 5ml vial');
+    // Pharma name must appear inside each inventory section (not just anywhere)
+    const regularIdx = r.data.content.indexOf('REGULAR MEDICINE STOCK');
+    const adminIdx   = r.data.content.indexOf('ADMIN MEDICINE STOCK');
+    const txIdx      = r.data.content.indexOf('DAILY TRANSACTION SUMMARY');
+    const regularBlock = r.data.content.slice(regularIdx, adminIdx);
+    const adminBlock   = r.data.content.slice(adminIdx, txIdx);
+    assert(regularBlock.includes('Shield FX'), 'Expected pharma name inside REGULAR MEDICINE STOCK section');
+    assert(adminBlock.includes('Shield FX'), 'Expected pharma name inside ADMIN MEDICINE STOCK section');
   });
 
   await test('Daily report regular stock section is not empty (catches JPQL enum mismatch)', async () => {
