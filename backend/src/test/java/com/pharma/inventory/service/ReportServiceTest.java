@@ -435,6 +435,42 @@ class ReportServiceTest {
         }
 
         @Test
+        void adminDispatchExcludedFromSalesReport() {
+            Transaction adminTx = Transaction.builder()
+                    .id(1L).submittedBy(john).medicine(vial).quantity(3)
+                    .status(Transaction.TransactionStatus.APPROVED).notes("admin dispatch")
+                    .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                    .submittedAt(LocalDateTime.now()).build();
+            adminTx.setApprovedAt(LocalDateTime.now());
+            Transaction regularTx = makeTx(2L, jane, tablet, 2,
+                    Transaction.TransactionStatus.APPROVED, "regular dispatch");
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(adminTx, regularTx));
+
+            ReportResponse r = reportService.todaySales();
+
+            assertThat(r.getContent()).doesNotContain("john.doe  3 x 10 ml");
+            assertThat(r.getContent()).contains("Jane Smith");
+            assertThat(r.getContent()).contains("25 mg");
+        }
+
+        @Test
+        void allAdminDispatchesMakeReportShowNoSales() {
+            Transaction adminTx = Transaction.builder()
+                    .id(1L).submittedBy(john).medicine(vial).quantity(5)
+                    .status(Transaction.TransactionStatus.APPROVED).notes("admin only")
+                    .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                    .submittedAt(LocalDateTime.now()).build();
+            adminTx.setApprovedAt(LocalDateTime.now());
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(adminTx));
+
+            ReportResponse r = reportService.todaySales();
+
+            assertThat(r.getContent()).contains("No sales recorded today");
+        }
+
+        @Test
         void pricePerUnitOverrideIsUsedInsteadOfDefaultMedicinePrice() {
             Transaction tx = makeTx(1L, john, vial, 1,
                     Transaction.TransactionStatus.APPROVED, "override price test");
@@ -470,7 +506,6 @@ class ReportServiceTest {
             assertThat(r.getContent()).contains("DAILY REPORT");
             assertThat(r.getContent()).contains("REGULAR MEDICINE STOCK");
             assertThat(r.getContent()).contains("ADMIN MEDICINE STOCK");
-            assertThat(r.getContent()).contains("Shield FX");
             assertThat(r.getContent()).doesNotContain("INVENTORY COUNTS");
         }
 
@@ -512,6 +547,28 @@ class ReportServiceTest {
         }
 
         @Test
+        void pharmaNameAppearsUnderEachInventorySection() {
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeAdminStockInv(2L, john, vial, 5, null)));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport(null);
+            String content = r.getContent();
+
+            int regularIdx = content.indexOf("REGULAR MEDICINE STOCK");
+            int adminIdx   = content.indexOf("ADMIN MEDICINE STOCK");
+            int txIdx      = content.indexOf("DAILY TRANSACTION SUMMARY");
+
+            String regularBlock = content.substring(regularIdx, adminIdx);
+            String adminBlock   = content.substring(adminIdx, txIdx);
+
+            assertThat(regularBlock).contains("Shield FX");
+            assertThat(adminBlock).contains("Shield FX");
+        }
+
+        @Test
         void vialAppearsBeforeTabletInFixedOrder() {
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
@@ -530,7 +587,11 @@ class ReportServiceTest {
 
         @Test
         void tenMlVialAppearsBeforeFiveMlVial() {
-            stubEmpty();
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
 
@@ -555,12 +616,19 @@ class ReportServiceTest {
 
         @Test
         void showsNoneWhenSpecHasNoInventory() {
-            stubEmpty();
+            // Only vial 10 ml has stock — the other four specs must show (none)/TOTAL: 0
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
 
             assertThat(r.getContent()).contains("(none)");
             assertThat(r.getContent()).contains("TOTAL: 0");
+            // The spec with data should still show the correct count
+            assertThat(r.getContent()).contains("john.doe: 10");
         }
 
         @Test

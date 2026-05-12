@@ -205,7 +205,10 @@ public class ReportService {
         LocalDateTime end   = effectiveTo.plusDays(1).atStartOfDay();
 
         List<Transaction> txList = transactionRepository.findApprovedBetween(
-                Transaction.TransactionStatus.APPROVED, start, end);
+                Transaction.TransactionStatus.APPROVED, start, end)
+                .stream()
+                .filter(tx -> tx.getInventoryType() != Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                .toList();
 
         StringBuilder sb = new StringBuilder();
         if (effectiveFrom.equals(effectiveTo)) {
@@ -219,7 +222,7 @@ public class ReportService {
 
         if (txList.isEmpty()) {
             sb.append(effectiveFrom.equals(effectiveTo) ? "No sales recorded today.\n" : "No sales recorded in this period.\n");
-            return new ReportResponse("TODAY_SALES", nowIST(), sb.toString());
+            return new ReportResponse("SALES_REPORT", nowIST(), sb.toString());
         }
 
         // Group by user full name
@@ -285,15 +288,6 @@ public class ReportService {
                 Transaction.TransactionStatus.APPROVED, start, end);
         List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findByDateRange(start, end);
 
-        // Derive pharma name from either inventory set
-        String pharmaName = regularRecords.stream()
-                .map(i -> i.getMedicine().getPharmaCompany().getName())
-                .findFirst()
-                .orElseGet(() -> adminStockRecords.stream()
-                        .map(i -> i.getMedicine().getPharmaCompany().getName())
-                        .findFirst()
-                        .orElse("Shield FX"));
-
         StringBuilder sb = new StringBuilder();
         sb.append("DAILY REPORT - ").append(reportDate.format(DATE_FMT)).append("\n");
         sb.append("Generated: ").append(nowIST()).append("\n");
@@ -302,19 +296,12 @@ public class ReportService {
         // ── REGULAR MEDICINE STOCK section ────────────────────────────
         sb.append("REGULAR MEDICINE STOCK\n");
         sb.append("-".repeat(22)).append("\n");
-        sb.append(pharmaName).append("\n");
-        sb.append("-".repeat(pharmaName.length())).append("\n");
         appendInventorySection(sb, regularRecords);
 
         // ── ADMIN MEDICINE STOCK section ───────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
         sb.append("ADMIN MEDICINE STOCK\n");
         sb.append("-".repeat(20)).append("\n");
-        if (!adminStockRecords.isEmpty()) {
-            String adminPharma = adminStockRecords.get(0).getMedicine().getPharmaCompany().getName();
-            sb.append(adminPharma).append("\n");
-            sb.append("-".repeat(adminPharma.length())).append("\n");
-        }
         appendInventoryAdminSection(sb, adminStockRecords);
 
         // ── DAILY TRANSACTION SUMMARY ─────────────────────────────────
@@ -373,24 +360,75 @@ public class ReportService {
     // ── Private helpers ───────────────────────────────────────────────
 
     /**
-     * Appends per-spec, per-user inventory lines to the builder.
-     * Always emits all 5 specs in fixed order; shows (none) / TOTAL: 0 when empty.
+     * Appends per-pharma, per-spec, per-user inventory lines.
+     * Groups by pharma company; always emits all 5 specs per pharma
+     * in fixed order, showing (none)/TOTAL: 0 for empty specs.
      */
     private void appendInventorySection(StringBuilder sb, List<Inventory> records) {
-        Map<String, List<Inventory>> bySpec = new HashMap<>();
+        LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
+        LinkedHashMap<Long, Map<String, List<Inventory>>> pharmaSpecMap = new LinkedHashMap<>();
         for (Inventory inv : records) {
-            bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
+            Long pid = inv.getMedicine().getPharmaCompany().getId();
+            pharmaNames.putIfAbsent(pid, inv.getMedicine().getPharmaCompany().getName());
+            pharmaSpecMap.computeIfAbsent(pid, k -> new LinkedHashMap<>())
+                         .computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>())
+                         .add(inv);
         }
 
-        for (String[] spec : DAILY_SPEC_ORDER) {
-            String key = spec[0] + "|" + spec[1];
-            sb.append("\n").append(spec[2]).append("\n");
+        for (Map.Entry<Long, String> pe : pharmaNames.entrySet()) {
+            String pharmaName = pe.getValue();
+            sb.append(pharmaName).append("\n");
+            sb.append("-".repeat(pharmaName.length())).append("\n");
+            Map<String, List<Inventory>> bySpec = pharmaSpecMap.get(pe.getKey());
+            for (String[] spec : DAILY_SPEC_ORDER) {
+                String key = spec[0] + "|" + spec[1];
+                sb.append("\n").append(spec[2]).append("\n");
+                List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
+                if (entries.isEmpty()) {
+                    sb.append("  (none)\n");
+                    sb.append("  TOTAL: 0\n");
+                } else {
+                    int total = 0;
+                    for (Inventory inv : entries) {
+                        sb.append("  ").append(inv.getUser().getUsername())
+                          .append(": ").append(inv.getQuantity()).append("\n");
+                        total += inv.getQuantity();
+                    }
+                    sb.append("  TOTAL: ").append(total).append("\n");
+                }
+            }
+        }
+    }
 
-            List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
-            if (entries.isEmpty()) {
-                sb.append("  (none)\n");
-                sb.append("  TOTAL: 0\n");
-            } else {
+    /**
+     * Appends per-pharma, per-spec, per-user admin inventory lines.
+     * Groups by pharma company; skips specs with no data (no (none)/TOTAL: 0).
+     * Used for the ADMIN MEDICINE STOCK section in the daily report.
+     */
+    private void appendInventoryAdminSection(StringBuilder sb, List<Inventory> records) {
+        LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
+        LinkedHashMap<Long, Map<String, List<Inventory>>> pharmaSpecMap = new LinkedHashMap<>();
+        for (Inventory inv : records) {
+            Long pid = inv.getMedicine().getPharmaCompany().getId();
+            pharmaNames.putIfAbsent(pid, inv.getMedicine().getPharmaCompany().getName());
+            pharmaSpecMap.computeIfAbsent(pid, k -> new LinkedHashMap<>())
+                         .computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>())
+                         .add(inv);
+        }
+
+        for (Map.Entry<Long, String> pe : pharmaNames.entrySet()) {
+            String pharmaName = pe.getValue();
+            sb.append(pharmaName).append("\n");
+            sb.append("-".repeat(pharmaName.length())).append("\n");
+            Map<String, List<Inventory>> bySpec = pharmaSpecMap.get(pe.getKey());
+            for (String[] spec : DAILY_SPEC_ORDER) {
+                String key = spec[0] + "|" + spec[1];
+                List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
+                if (entries.isEmpty()) continue;
+                String header = "VIAL".equals(spec[0])
+                        ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
+                        : spec[2];
+                sb.append("\n").append(header).append("\n");
                 int total = 0;
                 for (Inventory inv : entries) {
                     sb.append("  ").append(inv.getUser().getUsername())
@@ -399,34 +437,6 @@ public class ReportService {
                 }
                 sb.append("  TOTAL: ").append(total).append("\n");
             }
-        }
-    }
-
-    /**
-     * Appends per-spec, per-user admin inventory lines to the builder.
-     * Skips specs with no inventory (no (none) / TOTAL: 0 for empty specs).
-     * Used for the ADMIN MEDICINE STOCK section in the daily report.
-     */
-    private void appendInventoryAdminSection(StringBuilder sb, List<Inventory> records) {
-        Map<String, List<Inventory>> bySpec = new HashMap<>();
-        for (Inventory inv : records) {
-            bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
-        }
-        for (String[] spec : DAILY_SPEC_ORDER) {
-            String key = spec[0] + "|" + spec[1];
-            List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
-            if (entries.isEmpty()) continue;
-            String header = "VIAL".equals(spec[0])
-                    ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
-                    : spec[2];
-            sb.append("\n").append(header).append("\n");
-            int total = 0;
-            for (Inventory inv : entries) {
-                sb.append("  ").append(inv.getUser().getUsername())
-                  .append(": ").append(inv.getQuantity()).append("\n");
-                total += inv.getQuantity();
-            }
-            sb.append("  TOTAL: ").append(total).append("\n");
         }
     }
 
