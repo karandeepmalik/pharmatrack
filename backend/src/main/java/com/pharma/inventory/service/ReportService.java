@@ -361,8 +361,8 @@ public class ReportService {
 
     /**
      * Appends per-pharma, per-spec, per-user inventory lines.
-     * Groups by pharma company; always emits all 5 specs per pharma
-     * in fixed order, showing (none)/TOTAL: 0 for empty specs.
+     * Groups by pharma company; only emits specs with non-zero total
+     * (specs with no inventory are skipped).
      */
     private void appendInventorySection(StringBuilder sb, List<Inventory> records) {
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
@@ -382,20 +382,16 @@ public class ReportService {
             Map<String, List<Inventory>> bySpec = pharmaSpecMap.get(pe.getKey());
             for (String[] spec : DAILY_SPEC_ORDER) {
                 String key = spec[0] + "|" + spec[1];
-                sb.append("\n").append(spec[2]).append("\n");
                 List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
-                if (entries.isEmpty()) {
-                    sb.append("  (none)\n");
-                    sb.append("  TOTAL: 0\n");
-                } else {
-                    int total = 0;
-                    for (Inventory inv : entries) {
-                        sb.append("  ").append(inv.getUser().getUsername())
-                          .append(": ").append(inv.getQuantity()).append("\n");
-                        total += inv.getQuantity();
-                    }
-                    sb.append("  TOTAL: ").append(total).append("\n");
+                if (entries.isEmpty()) continue;
+                int total = 0;
+                sb.append("\n").append(spec[2]).append("\n");
+                for (Inventory inv : entries) {
+                    sb.append("  ").append(inv.getUser().getUsername())
+                      .append(": ").append(inv.getQuantity()).append("\n");
+                    total += inv.getQuantity();
                 }
+                sb.append("  TOTAL: ").append(total).append("\n");
             }
         }
     }

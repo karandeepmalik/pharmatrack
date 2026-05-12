@@ -38,6 +38,7 @@ class ReportServiceTest {
 
     private PharmaCompany pharma;
     private Medicine vial;
+    private Medicine vial5;
     private Medicine tablet;
     private User john;
     private User jane;
@@ -52,6 +53,12 @@ class ReportServiceTest {
         vial.setType(Medicine.MedicineType.VIAL); vial.setSpecification(10.0);
         vial.setConcentrationMgPerMl(20.0);
         vial.setPrice(4000); vial.setPharmaCompany(pharma);
+
+        vial5 = new Medicine();
+        vial5.setId(3L); vial5.setName("Shield FX Vial 5 ml");
+        vial5.setType(Medicine.MedicineType.VIAL); vial5.setSpecification(5.0);
+        vial5.setConcentrationMgPerMl(20.0);
+        vial5.setPrice(3000); vial5.setPharmaCompany(pharma);
 
         tablet = new Medicine();
         tablet.setId(2L); tablet.setName("Shield FX Tablet 25 mg (10 Tablets)");
@@ -588,7 +595,9 @@ class ReportServiceTest {
         @Test
         void tenMlVialAppearsBeforeFiveMlVial() {
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+                    .thenReturn(List.of(
+                            makeInv(1L, john, vial,  10, null),
+                            makeInv(2L, john, vial5, 5,  null)));
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
@@ -597,6 +606,7 @@ class ReportServiceTest {
 
             int pos10ml = r.getContent().indexOf("Vial 10 ml");
             int pos5ml  = r.getContent().indexOf("Vial 5 ml");
+            assertThat(pos10ml).isGreaterThanOrEqualTo(0);
             assertThat(pos10ml).isLessThan(pos5ml);
         }
 
@@ -615,8 +625,8 @@ class ReportServiceTest {
         }
 
         @Test
-        void showsNoneWhenSpecHasNoInventory() {
-            // Only vial 10 ml has stock — the other four specs must show (none)/TOTAL: 0
+        void specsWithZeroInventoryAreNotShown() {
+            // Only vial 10 ml has stock — other specs must be absent from the report
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
@@ -625,10 +635,12 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.dailyReport(null);
 
-            assertThat(r.getContent()).contains("(none)");
-            assertThat(r.getContent()).contains("TOTAL: 0");
-            // The spec with data should still show the correct count
+            assertThat(r.getContent()).contains("Vial 10 ml");
             assertThat(r.getContent()).contains("john.doe: 10");
+            assertThat(r.getContent()).doesNotContain("Vial 5 ml");
+            assertThat(r.getContent()).doesNotContain("Tablet");
+            assertThat(r.getContent()).doesNotContain("(none)");
+            assertThat(r.getContent()).doesNotContain("TOTAL: 0");
         }
 
         @Test
