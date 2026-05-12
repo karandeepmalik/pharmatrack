@@ -309,22 +309,29 @@ public class ReportService {
         sb.append("DAILY TRANSACTION SUMMARY\n");
         sb.append("-".repeat(25)).append("\n");
 
+        List<Transaction> regularTx = txList.stream()
+                .filter(tx -> tx.getInventoryType() != Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                .toList();
+        List<Transaction> adminTx = txList.stream()
+                .filter(tx -> tx.getInventoryType() == Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
+                .toList();
+
         if (txList.isEmpty()) {
             sb.append("(no transactions today)\n");
         } else {
-            for (Transaction tx : txList) {
-                Medicine m = tx.getMedicine();
-                int specInt = m.getSpecification().intValue();
-                String specLabel = m.getType() == Medicine.MedicineType.VIAL
-                        ? specInt + " ml"
-                        : specInt + " mg";
-                sb.append(tx.getSubmittedBy().getUsername())
-                  .append("  ")
-                  .append(tx.getQuantity()).append(" x ").append(specLabel);
-                if (tx.getNotes() != null && !tx.getNotes().isBlank()) {
-                    sb.append("  ").append(tx.getNotes());
+            if (!regularTx.isEmpty()) {
+                sb.append("\nRegular Stock Transactions\n");
+                sb.append("-".repeat(26)).append("\n");
+                for (Transaction tx : regularTx) {
+                    appendTransactionLine(sb, tx);
                 }
-                sb.append("\n");
+            }
+            if (!adminTx.isEmpty()) {
+                sb.append("\nAdmin Stock Transactions\n");
+                sb.append("-".repeat(24)).append("\n");
+                for (Transaction tx : adminTx) {
+                    appendTransactionLine(sb, tx);
+                }
             }
         }
 
@@ -434,6 +441,20 @@ public class ReportService {
                 sb.append("  TOTAL: ").append(total).append("\n");
             }
         }
+    }
+
+    private void appendTransactionLine(StringBuilder sb, Transaction tx) {
+        Medicine m = tx.getMedicine();
+        int specInt = m.getSpecification().intValue();
+        String specLabel = m.getType() == Medicine.MedicineType.VIAL
+                ? specInt + " ml" : specInt + " mg";
+        sb.append(tx.getSubmittedBy().getUsername())
+          .append("  ")
+          .append(tx.getQuantity()).append(" x ").append(specLabel);
+        if (tx.getNotes() != null && !tx.getNotes().isBlank()) {
+            sb.append("  ").append(tx.getNotes());
+        }
+        sb.append("\n");
     }
 
     private void appendAdjustmentLine(StringBuilder sb, InventoryAdjustment a) {
