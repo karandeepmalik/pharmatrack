@@ -135,22 +135,20 @@ public class ReportService {
     public ReportResponse inventoryValuation() {
         List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
-        // Group by pharmaId → then by specKey within each pharma
+        // Group by pharmaId → specKey → individual records (preserves per-user detail)
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
-        LinkedHashMap<Long, Map<String, Integer>> pharmaSpecQty = new LinkedHashMap<>();
+        LinkedHashMap<Long, Map<String, List<Inventory>>> pharmaSpecRecords = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, Integer>> pharmaSpecPrice = new LinkedHashMap<>();
 
         for (Inventory inv : records) {
             Medicine med = inv.getMedicine();
             Long pharmaId = med.getPharmaCompany().getId();
-            String pharmaName = med.getPharmaCompany().getName();
-            String key = specKey(med);
-
-            pharmaNames.putIfAbsent(pharmaId, pharmaName);
-            pharmaSpecQty.computeIfAbsent(pharmaId, k -> new LinkedHashMap<>())
-                         .merge(key, inv.getQuantity(), Integer::sum);
+            pharmaNames.putIfAbsent(pharmaId, med.getPharmaCompany().getName());
+            pharmaSpecRecords.computeIfAbsent(pharmaId, k -> new LinkedHashMap<>())
+                             .computeIfAbsent(specKey(med), k -> new ArrayList<>())
+                             .add(inv);
             pharmaSpecPrice.computeIfAbsent(pharmaId, k -> new LinkedHashMap<>())
-                           .putIfAbsent(key, med.getPrice());
+                           .putIfAbsent(specKey(med), med.getPrice());
         }
 
         StringBuilder sb = new StringBuilder();
@@ -167,22 +165,26 @@ public class ReportService {
             sb.append(pharmaName).append("\n");
             sb.append("-".repeat(pharmaName.length())).append("\n");
 
-            Map<String, Integer> specQty = pharmaSpecQty.getOrDefault(pharmaId, Collections.emptyMap());
-            Map<String, Integer> specPrice = pharmaSpecPrice.getOrDefault(pharmaId, Collections.emptyMap());
+            Map<String, List<Inventory>> specRecs  = pharmaSpecRecords.getOrDefault(pharmaId, Collections.emptyMap());
+            Map<String, Integer>         specPrice = pharmaSpecPrice.getOrDefault(pharmaId, Collections.emptyMap());
 
             for (String[] spec : DAILY_SPEC_ORDER) {
                 String key = spec[0] + "|" + spec[1];
-                Integer qty = specQty.get(key);
-                if (qty == null || qty == 0) continue;
+                List<Inventory> entries = specRecs.getOrDefault(key, Collections.emptyList());
+                if (entries.isEmpty()) continue;
 
+                int totalQty = entries.stream().mapToInt(Inventory::getQuantity).sum();
                 int price = specPrice.getOrDefault(key, 0);
-                long valuation = (long) qty * price;
+                long valuation = (long) totalQty * price;
                 grandTotal += valuation;
 
-                String shortName = spec[2]; // e.g. "Vial 10 ml"
-                sb.append(shortName).append("\n");
-                sb.append("  Qty: ").append(qty)
-                  .append("  |  Price: Rs ").append(String.format("%,d", price))
+                sb.append(spec[2]).append("\n");
+                for (Inventory inv : entries) {
+                    sb.append("  ").append(inv.getUser().getUsername())
+                      .append(": ").append(inv.getQuantity()).append("\n");
+                }
+                sb.append("  TOTAL: ").append(totalQty).append("\n");
+                sb.append("  Price: Rs ").append(String.format("%,d", price))
                   .append("  |  Value: Rs ").append(String.format("%,d", valuation)).append("\n\n");
             }
         }
