@@ -288,8 +288,10 @@ class ReportServiceTest {
 
             assertThat(r.getReportType()).isEqualTo("INVENTORY_VALUATION");
             assertThat(r.getContent()).contains("Vial 10 ml");
-            assertThat(r.getContent()).contains("Qty: 15");
-            assertThat(r.getContent()).contains("60,000");
+            assertThat(r.getContent()).contains("john.doe: 10");
+            assertThat(r.getContent()).contains("jane.smith: 5");
+            assertThat(r.getContent()).contains("TOTAL: 15");
+            assertThat(r.getContent()).contains("Value: Rs 60,000");
             assertThat(r.getContent()).contains("TOTAL VALUATION");
         }
 
@@ -356,8 +358,39 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.inventoryValuation();
 
-            assertThat(r.getContent()).contains("Qty: 5");
+            assertThat(r.getContent()).contains("john.doe: 5");
+            assertThat(r.getContent()).contains("TOTAL: 5");
             assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 20,000");
+        }
+
+        @Test
+        void perUserBreakdownShownUnderEachSpec() {
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(
+                            makeInv(1L, john, vial, 10, null),
+                            makeInv(2L, jane, vial, 6, null)));
+
+            ReportResponse r = reportService.inventoryValuation();
+            String content = r.getContent();
+
+            assertThat(content).contains("john.doe: 10");
+            assertThat(content).contains("jane.smith: 6");
+            assertThat(content).contains("TOTAL: 16");
+            assertThat(content).contains("Price: Rs 4,000");
+            assertThat(content).contains("Value: Rs 64,000");
+        }
+
+        @Test
+        void valuationLineShowsPriceAndValuePerSpec() {
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, tablet, 3, null)));
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            assertThat(r.getContent()).contains("Tablet 25 mg (10 Tablets)");
+            assertThat(r.getContent()).contains("john.doe: 3");
+            assertThat(r.getContent()).contains("TOTAL: 3");
+            assertThat(r.getContent()).contains("Price: Rs 4,000  |  Value: Rs 12,000");
         }
     }
 
