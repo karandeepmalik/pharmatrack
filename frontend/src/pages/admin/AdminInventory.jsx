@@ -84,9 +84,9 @@ export default function AdminInventory() {
 
             {error && <div role="alert" className="alert alert-error">{error}</div>}
 
-            <div className="form-card" style={{ marginBottom: '1.5rem' }}>
-                <div className="form-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                    <div className="form-group" style={{ flex: 1 }}>
+            <div className="form-card">
+                <div className="form-row">
+                    <div className="form-group">
                         <label htmlFor="spec-filter-select">Filter by Medicine</label>
                         <select
                             id="spec-filter-select"
@@ -98,7 +98,7 @@ export default function AdminInventory() {
                             ))}
                         </select>
                     </div>
-                    <div className="form-group" style={{ flex: 1 }}>
+                    <div className="form-group">
                         <label htmlFor="user-filter-select">Filter by User</label>
                         <select
                             id="user-filter-select"
@@ -114,12 +114,12 @@ export default function AdminInventory() {
             </div>
 
             <section style={{ marginBottom: '2rem' }}>
-                <h2 style={{ marginBottom: '0.75rem' }}>Regular Stock (User Allocations)</h2>
+                <h2>Regular Stock (User Allocations)</h2>
                 <StockTable items={applyFilters(regularItems)} />
             </section>
 
             <section>
-                <h2 style={{ marginBottom: '0.75rem' }}>Admin Stock (System Stock)</h2>
+                <h2>Admin Stock (System Stock)</h2>
                 <StockTable items={applyFilters(adminItems)} />
             </section>
         </div>

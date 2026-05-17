@@ -132,7 +132,7 @@ export default function ManageUsers() {
                 </form>
             </section>
 
-            <section style={{ marginTop: '2rem' }}>
+            <section className="section-mt">
                 <h2>All Users</h2>
                 {loading ? <p>Loading…</p> : (
                     <div className="table-wrapper">
@@ -182,7 +182,7 @@ export default function ManageUsers() {
                                         {pwExpanded === u.id && (
                                             <tr>
                                                 <td colSpan={6}>
-                                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.5rem 0' }}>
+                                                    <div className="pw-row">
                                                         <input
                                                             type="password"
                                                             aria-label={`New password for ${u.username}`}
@@ -190,7 +190,6 @@ export default function ManageUsers() {
                                                             value={pwForm[u.id] || ''}
                                                             minLength={8}
                                                             onChange={e => setPwForm(f => ({ ...f, [u.id]: e.target.value }))}
-                                                            style={{ flex: 1 }}
                                                         />
                                                         <button
                                                             type="button"
