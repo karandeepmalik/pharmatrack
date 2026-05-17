@@ -118,6 +118,39 @@ small{color:#6b7280;font-size:.75rem}
 .submit-transaction-page{max-width:700px}
 .preview-card{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:1rem;margin-bottom:1rem}
 
+/* ── Approve transactions ────────────────────────────────────────────── */
+.tx-price-edit{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.25rem 0}
+.tx-price-edit label{font-size:.9rem;white-space:nowrap}
+.tx-price-edit .price-input{width:120px;padding:.375rem .625rem;border:1px solid #d1d5db;border-radius:6px;font-size:.9rem}
+.lightbox-nav{display:flex;align-items:center;gap:.5rem}
+.lightbox-counter{font-size:.85rem;color:#6b7280;white-space:nowrap}
+
+/* ── Utility: side-by-side form fields ──────────────────────────────── */
+.form-row{display:flex;gap:1rem;flex-wrap:wrap}
+.form-row>.form-group{flex:1;min-width:160px}
+
+/* ── Utility: inline button / action group ───────────────────────────── */
+.btn-group{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+
+/* ── Utility: checkbox + label inline ───────────────────────────────── */
+.checkbox-row{display:flex;align-items:center;gap:.5rem;margin-bottom:1rem}
+.checkbox-row input[type=checkbox]{width:auto;flex-shrink:0;cursor:pointer}
+.checkbox-row label{margin-bottom:0;cursor:pointer}
+
+/* ── Utility: form validation error ─────────────────────────────────── */
+.form-error{color:#dc2626;font-size:.875rem;margin-bottom:.5rem}
+
+/* ── Utility: top-spaced section ────────────────────────────────────── */
+.section-mt{margin-top:2rem}
+
+/* ── Manage medicines ────────────────────────────────────────────────── */
+.manage-medicines-page section{margin-bottom:2rem}
+.manage-medicines-page hr{margin:0 0 2rem;border:none;border-top:1px solid #e5e7eb}
+
+/* ── Password change row (ManageUsers) ──────────────────────────────── */
+.pw-row{display:flex;gap:.75rem;align-items:center;padding:.5rem 0;flex-wrap:wrap}
+.pw-row input{flex:1;min-width:160px}
+
 /* ── Reports ─────────────────────────────────────────────────────────── */
 .report-section{margin-top:1.5rem}
 .report-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;gap:.75rem;flex-wrap:wrap}
@@ -158,6 +191,14 @@ small{color:#6b7280;font-size:.75rem}
   .report-content{padding:1rem .75rem;font-size:.78rem;max-height:60vh}
   /* Lightbox on mobile */
   .screenshot-lightbox-content{padding:1rem}
+  /* Form row stacks vertically */
+  .form-row{flex-direction:column;gap:.75rem}
+  /* Price edit stacks */
+  .tx-price-edit .price-input{width:100%}
+  /* Approve / reject buttons full-width */
+  .tx-actions .btn{flex:1}
+  /* Lightbox nav stacks */
+  .lightbox-footer{flex-direction:column}
 }
 
 /* ── Responsive: ≤ 400px (small phones) ─────────────────────────────── */

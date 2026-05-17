@@ -78,8 +78,8 @@ export default function ViewReports() {
                 </div>
 
                 {selected === 'today-sales' && (
-                    <div className="form-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                        <div className="form-group" style={{ flex: 1 }}>
+                    <div className="form-row">
+                        <div className="form-group">
                             <label htmlFor="sales-from-input">From Date</label>
                             <input
                                 id="sales-from-input"
@@ -88,7 +88,7 @@ export default function ViewReports() {
                                 onChange={e => { setSalesFrom(e.target.value); setContent(''); }}
                             />
                         </div>
-                        <div className="form-group" style={{ flex: 1 }}>
+                        <div className="form-group">
                             <label htmlFor="sales-to-input">To Date</label>
                             <input
                                 id="sales-to-input"
@@ -101,7 +101,7 @@ export default function ViewReports() {
                 )}
 
                 {selected === 'today-sales' && salesFrom > salesTo && (
-                    <p className="form-error" role="alert" style={{ color: 'var(--color-error, red)', marginBottom: '0.5rem' }}>
+                    <p className="form-error" role="alert">
                         "From" date must be before or equal to "To" date.
                     </p>
                 )}

@@ -252,32 +252,34 @@ export default function ManageMedicines() {
         {medicines.length === 0 ? (
           <p>No medicines found.</p>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Specification</th>
-                <th>Concentration (mg/ml)</th>
-                <th>Price (Rs)</th>
-                <th>Pharma Company</th>
-              </tr>
-            </thead>
-            <tbody>
-              {medicines.map((m) => (
-                <tr key={m.id}>
-                  <td>{m.id}</td>
-                  <td>{m.name}</td>
-                  <td>{m.type}</td>
-                  <td>{m.specification}</td>
-                  <td>{m.concentrationMgPerMl ?? '—'}</td>
-                  <td>{m.price}</td>
-                  <td>{m.pharmaCompany?.name ?? '—'}</td>
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Specification</th>
+                  <th>Concentration (mg/ml)</th>
+                  <th>Price (Rs)</th>
+                  <th>Pharma Company</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {medicines.map((m) => (
+                  <tr key={m.id}>
+                    <td>{m.id}</td>
+                    <td>{m.name}</td>
+                    <td>{m.type}</td>
+                    <td>{m.specification}</td>
+                    <td>{m.concentrationMgPerMl ?? '—'}</td>
+                    <td>{m.price}</td>
+                    <td>{m.pharmaCompany?.name ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>
