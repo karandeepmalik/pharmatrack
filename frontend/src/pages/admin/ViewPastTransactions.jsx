@@ -62,8 +62,8 @@ export default function ViewPastTransactions() {
             {error && <div role="alert" className="alert alert-error">{error}</div>}
 
             <div className="form-card">
-                <div className="form-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                    <div className="form-group" style={{ flex: 1 }}>
+                <div className="form-row">
+                    <div className="form-group">
                         <label htmlFor="from-date">From Date</label>
                         <input
                             id="from-date"
@@ -72,7 +72,7 @@ export default function ViewPastTransactions() {
                             onChange={e => { setFrom(e.target.value); setSearched(false); }}
                         />
                     </div>
-                    <div className="form-group" style={{ flex: 1 }}>
+                    <div className="form-group">
                         <label htmlFor="to-date">To Date</label>
                         <input
                             id="to-date"
@@ -81,7 +81,7 @@ export default function ViewPastTransactions() {
                             onChange={e => { setTo(e.target.value); setSearched(false); }}
                         />
                     </div>
-                    <div className="form-group" style={{ flex: 1 }}>
+                    <div className="form-group">
                         <label htmlFor="status-filter">Status</label>
                         <select
                             id="status-filter"
@@ -95,7 +95,7 @@ export default function ViewPastTransactions() {
                 </div>
 
                 {from > to && (
-                    <p className="form-error" role="alert" style={{ color: 'var(--color-error, red)', marginBottom: '0.5rem' }}>
+                    <p className="form-error" role="alert">
                         "From" date must be before or equal to "To" date.
                     </p>
                 )}

@@ -208,15 +208,14 @@ export default function ModifyInventory() {
                         <small>{form.note.length}/500 characters (minimum 5)</small>
                     </div>
 
-                    <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className="checkbox-row">
                         <input
                             id="internal-movement-checkbox"
                             type="checkbox"
                             checked={form.internalMovement}
                             onChange={e => setForm(f => ({ ...f, internalMovement: e.target.checked }))}
-                            style={{ width: 'auto', cursor: 'pointer' }}
                         />
-                        <label htmlFor="internal-movement-checkbox" style={{ marginBottom: 0, cursor: 'pointer' }}>
+                        <label htmlFor="internal-movement-checkbox">
                             Internal Movement
                         </label>
                     </div>

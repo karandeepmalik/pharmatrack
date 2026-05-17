@@ -118,8 +118,8 @@ export default function AdminEditDispatch() {
             {error && <div role="alert" className="alert alert-error">{error}</div>}
 
             <div className="form-card">
-                <div className="form-row" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                    <div className="form-group" style={{ flex: 1 }}>
+                <div className="form-row">
+                    <div className="form-group">
                         <label htmlFor="from-date">From Date</label>
                         <input
                             id="from-date"
@@ -128,7 +128,7 @@ export default function AdminEditDispatch() {
                             onChange={e => { setFrom(e.target.value); setSearched(false); }}
                         />
                     </div>
-                    <div className="form-group" style={{ flex: 1 }}>
+                    <div className="form-group">
                         <label htmlFor="to-date">To Date</label>
                         <input
                             id="to-date"
@@ -140,7 +140,7 @@ export default function AdminEditDispatch() {
                 </div>
 
                 {from > to && (
-                    <p className="form-error" role="alert" style={{ color: 'var(--color-error, red)', marginBottom: '0.5rem' }}>
+                    <p className="form-error" role="alert">
                         "From" date must be before or equal to "To" date.
                     </p>
                 )}
@@ -186,7 +186,7 @@ export default function AdminEditDispatch() {
                                                 <td>{tx.medicineName}<br /><small>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</small></td>
                                                 <td>{tx.quantity}</td>
                                                 <td>{statusBadge(tx.status)}</td>
-                                                <td style={{ minWidth: '200px' }}>
+                                                <td>
                                                     {edit.active ? (
                                                         <div>
                                                             <textarea
@@ -197,11 +197,9 @@ export default function AdminEditDispatch() {
                                                                 style={{ width: '100%', resize: 'vertical' }}
                                                             />
                                                             {edit.error && (
-                                                                <p role="alert" style={{ color: 'var(--color-error, red)', fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                                                                    {edit.error}
-                                                                </p>
+                                                                <p role="alert" className="form-error">{edit.error}</p>
                                                             )}
-                                                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                                            <div className="btn-group" style={{ marginTop: '0.25rem' }}>
                                                                 <button
                                                                     type="button"
                                                                     className="btn btn-primary btn-sm"
@@ -222,16 +220,14 @@ export default function AdminEditDispatch() {
                                                         tx.notes || '—'
                                                     )}
                                                 </td>
-                                                <td style={{ whiteSpace: 'nowrap' }}>
+                                                <td className="actions-cell">
                                                     {del.confirming ? (
                                                         <div>
                                                             <p style={{ fontSize: '0.85rem', margin: '0 0 0.25rem' }}>Are you sure?</p>
                                                             {del.error && (
-                                                                <p role="alert" style={{ color: 'var(--color-error, red)', fontSize: '0.85rem', margin: '0.25rem 0' }}>
-                                                                    {del.error}
-                                                                </p>
+                                                                <p role="alert" className="form-error">{del.error}</p>
                                                             )}
-                                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                            <div className="btn-group">
                                                                 <button
                                                                     type="button"
                                                                     className="btn btn-danger btn-sm"
@@ -249,7 +245,7 @@ export default function AdminEditDispatch() {
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                        <div className="btn-group">
                                                             {!edit.active && (
                                                                 <button
                                                                     type="button"
