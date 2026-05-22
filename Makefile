@@ -50,7 +50,7 @@ logs-frontend: ## Tail frontend logs only
 test: test-backend test-frontend ## Run all tests
 
 test-backend: ## Run Spring Boot tests
-	cd backend && mvn verify -q
+	cd backend && JAVA_HOME=/Users/karandeepmalik/Library/Java/JavaVirtualMachines/jbr-17.0.14/Contents/Home mvn verify -q
 	@echo "✓  Backend tests passed"
 
 test-frontend: ## Run Jest unit tests

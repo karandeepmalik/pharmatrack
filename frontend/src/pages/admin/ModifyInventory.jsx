@@ -9,9 +9,11 @@ export default function ModifyInventory() {
     const [users, setUsers]         = useState([]);
     const [medicines, setMedicines] = useState([]);
     const [inventory, setInventory] = useState([]);
+    const today = new Date().toISOString().slice(0, 10);
     const [form, setForm]           = useState({
         userId: '', medicineId: '', adjustmentType: 'ADD',
         quantity: '', note: '', inventoryType: 'REGULAR_MEDICINE_STOCK', internalMovement: false,
+        adjustmentDate: today,
     });
     const [msg, setMsg]             = useState('');
     const [err, setErr]             = useState('');
@@ -44,7 +46,8 @@ export default function ModifyInventory() {
     const isValid =
         form.userId && form.medicineId && form.adjustmentType &&
         Number(form.quantity) >= 1 &&
-        form.note.trim().length >= 5;
+        form.note.trim().length >= 5 &&
+        form.adjustmentDate && form.adjustmentDate <= today;
 
     const handle = async e => {
         e.preventDefault();
@@ -58,6 +61,7 @@ export default function ModifyInventory() {
                 note:            form.note.trim(),
                 inventoryType:   form.inventoryType,
                 internalMovement: form.internalMovement,
+                adjustmentDate:  form.adjustmentDate,
             });
             setMsg(`Medicine stock ${form.adjustmentType === 'ADD' ? 'added' : 'reduced'} successfully.`);
             setForm(f => ({ ...f, quantity: '', note: '' }));
@@ -206,6 +210,20 @@ export default function ModifyInventory() {
                             value={form.note} onChange={set('note')}
                             maxLength={500} />
                         <small>{form.note.length}/500 characters (minimum 5)</small>
+                    </div>
+
+                    <div className="form-group">
+                        <label htmlFor="adjustment-date-input">
+                            Adjustment Date <span className="required">*</span>
+                        </label>
+                        <input
+                            id="adjustment-date-input"
+                            type="date"
+                            value={form.adjustmentDate}
+                            max={today}
+                            onChange={set('adjustmentDate')}
+                            required
+                        />
                     </div>
 
                     <div className="checkbox-row">
