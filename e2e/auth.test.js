@@ -467,6 +467,53 @@ async function run() {
     assert(r.status === 400, `Expected 400, got ${r.status}`);
   });
 
+  await test('Admin can ADD inventory with inTransit=true', async () => {
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 3,
+      note: 'In-transit shipment from central warehouse',
+      inTransit: true,
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    // Restore immediately
+    await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 3,
+      note: 'Reversing in-transit test addition',
+    }, adminToken);
+  });
+
+  await test('Admin can ADD inventory with inTransit=false (explicit default)', async () => {
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 2,
+      note: 'Regular stock addition not in transit',
+      inTransit: false,
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    // Restore immediately
+    await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 2,
+      note: 'Reversing inTransit=false test addition',
+    }, adminToken);
+  });
+
+  await test('In-transit daily report contains IST timestamp (report endpoint smoke test)', async () => {
+    const r = await apiGet(`${API}/reports/daily`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(typeof r.data.content === 'string', 'Expected string content in report');
+    assert(r.data.content.includes('DAILY REPORT'), 'Expected DAILY REPORT header');
+  });
+
   // ── TEARDOWN: Restore john.doe inventory to original ─────────────────
   // Net change so far: +10 ADD then -5 REDUCE = net +5 above original
   // Restore: REDUCE 5 to get back to quantityBeforeAdjust

@@ -13,6 +13,7 @@ public class AdjustInventoryRequest {
     /** Which bucket to adjust. Defaults to REGULAR_MEDICINE_STOCK if not provided. */
     private String inventoryType = "REGULAR_MEDICINE_STOCK";
     private boolean internalMovement = false;
+    private boolean inTransit = false;
 
     /** Optional date for the adjustment. Defaults to today if not provided. Cannot be in the future. */
     @PastOrPresent(message = "adjustmentDate cannot be in the future")
@@ -32,6 +33,8 @@ public class AdjustInventoryRequest {
     public void setInventoryType(String inventoryType) { this.inventoryType = inventoryType; }
     public boolean isInternalMovement() { return internalMovement; }
     public void setInternalMovement(boolean internalMovement) { this.internalMovement = internalMovement; }
+    public boolean isInTransit() { return inTransit; }
+    public void setInTransit(boolean inTransit) { this.inTransit = inTransit; }
     public LocalDate getAdjustmentDate() { return adjustmentDate; }
     public void setAdjustmentDate(LocalDate adjustmentDate) { this.adjustmentDate = adjustmentDate; }
 }

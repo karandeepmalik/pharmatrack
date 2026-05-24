@@ -59,10 +59,25 @@ public class ReportService {
         return m.getType().name() + "|" + m.getSpecification();
     }
 
+    /** Builds a map of userId|medicineId|inventoryType → total in-transit ADD quantity (≤ 2 days old). */
+    private Map<String, Integer> buildInTransitMap() {
+        LocalDateTime cutoff = LocalDateTime.now(IST_ZONE).minusDays(2);
+        List<InventoryAdjustment> active = inventoryAdjustmentRepository.findActiveInTransitAdjustments(cutoff);
+        Map<String, Integer> map = new java.util.HashMap<>();
+        for (InventoryAdjustment a : active) {
+            if ("ADD".equals(a.getAdjustmentType())) {
+                String key = a.getUser().getId() + "|" + a.getMedicine().getId() + "|" + a.getInventoryType().name();
+                map.merge(key, a.getQuantity(), Integer::sum);
+            }
+        }
+        return map;
+    }
+
     @Transactional(readOnly = true)
     public ReportResponse inventoryByUser() {
         List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
+        Map<String, Integer> inTransitMap = buildInTransitMap();
 
         // Derive pharma name from whichever list is non-empty
         String pharmaName = regularRecords.stream()
@@ -83,7 +98,7 @@ public class ReportService {
         sb.append("-".repeat(22)).append("\n");
         sb.append(pharmaName).append("\n");
         sb.append("-".repeat(pharmaName.length())).append("\n");
-        appendInventoryByUserSection(sb, regularRecords);
+        appendInventoryByUserSection(sb, regularRecords, inTransitMap);
 
         // ── ADMIN MEDICINE STOCK section ────────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
@@ -94,16 +109,34 @@ public class ReportService {
             sb.append(adminPharma).append("\n");
             sb.append("-".repeat(adminPharma.length())).append("\n");
         }
-        appendInventoryByUserSection(sb, adminStockRecords);
+        appendInventoryByUserSection(sb, adminStockRecords, inTransitMap);
 
         return new ReportResponse("INVENTORY_BY_USER", nowIST(), sb.toString());
+    }
+
+    /**
+     * Writes one user quantity line, using in-transit format when applicable.
+     * Format: "  username: settled + transit (in transit)" or "  username: qty"
+     */
+    private void appendUserQtyLine(StringBuilder sb, Inventory inv, Map<String, Integer> inTransitMap) {
+        String key = inv.getUser().getId() + "|" + inv.getMedicine().getId() + "|"
+                + (inv.getInventoryType() != null ? inv.getInventoryType().name() : "REGULAR_MEDICINE_STOCK");
+        int transit = inTransitMap.getOrDefault(key, 0);
+        sb.append("  ").append(inv.getUser().getUsername()).append(": ");
+        if (transit > 0) {
+            sb.append(inv.getQuantity() - transit).append(" + ").append(transit).append(" (in transit)");
+        } else {
+            sb.append(inv.getQuantity());
+        }
+        sb.append("\n");
     }
 
     /**
      * Appends per-spec, per-user inventory lines for the inventory-by-user report.
      * Uses full medicine name as header; skips specs with no data.
      */
-    private void appendInventoryByUserSection(StringBuilder sb, List<Inventory> records) {
+    private void appendInventoryByUserSection(StringBuilder sb, List<Inventory> records,
+                                              Map<String, Integer> inTransitMap) {
         Map<String, List<Inventory>> bySpec = new LinkedHashMap<>();
         for (Inventory inv : records) {
             bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
@@ -123,8 +156,7 @@ public class ReportService {
             sb.append("-".repeat(35)).append("\n");
             int total = 0;
             for (Inventory inv : entries) {
-                sb.append("  ").append(inv.getUser().getUsername())
-                  .append(": ").append(inv.getQuantity()).append("\n");
+                appendUserQtyLine(sb, inv, inTransitMap);
                 total += inv.getQuantity();
             }
             sb.append("  TOTAL: ").append(total).append("\n\n");
@@ -134,6 +166,7 @@ public class ReportService {
     @Transactional(readOnly = true)
     public ReportResponse inventoryValuation() {
         List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+        Map<String, Integer> inTransitMap = buildInTransitMap();
 
         // Group by pharmaId → specKey → individual records (preserves per-user detail)
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
@@ -180,8 +213,7 @@ public class ReportService {
 
                 sb.append(spec[2]).append("\n");
                 for (Inventory inv : entries) {
-                    sb.append("  ").append(inv.getUser().getUsername())
-                      .append(": ").append(inv.getQuantity()).append("\n");
+                    appendUserQtyLine(sb, inv, inTransitMap);
                 }
                 sb.append("  TOTAL: ").append(totalQty).append("\n");
                 sb.append("  Price: Rs ").append(String.format("%,d", price))
@@ -289,6 +321,7 @@ public class ReportService {
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
         List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findByDateRange(start, end);
+        Map<String, Integer> inTransitMap = buildInTransitMap();
 
         StringBuilder sb = new StringBuilder();
         sb.append("DAILY REPORT - ").append(reportDate.format(DATE_FMT)).append("\n");
@@ -298,13 +331,13 @@ public class ReportService {
         // ── REGULAR MEDICINE STOCK section ────────────────────────────
         sb.append("REGULAR MEDICINE STOCK\n");
         sb.append("-".repeat(22)).append("\n");
-        appendInventorySection(sb, regularRecords);
+        appendInventorySection(sb, regularRecords, inTransitMap);
 
         // ── ADMIN MEDICINE STOCK section ───────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
         sb.append("ADMIN MEDICINE STOCK\n");
         sb.append("-".repeat(20)).append("\n");
-        appendInventoryAdminSection(sb, adminStockRecords);
+        appendInventoryAdminSection(sb, adminStockRecords, inTransitMap);
 
         // ── DAILY TRANSACTION SUMMARY ─────────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
@@ -373,7 +406,8 @@ public class ReportService {
      * Groups by pharma company; only emits specs with non-zero total
      * (specs with no inventory are skipped).
      */
-    private void appendInventorySection(StringBuilder sb, List<Inventory> records) {
+    private void appendInventorySection(StringBuilder sb, List<Inventory> records,
+                                        Map<String, Integer> inTransitMap) {
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, List<Inventory>>> pharmaSpecMap = new LinkedHashMap<>();
         for (Inventory inv : records) {
@@ -396,8 +430,7 @@ public class ReportService {
                 int total = 0;
                 sb.append("\n").append(spec[2]).append("\n");
                 for (Inventory inv : entries) {
-                    sb.append("  ").append(inv.getUser().getUsername())
-                      .append(": ").append(inv.getQuantity()).append("\n");
+                    appendUserQtyLine(sb, inv, inTransitMap);
                     total += inv.getQuantity();
                 }
                 sb.append("  TOTAL: ").append(total).append("\n");
@@ -410,7 +443,8 @@ public class ReportService {
      * Groups by pharma company; skips specs with no data (no (none)/TOTAL: 0).
      * Used for the ADMIN MEDICINE STOCK section in the daily report.
      */
-    private void appendInventoryAdminSection(StringBuilder sb, List<Inventory> records) {
+    private void appendInventoryAdminSection(StringBuilder sb, List<Inventory> records,
+                                             Map<String, Integer> inTransitMap) {
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, List<Inventory>>> pharmaSpecMap = new LinkedHashMap<>();
         for (Inventory inv : records) {
@@ -436,8 +470,7 @@ public class ReportService {
                 sb.append("\n").append(header).append("\n");
                 int total = 0;
                 for (Inventory inv : entries) {
-                    sb.append("  ").append(inv.getUser().getUsername())
-                      .append(": ").append(inv.getQuantity()).append("\n");
+                    appendUserQtyLine(sb, inv, inTransitMap);
                     total += inv.getQuantity();
                 }
                 sb.append("  TOTAL: ").append(total).append("\n");

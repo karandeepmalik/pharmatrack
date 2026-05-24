@@ -228,3 +228,47 @@ describe('ModifyInventory — adjustment date', () => {
     expect(dateInput).toHaveAttribute('type', 'date');
   });
 });
+
+// ── In Transit checkbox ───────────────────────────────────────────────────
+
+describe('ModifyInventory — in transit', () => {
+  test('renders the In Transit checkbox', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/in transit/i)).toBeInTheDocument()
+    );
+  });
+
+  test('In Transit checkbox is unchecked by default', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    const checkbox = await screen.findByLabelText(/in transit/i);
+    expect(checkbox).not.toBeChecked();
+  });
+
+  test('In Transit checkbox can be toggled on and off', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    const checkbox = await screen.findByLabelText(/in transit/i);
+    await userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    await userEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+  });
+
+  test('In Transit checkbox is independent of Internal Movement checkbox', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    const inTransitCb = await screen.findByLabelText(/in transit/i);
+    const internalMovCb = await screen.findByLabelText(/internal movement/i);
+
+    await userEvent.click(inTransitCb);
+    expect(inTransitCb).toBeChecked();
+    expect(internalMovCb).not.toBeChecked();
+  });
+});
