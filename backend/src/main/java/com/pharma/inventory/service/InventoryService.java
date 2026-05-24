@@ -49,6 +49,10 @@ public class InventoryService {
         inv.setLastNote(req.getNote());
         InventoryResponse response = toResponse(inventoryRepository.save(inv));
 
+        LocalDateTime adjustedAt = req.getAdjustmentDate() != null
+            ? req.getAdjustmentDate().atStartOfDay()
+            : LocalDateTime.now();
+
         User adjustedBy = userRepository.findByUsername(adjustedByUsername).orElse(null);
         inventoryAdjustmentRepository.save(InventoryAdjustment.builder()
             .user(user)
@@ -59,7 +63,7 @@ public class InventoryService {
             .internalMovement(req.isInternalMovement())
             .inTransit(req.isInTransit())
             .inventoryType(invType)
-            .adjustedAt(LocalDateTime.now())
+            .adjustedAt(adjustedAt)
             .adjustedBy(adjustedBy)
             .build());
 

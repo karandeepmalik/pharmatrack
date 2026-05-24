@@ -23,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -264,6 +265,30 @@ class InventoryControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isOk());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void acceptsValidAdjustmentDate() throws Exception {
+            InventoryResponse added = new InventoryResponse();
+            added.setQuantity(110); added.setUsername("john.doe");
+            when(inventoryService.adjustInventory(any(), any())).thenReturn(added);
+            AdjustInventoryRequest req = validAddReq();
+            req.setAdjustmentDate(LocalDate.now().minusDays(1));
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.quantity").value(110));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsFutureAdjustmentDate() throws Exception {
+            AdjustInventoryRequest req = validAddReq();
+            req.setAdjustmentDate(LocalDate.now().plusDays(1));
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
         }
     }
 }

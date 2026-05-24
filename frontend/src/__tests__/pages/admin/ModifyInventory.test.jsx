@@ -190,6 +190,45 @@ describe('ModifyInventory — internal movement', () => {
   });
 });
 
+// ── Adjustment date input ─────────────────────────────────────────────────
+
+describe('ModifyInventory — adjustment date', () => {
+  test('renders an Adjustment Date input', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/adjustment date/i)).toBeInTheDocument()
+    );
+  });
+
+  test('defaults adjustment date to today', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    const today = new Date().toISOString().slice(0, 10);
+    const dateInput = await screen.findByLabelText(/adjustment date/i);
+    expect(dateInput).toHaveValue(today);
+  });
+
+  test('adjustment date input has max set to today (no future dates)', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    const today = new Date().toISOString().slice(0, 10);
+    const dateInput = await screen.findByLabelText(/adjustment date/i);
+    expect(dateInput).toHaveAttribute('max', today);
+  });
+
+  test('adjustment date input is of type date', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    const dateInput = await screen.findByLabelText(/adjustment date/i);
+    expect(dateInput).toHaveAttribute('type', 'date');
+  });
+});
+
 // ── In Transit checkbox ───────────────────────────────────────────────────
 
 describe('ModifyInventory — in transit', () => {

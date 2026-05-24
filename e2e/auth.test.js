@@ -429,6 +429,44 @@ async function run() {
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
+  await test('Admin can adjust inventory with a specific past adjustmentDate', async () => {
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - 7);
+    const dateStr = pastDate.toISOString().slice(0, 10);
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 1,
+      note: 'Backdate test — restocking from last week',
+      adjustmentDate: dateStr,
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    // restore immediately
+    await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 1,
+      note: 'Reversing backdate test addition',
+    }, adminToken);
+  });
+
+  await test('Adjust inventory with future adjustmentDate returns 400', async () => {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 1);
+    const dateStr = futureDate.toISOString().slice(0, 10);
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 1,
+      note: 'This should be rejected due to future date',
+      adjustmentDate: dateStr,
+    }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}`);
+  });
+
   await test('Admin can ADD inventory with inTransit=true', async () => {
     const r = await apiPost(`${API}/inventory/adjust`, {
       userId: johnId,
