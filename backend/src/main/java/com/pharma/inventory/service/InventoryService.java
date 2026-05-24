@@ -57,6 +57,7 @@ public class InventoryService {
             .adjustmentType(req.getAdjustmentType())
             .note(req.getNote())
             .internalMovement(req.isInternalMovement())
+            .inTransit(req.isInTransit())
             .inventoryType(invType)
             .adjustedAt(LocalDateTime.now())
             .adjustedBy(adjustedBy)

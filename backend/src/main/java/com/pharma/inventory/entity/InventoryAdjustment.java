@@ -13,6 +13,7 @@ public class InventoryAdjustment {
     @Column(nullable=false) private String adjustmentType;
     @Column(length=500) private String note;
     @Column(nullable=false) private boolean internalMovement;
+    @Column(nullable=false, columnDefinition="boolean default false") private boolean inTransit;
     @Convert(converter = InventoryTypeConverter.class) @Column(name="inventory_type",nullable=false)
     private Inventory.InventoryType inventoryType;
     @Column(nullable=false) private LocalDateTime adjustedAt;

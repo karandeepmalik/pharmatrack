@@ -11,7 +11,8 @@ export default function ModifyInventory() {
     const [inventory, setInventory] = useState([]);
     const [form, setForm]           = useState({
         userId: '', medicineId: '', adjustmentType: 'ADD',
-        quantity: '', note: '', inventoryType: 'REGULAR_MEDICINE_STOCK', internalMovement: false,
+        quantity: '', note: '', inventoryType: 'REGULAR_MEDICINE_STOCK',
+        internalMovement: false, inTransit: false,
     });
     const [msg, setMsg]             = useState('');
     const [err, setErr]             = useState('');
@@ -58,6 +59,7 @@ export default function ModifyInventory() {
                 note:            form.note.trim(),
                 inventoryType:   form.inventoryType,
                 internalMovement: form.internalMovement,
+                inTransit:       form.inTransit,
             });
             setMsg(`Medicine stock ${form.adjustmentType === 'ADD' ? 'added' : 'reduced'} successfully.`);
             setForm(f => ({ ...f, quantity: '', note: '' }));
@@ -217,6 +219,21 @@ export default function ModifyInventory() {
                         />
                         <label htmlFor="internal-movement-checkbox">
                             Internal Movement
+                        </label>
+                    </div>
+
+                    <div className="checkbox-row">
+                        <input
+                            id="in-transit-checkbox"
+                            type="checkbox"
+                            checked={form.inTransit}
+                            onChange={e => setForm(f => ({ ...f, inTransit: e.target.checked }))}
+                        />
+                        <label htmlFor="in-transit-checkbox">
+                            In Transit
+                            <small style={{ display: 'block', fontWeight: 'normal', color: '#666' }}>
+                                Stock will appear separately in reports for 2 days, then merge into total.
+                            </small>
                         </label>
                     </div>
 

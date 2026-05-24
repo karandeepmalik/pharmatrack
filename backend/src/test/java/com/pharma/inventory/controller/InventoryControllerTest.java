@@ -238,5 +238,32 @@ class InventoryControllerTest {
                             .content(objectMapper.writeValueAsString(validAddReq())))
                     .andExpect(status().isUnauthorized());
         }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void acceptsInTransitFlagTrue() throws Exception {
+            InventoryResponse added = new InventoryResponse();
+            added.setQuantity(110); added.setUsername("john.doe");
+            when(inventoryService.adjustInventory(any(), any())).thenReturn(added);
+            AdjustInventoryRequest req = validAddReq();
+            req.setInTransit(true);
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.quantity").value(110));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void acceptsInTransitFlagFalse() throws Exception {
+            InventoryResponse added = new InventoryResponse();
+            added.setQuantity(110); added.setUsername("john.doe");
+            when(inventoryService.adjustInventory(any(), any())).thenReturn(added);
+            AdjustInventoryRequest req = validAddReq();
+            req.setInTransit(false);
+            mockMvc.perform(post("/api/inventory/adjust").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isOk());
+        }
     }
 }

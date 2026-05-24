@@ -979,4 +979,186 @@ class ReportServiceTest {
             assertThat(r.getContent()).doesNotContain("john.doe  3 x 10 ml");
         }
     }
+
+    // ── In-Transit Display ────────────────────────────────────────────────────
+
+    private InventoryAdjustment makeInTransitAdj(User u, Medicine m,
+                                                  Inventory.InventoryType type,
+                                                  int qty, LocalDateTime at) {
+        return InventoryAdjustment.builder()
+                .id(99L).user(u).medicine(m).quantity(qty)
+                .adjustmentType("ADD").note("shipment").inTransit(true)
+                .internalMovement(false).inventoryType(type).adjustedAt(at)
+                .build();
+    }
+
+    @Nested @DisplayName("In-Transit — dailyReport")
+    class InTransitDailyReport {
+
+        private void stubEmptyTransactions() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+        }
+
+        @Test
+        void inTransitStockShowsSettledPlusTransitFormat() {
+            // john has 15 total (10 settled + 5 in-transit)
+            Inventory inv = makeInv(1L, john, vial, 15, null);
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(inv));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            stubEmptyTransactions();
+
+            InventoryAdjustment adj = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(1));
+            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+                    .thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            assertThat(r.getContent()).contains("john.doe: 10 + 5 (in transit)");
+        }
+
+        @Test
+        void inTransitTotalStillIncludesTransitAmount() {
+            Inventory invJohn = makeInv(1L, john, vial, 15, null);
+            Inventory invJane = makeInv(2L, jane, vial, 8, null);
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(invJohn, invJane));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            stubEmptyTransactions();
+
+            InventoryAdjustment adj = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(1));
+            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+                    .thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            // john: 10 + 5 (in transit), jane: 8, TOTAL: 23
+            assertThat(r.getContent()).contains("john.doe: 10 + 5 (in transit)");
+            assertThat(r.getContent()).contains("jane.smith: 8");
+            assertThat(r.getContent()).contains("TOTAL: 23");
+        }
+
+        @Test
+        void expiredInTransitNotShownAsTransit() {
+            // adjustment is 3 days old — findActiveInTransitAdjustments returns empty
+            Inventory inv = makeInv(1L, john, vial, 15, null);
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(inv));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            stubEmptyTransactions();
+            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+                    .thenReturn(List.of()); // expired — repo returns nothing
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            assertThat(r.getContent()).contains("john.doe: 15");
+            assertThat(r.getContent()).doesNotContain("in transit");
+        }
+
+        @Test
+        void noInTransitAdjustmentsShowsNormalFormat() {
+            Inventory inv = makeInv(1L, john, tablet, 10, null);
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(inv));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            stubEmptyTransactions();
+            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+                    .thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            assertThat(r.getContent()).contains("john.doe: 10");
+            assertThat(r.getContent()).doesNotContain("in transit");
+        }
+
+        @Test
+        void inTransitShownForAdminStockSection() {
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            Inventory adminInv = makeAdminStockInv(1L, john, vial, 20, null);
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of(adminInv));
+            stubEmptyTransactions();
+
+            InventoryAdjustment adj = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 8, LocalDateTime.now().minusHours(2));
+            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+                    .thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            String content = r.getContent();
+            int adminIdx = content.indexOf("ADMIN MEDICINE STOCK");
+            String adminBlock = content.substring(adminIdx);
+            assertThat(adminBlock).contains("john.doe: 12 + 8 (in transit)");
+        }
+
+        @Test
+        void multipleInTransitAdjustmentsSummedForSameUserMedicine() {
+            Inventory inv = makeInv(1L, john, vial, 18, null); // 10 settled + 8 total transit
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(inv));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            stubEmptyTransactions();
+
+            InventoryAdjustment adj1 = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 3, LocalDateTime.now().minusHours(1));
+            InventoryAdjustment adj2 = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(2));
+            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+                    .thenReturn(List.of(adj1, adj2));
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            assertThat(r.getContent()).contains("john.doe: 10 + 8 (in transit)");
+        }
+    }
+
+    @Nested @DisplayName("In-Transit — inventoryByUser")
+    class InTransitInventoryByUser {
+
+        @Test
+        void inTransitShownInInventoryByUserReport() {
+            Inventory inv = makeInv(1L, john, tablet, 15, null);
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(inv));
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+
+            InventoryAdjustment adj = makeInTransitAdj(john, tablet,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(1));
+            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+                    .thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.inventoryByUser();
+
+            assertThat(r.getContent()).contains("john.doe: 10 + 5 (in transit)");
+        }
+
+        @Test
+        void inTransitTotalIncludesTransitInInventoryByUser() {
+            Inventory inv = makeInv(1L, john, vial, 12, null);
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(inv));
+            when(inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+
+            InventoryAdjustment adj = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 2, LocalDateTime.now().minusHours(3));
+            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+                    .thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.inventoryByUser();
+
+            assertThat(r.getContent()).contains("john.doe: 10 + 2 (in transit)");
+            assertThat(r.getContent()).contains("TOTAL: 12");
+        }
+    }
 }
