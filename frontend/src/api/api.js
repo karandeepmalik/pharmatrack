@@ -3,12 +3,7 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
+  withCredentials: true,
 });
 
 api.interceptors.response.use(
@@ -16,7 +11,6 @@ api.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     if (status === 401) {
-      localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.replace('/login');
     }
@@ -26,6 +20,7 @@ api.interceptors.response.use(
 
 // ── Auth ───────────────────────────────────────────────────────────────
 export const login    = (credentials) => api.post('/auth/login', credentials);
+export const logout   = ()            => api.post('/auth/logout');
 export const register = (data)        => api.post('/auth/register', data);
 export const getMe    = ()            => api.get('/users/me');
 

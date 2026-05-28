@@ -30,6 +30,7 @@ public class JwtService {
         try{ return extractUsername(token).equals(u.getUsername()) && !getClaims(token).getExpiration().before(new Date()); }
         catch(JwtException e){ return false; }
     }
+    public long getExpirationMs() { return expirationMs; }
     private Claims getClaims(String token){ return Jwts.parserBuilder().setSigningKey(getKey()).build().parseClaimsJws(token).getBody(); }
     private Key getKey(){ return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)); }
 }

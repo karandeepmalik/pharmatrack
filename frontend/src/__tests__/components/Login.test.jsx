@@ -60,7 +60,7 @@ describe('Login — render', () => {
 describe('Login — successful login', () => {
   test('navigates to admin dashboard when role is ADMIN', async () => {
     api.login.mockResolvedValue({
-      data: { token: 'tok', username: 'admin', fullName: 'Admin', role: 'ADMIN' },
+      data: { username: 'admin', fullName: 'Admin', role: 'ADMIN' },
     });
     renderPage();
 
@@ -73,7 +73,7 @@ describe('Login — successful login', () => {
 
   test('navigates to user dashboard when role is USER', async () => {
     api.login.mockResolvedValue({
-      data: { token: 'tok', username: 'john.doe', fullName: 'John Doe', role: 'USER' },
+      data: { username: 'john.doe', fullName: 'John Doe', role: 'USER' },
     });
     renderPage();
 
@@ -84,9 +84,9 @@ describe('Login — successful login', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/user/dashboard'));
   });
 
-  test('calls login context function with user data and token', async () => {
+  test('calls login context function with user data only (no token — cookie is set server-side)', async () => {
     api.login.mockResolvedValue({
-      data: { token: 'jwt-token', username: 'john.doe', fullName: 'John Doe', role: 'USER' },
+      data: { username: 'john.doe', fullName: 'John Doe', role: 'USER' },
     });
     renderPage();
 
@@ -96,8 +96,7 @@ describe('Login — successful login', () => {
 
     await waitFor(() =>
       expect(mockLogin).toHaveBeenCalledWith(
-        { username: 'john.doe', fullName: 'John Doe', role: 'USER' },
-        'jwt-token'
+        { username: 'john.doe', fullName: 'John Doe', role: 'USER' }
       )
     );
   });
