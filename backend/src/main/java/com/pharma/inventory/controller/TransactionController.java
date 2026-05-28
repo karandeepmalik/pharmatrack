@@ -9,6 +9,7 @@ import com.pharma.inventory.service.TransactionService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -91,7 +92,7 @@ public class TransactionController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<TransactionResponse> approve(
             @PathVariable Long id,
-            @RequestBody ApprovalRequest req,
+            @Valid @RequestBody ApprovalRequest req,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(
                 transactionService.approve(id, req, userDetails.getUsername()));
@@ -108,7 +109,7 @@ public class TransactionController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<TransactionResponse> updateNotes(
             @PathVariable Long id,
-            @RequestBody UpdateTransactionRequest req) {
+            @Valid @RequestBody UpdateTransactionRequest req) {
         return ResponseEntity.ok(transactionService.updateNotes(id, req));
     }
 

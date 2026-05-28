@@ -32,6 +32,11 @@ public class SecurityConfig {
     @Bean public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http.csrf(AbstractHttpConfigurer::disable)
             .cors(c->c.configurationSource(corsConfigSource()))
+            .headers(h->h
+                .frameOptions(f->f.deny())
+                .contentTypeOptions(org.springframework.security.config.Customizer.withDefaults())
+                .httpStrictTransportSecurity(hsts->hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
+                .contentSecurityPolicy(csp->csp.policyDirectives("default-src 'none'; frame-ancestors 'none'")))
             .sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a->a
                 .requestMatchers("/api/auth/**","/actuator/health").permitAll()
@@ -61,7 +66,7 @@ public class SecurityConfig {
         CorsConfiguration cfg=new CorsConfiguration();
         cfg.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         cfg.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        cfg.setAllowedHeaders(List.of("*")); cfg.setAllowCredentials(true);
+        cfg.setAllowedHeaders(List.of("Authorization","Content-Type","Accept")); cfg.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource src=new UrlBasedCorsConfigurationSource();
         src.registerCorsConfiguration("/**",cfg); return src;
     }

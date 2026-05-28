@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.*;
 import org.springframework.security.core.userdetails.*;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import com.pharma.inventory.repository.UserRepository;
 @RestController @RequestMapping("/api/auth") @RequiredArgsConstructor
@@ -16,9 +17,7 @@ public class AuthController {
     private final JwtService jwtService;
     private final UserRepository userRepo;
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest req) {
-        if(req.getUsername()==null||req.getUsername().isBlank()||req.getPassword()==null||req.getPassword().isBlank())
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Username and password required");
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req) {
         try {
             authManager.authenticate(new UsernamePasswordAuthenticationToken(req.getUsername(),req.getPassword()));
             UserDetails ud=userDetailsService.loadUserByUsername(req.getUsername());
