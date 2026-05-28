@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -43,6 +44,7 @@ class AuthControllerTest {
                 .id(2L).username("john.doe").fullName("John Doe")
                 .email("j@j.com").role(User.Role.USER)
                 .active(true).password("hashed").build();
+        when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
     }
 
     private String json(String username, String password) throws Exception {
@@ -59,8 +61,8 @@ class AuthControllerTest {
     class Login {
 
         @Test
-        @DisplayName("returns 200 with token and user details on valid credentials")
-        void returnsOkOnValidCredentials() throws Exception {
+        @DisplayName("returns 200 and sets HttpOnly jwt cookie on valid credentials")
+        void returnsOkAndSetsCookieOnValidCredentials() throws Exception {
             when(authenticationManager.authenticate(any())).thenReturn(
                     new UsernamePasswordAuthenticationToken("john.doe", null));
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(activeUser));
@@ -70,7 +72,10 @@ class AuthControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json("john.doe", "secret")))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.token").value("test.jwt.token"))
+                    .andExpect(header().string("Set-Cookie", containsString("jwt=test.jwt.token")))
+                    .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
+                    .andExpect(header().string("Set-Cookie", containsString("Path=/api")))
+                    .andExpect(jsonPath("$.token").doesNotExist())
                     .andExpect(jsonPath("$.username").value("john.doe"))
                     .andExpect(jsonPath("$.fullName").value("John Doe"))
                     .andExpect(jsonPath("$.role").value("USER"));
@@ -143,14 +148,36 @@ class AuthControllerTest {
         @Test
         @DisplayName("login endpoint is accessible without prior authentication")
         void loginEndpointIsPublic() throws Exception {
-            // Verify no 401 just from hitting the endpoint (credentials handled by mocks)
             when(authenticationManager.authenticate(any()))
                     .thenThrow(new BadCredentialsException("bad"));
 
             mockMvc.perform(post("/api/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json("x", "y")))
-                    .andExpect(status().isUnauthorized()); // 401 from bad creds, not from filter
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    // ── POST /api/auth/logout ─────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("POST /api/auth/logout")
+    class Logout {
+
+        @Test
+        @DisplayName("returns 204 and clears jwt cookie")
+        void returns204AndClearsCookie() throws Exception {
+            mockMvc.perform(post("/api/auth/logout"))
+                    .andExpect(status().isNoContent())
+                    .andExpect(header().string("Set-Cookie", containsString("jwt=")))
+                    .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
+        }
+
+        @Test
+        @DisplayName("logout endpoint is accessible without authentication")
+        void logoutIsPublic() throws Exception {
+            mockMvc.perform(post("/api/auth/logout"))
+                    .andExpect(status().isNoContent());
         }
     }
 }
