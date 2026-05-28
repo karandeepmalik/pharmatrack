@@ -14,7 +14,7 @@ public class MedicineController {
     private final MedicineRepository medicineRepo;
     private final PharmaCompanyRepository pharmaRepo;
 
-    @GetMapping @Transactional(readOnly=true)
+    @GetMapping @PreAuthorize("isAuthenticated()") @Transactional(readOnly=true)
     public List<Map<String,Object>> getAll() {
         return medicineRepo.findAll().stream().map(m -> {
             Map<String,Object> map=new LinkedHashMap<>();
@@ -24,7 +24,7 @@ public class MedicineController {
         }).collect(Collectors.toList());
     }
 
-    @GetMapping("/companies") @Transactional(readOnly=true)
+    @GetMapping("/companies") @PreAuthorize("isAuthenticated()") @Transactional(readOnly=true)
     public List<Map<String,Object>> getCompanies() {
         return pharmaRepo.findAll().stream().map(c -> {
             Map<String,Object> m=new LinkedHashMap<>();m.put("id",c.getId());m.put("name",c.getName());m.put("description",c.getDescription());return m;
