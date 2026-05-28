@@ -135,3 +135,184 @@ describe('ManageUsers — toggle active status', () => {
     await waitFor(() => expect(api.toggleUser).toHaveBeenCalledWith(2));
   });
 });
+
+// ── Add new user form ────────────────────────────────────────────────────
+
+describe('ManageUsers — add new user form', () => {
+  test('renders Add New User section heading', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    renderPage();
+    expect(screen.getByRole('heading', { name: /add new user/i })).toBeInTheDocument();
+  });
+
+  test('renders fullName, username, email, password, role fields', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    renderPage();
+    expect(screen.getByLabelText(/full name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^username$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/role/i)).toBeInTheDocument();
+  });
+
+  test('role dropdown defaults to USER', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    renderPage();
+    expect(screen.getByLabelText(/role/i)).toHaveValue('USER');
+  });
+
+  test('shows success alert after creating a user', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    api.createUser.mockResolvedValue({});
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText(/full name/i), 'New User');
+    await userEvent.type(screen.getByLabelText(/^username$/i), 'new.user');
+    await userEvent.type(screen.getByLabelText(/email/i), 'new@pharma.com');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'password123');
+    await userEvent.click(screen.getByRole('button', { name: /create user/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/new\.user.*created/i)
+    );
+  });
+
+  test('calls createUser API with form data', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    api.createUser.mockResolvedValue({});
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText(/full name/i), 'New User');
+    await userEvent.type(screen.getByLabelText(/^username$/i), 'new.user');
+    await userEvent.type(screen.getByLabelText(/email/i), 'new@pharma.com');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'password123');
+    await userEvent.click(screen.getByRole('button', { name: /create user/i }));
+
+    await waitFor(() =>
+      expect(api.createUser).toHaveBeenCalledWith(
+        expect.objectContaining({ username: 'new.user', email: 'new@pharma.com' })
+      )
+    );
+  });
+
+  test('shows error alert when createUser API fails', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    api.createUser.mockRejectedValue({
+      response: { data: { message: 'Username already exists' } },
+    });
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText(/full name/i), 'New User');
+    await userEvent.type(screen.getByLabelText(/^username$/i), 'existing');
+    await userEvent.type(screen.getByLabelText(/email/i), 'e@pharma.com');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'password123');
+    await userEvent.click(screen.getByRole('button', { name: /create user/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/username already exists/i)
+    );
+  });
+});
+
+// ── Change password ──────────────────────────────────────────────────────
+
+describe('ManageUsers — change password', () => {
+  test('clicking Change Password reveals password input row', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /change password/i }));
+    await userEvent.click(screen.getByRole('button', { name: /change password/i }));
+
+    expect(
+      screen.getByLabelText(/new password for john\.doe/i)
+    ).toBeInTheDocument();
+  });
+
+  test('Set Password button is disabled when password is fewer than 8 chars', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /change password/i }));
+    await userEvent.click(screen.getByRole('button', { name: /change password/i }));
+
+    const input = screen.getByLabelText(/new password for john\.doe/i);
+    await userEvent.type(input, 'short');
+
+    expect(screen.getByRole('button', { name: /set password/i })).toBeDisabled();
+  });
+
+  test('Set Password button is enabled when password is 8 or more chars', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /change password/i }));
+    await userEvent.click(screen.getByRole('button', { name: /change password/i }));
+
+    await userEvent.type(screen.getByLabelText(/new password for john\.doe/i), 'longpass123');
+
+    expect(screen.getByRole('button', { name: /set password/i })).not.toBeDisabled();
+  });
+
+  test('calls adminChangePassword with correct userId and password', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    api.adminChangePassword.mockResolvedValue({});
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /change password/i }));
+    await userEvent.click(screen.getByRole('button', { name: /change password/i }));
+
+    await userEvent.type(screen.getByLabelText(/new password for john\.doe/i), 'newpassword');
+    await userEvent.click(screen.getByRole('button', { name: /set password/i }));
+
+    await waitFor(() =>
+      expect(api.adminChangePassword).toHaveBeenCalledWith(2, { newPassword: 'newpassword' })
+    );
+  });
+
+  test('shows success alert after password change', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    api.adminChangePassword.mockResolvedValue({});
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /change password/i }));
+    await userEvent.click(screen.getByRole('button', { name: /change password/i }));
+    await userEvent.type(screen.getByLabelText(/new password for john\.doe/i), 'newpassword');
+    await userEvent.click(screen.getByRole('button', { name: /set password/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/password.*updated/i)
+    );
+  });
+
+  test('shows error alert when password change fails', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    api.adminChangePassword.mockRejectedValue({
+      response: { data: { message: 'Password too weak' } },
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /change password/i }));
+    await userEvent.click(screen.getByRole('button', { name: /change password/i }));
+    await userEvent.type(screen.getByLabelText(/new password for john\.doe/i), 'weakpassword');
+    await userEvent.click(screen.getByRole('button', { name: /set password/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/password too weak/i)
+    );
+  });
+
+  test('Cancel button hides the password row', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser()] });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /change password/i }));
+    await userEvent.click(screen.getByRole('button', { name: /change password/i }));
+
+    expect(screen.getByLabelText(/new password for john\.doe/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    expect(screen.queryByLabelText(/new password for john\.doe/i)).not.toBeInTheDocument();
+  });
+});
