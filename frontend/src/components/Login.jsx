@@ -12,7 +12,7 @@ export default function Login(){
         e.preventDefault(); setError(''); setLoading(true);
         try{
             const{data}=await api.login(form);
-            login({username:data.username,fullName:data.fullName,role:data.role});
+            login({username:data.username,fullName:data.fullName,role:data.role},data.token);
             navigate(data.role==='ADMIN'?'/admin/dashboard':'/user/dashboard');
         }catch{ setError('Invalid username or password'); }
         finally{ setLoading(false); }

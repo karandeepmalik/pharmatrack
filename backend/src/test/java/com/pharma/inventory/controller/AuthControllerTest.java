@@ -75,7 +75,7 @@ class AuthControllerTest {
                     .andExpect(header().string("Set-Cookie", containsString("jwt=test.jwt.token")))
                     .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
                     .andExpect(header().string("Set-Cookie", containsString("Path=/api")))
-                    .andExpect(jsonPath("$.token").doesNotExist())
+                    .andExpect(jsonPath("$.token").value("test.jwt.token"))
                     .andExpect(jsonPath("$.username").value("john.doe"))
                     .andExpect(jsonPath("$.fullName").value("John Doe"))
                     .andExpect(jsonPath("$.role").value("USER"));
