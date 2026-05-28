@@ -17,7 +17,7 @@ const makeTx = (overrides = {}) => ({
   quantity: 3,
   notes: 'Clinic B dispatch note',
   submittedAt: '2026-05-01T10:00:00',
-  paymentScreenshot: null,
+  screenshots: [],
   ...overrides,
 });
 
@@ -70,6 +70,26 @@ describe('MyTransactions — page structure', () => {
   });
 });
 
+// ── Error state ───────────────────────────────────────────────────────────
+
+describe('MyTransactions — error state', () => {
+  test('shows error alert when API call fails', async () => {
+    api.getMyTransactions.mockRejectedValue(new Error('Network error'));
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/failed to load transactions/i)
+    );
+  });
+
+  test('shows empty list (not crash) when API returns non-array data', async () => {
+    api.getMyTransactions.mockResolvedValue({ data: null });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/no transactions found/i)).toBeInTheDocument()
+    );
+  });
+});
+
 // ── Empty state ───────────────────────────────────────────────────────────
 
 describe('MyTransactions — empty state', () => {
@@ -78,6 +98,56 @@ describe('MyTransactions — empty state', () => {
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/no transactions found/i)).toBeInTheDocument()
+    );
+  });
+});
+
+// ── Crash-guard: malformed data ───────────────────────────────────────────
+
+describe('MyTransactions — crash guard for malformed data', () => {
+  test('renders without crashing when tx.status is null', async () => {
+    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ status: null })] });
+    renderPage();
+    // Should render the card using fallback status 'UNKNOWN', not throw
+    await waitFor(() =>
+      expect(screen.getByText('UNKNOWN')).toBeInTheDocument()
+    );
+  });
+
+  test('renders without crashing when tx.medicineName is null', async () => {
+    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ medicineName: null })] });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/unknown/i)).toBeInTheDocument()
+    );
+  });
+
+  test('renders without crashing when tx.submittedAt is null', async () => {
+    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ submittedAt: null })] });
+    renderPage();
+    await waitFor(() =>
+      // Should show em-dash placeholder instead of throwing on new Date(null)
+      expect(screen.getByText('—')).toBeInTheDocument()
+    );
+  });
+
+  test('renders without crashing when tx.specification and concentrationMgPerMl are null', async () => {
+    api.getMyTransactions.mockResolvedValue({
+      data: [makeTx({ specification: null, concentrationMgPerMl: null })],
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument()
+    );
+  });
+
+  test('renders without crashing when screenshots field is absent', async () => {
+    const tx = makeTx();
+    delete tx.screenshots;
+    api.getMyTransactions.mockResolvedValue({ data: [tx] });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument()
     );
   });
 });
@@ -103,7 +173,6 @@ describe('MyTransactions — transaction display', () => {
   test('shows APPROVED badge for approved transaction', async () => {
     api.getMyTransactions.mockResolvedValue({ data: [makeTx({ status: 'APPROVED' })] });
     renderPage();
-    // Filter tab also contains 'APPROVED'; expect at least 2 (tab + badge)
     await waitFor(() =>
       expect(screen.getAllByText('APPROVED').length).toBeGreaterThanOrEqual(2)
     );
@@ -133,14 +202,31 @@ describe('MyTransactions — transaction display', () => {
     );
   });
 
-  test('shows mg (10 Tablets) spec for TABLET medicine', async () => {
+  test('shows mg spec for TABLET medicine', async () => {
     api.getMyTransactions.mockResolvedValue({
       data: [makeTx({ medicineType: 'TABLET', specification: 25, concentrationMgPerMl: null })],
     });
     renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/25 mg \(10 tablets\)/i)).toBeInTheDocument()
+      expect(screen.getByText(/25 mg/i)).toBeInTheDocument()
     );
+  });
+
+  test('shows screenshot attached indicator when screenshots list is non-empty', async () => {
+    api.getMyTransactions.mockResolvedValue({
+      data: [makeTx({ screenshots: [{ data: 'base64', contentType: 'image/png' }] })],
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/attached ✓/i)).toBeInTheDocument()
+    );
+  });
+
+  test('does not show screenshot indicator when screenshots list is empty', async () => {
+    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ screenshots: [] })] });
+    renderPage();
+    await waitFor(() => screen.getByText(/shield fx vial/i));
+    expect(screen.queryByText(/payment screenshot/i)).not.toBeInTheDocument();
   });
 });
 
@@ -157,7 +243,6 @@ describe('MyTransactions — filter tabs', () => {
 
   test('ALL tab shows all three transactions by default', async () => {
     renderPage();
-    // Wait for data and verify all three note texts are visible (unique per transaction)
     await waitFor(() => screen.getByText('Pending note text here'));
     expect(screen.getByText('Approved note text here')).toBeInTheDocument();
     expect(screen.getByText('Rejected note text here')).toBeInTheDocument();

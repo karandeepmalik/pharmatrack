@@ -3,16 +3,17 @@
  *
  * Strategy: capture interceptor callbacks at module-load time via mocked axios.
  * We mock axios.create() to return a controllable object, then read the
- * callback functions that api.js passed to interceptors.response.use.
+ * callback functions that api.js passed to interceptors.request.use and
+ * interceptors.response.use.
  */
 
+let capturedRequestFn;
 let capturedResponseSuccess;
 let capturedResponseError;
 
 const mockPost = jest.fn();
 const mockGet  = jest.fn();
 const mockPut  = jest.fn();
-
 const mockAxiosCreate = jest.fn();
 
 // Must be declared before any require() of the module under test
@@ -21,6 +22,7 @@ jest.mock('axios', () => ({
     mockAxiosCreate(...args);
     return {
       interceptors: {
+        request:  { use: (fn)             => { capturedRequestFn = fn; } },
         response: { use: (success, error) => { capturedResponseSuccess = success; capturedResponseError = error; } },
       },
       post: (...a) => mockPost(...a),
@@ -31,6 +33,7 @@ jest.mock('axios', () => ({
 }));
 
 // Require the module ONCE after the mock is in place.
+// The module runs synchronously, so capturedRequestFn etc are set by this line.
 require('../../api/api');
 
 describe('api.js', () => {
@@ -44,7 +47,7 @@ describe('api.js', () => {
     mockPut.mockReset();
   });
 
-  // ── Axios instance configuration ────────────────────────────────────
+  // ── Axios instance configuration ─────────────────────────────────────
 
   describe('Axios instance configuration', () => {
     test('creates axios instance with withCredentials: true', () => {
@@ -52,11 +55,35 @@ describe('api.js', () => {
         expect.objectContaining({ withCredentials: true })
       );
     });
+  });
 
-    test('does not register a request interceptor', () => {
-      // No request.use call — cookie is sent automatically by the browser
-      // Verified implicitly: no capturedRequestFn variable needed
-      expect(capturedResponseSuccess).toBeDefined(); // response interceptor is registered
+  // ── Request interceptor ─────────────────────────────────────────────
+
+  describe('Request interceptor', () => {
+    test('interceptor function was registered', () => {
+      expect(typeof capturedRequestFn).toBe('function');
+    });
+
+    test('attaches Bearer token when token exists in localStorage', () => {
+      localStorage.setItem('token', 'my-jwt-token');
+      const config = { headers: {} };
+      const result = capturedRequestFn(config);
+      expect(result.headers.Authorization).toBe('Bearer my-jwt-token');
+    });
+
+    test('does not set Authorization when no token in localStorage', () => {
+      const config = { headers: {} };
+      const result = capturedRequestFn(config);
+      expect(result.headers.Authorization).toBeUndefined();
+    });
+
+    test('returns config object with all original fields intact', () => {
+      localStorage.setItem('token', 'tok');
+      const config = { headers: {}, url: '/test', method: 'GET', timeout: 5000 };
+      const result = capturedRequestFn(config);
+      expect(result.url).toBe('/test');
+      expect(result.method).toBe('GET');
+      expect(result.timeout).toBe(5000);
     });
   });
 
@@ -76,17 +103,16 @@ describe('api.js', () => {
       expect(capturedResponseSuccess(response)).toBe(response);
     });
 
+    test('401 error clears token from localStorage', async () => {
+      localStorage.setItem('token', 'expired');
+      await expect(capturedResponseError({ response: { status: 401 } })).rejects.toBeDefined();
+      expect(localStorage.getItem('token')).toBeNull();
+    });
+
     test('401 error clears user from localStorage', async () => {
       localStorage.setItem('user', JSON.stringify({ id: 1 }));
       await expect(capturedResponseError({ response: { status: 401 } })).rejects.toBeDefined();
       expect(localStorage.getItem('user')).toBeNull();
-    });
-
-    test('401 error does NOT touch token key (no longer stored)', async () => {
-      localStorage.setItem('token', 'should-not-be-touched');
-      await expect(capturedResponseError({ response: { status: 401 } })).rejects.toBeDefined();
-      // token key is not managed by api.js anymore — still present if set externally
-      // (nothing in api.js removes it since we no longer store tokens in localStorage)
     });
 
     test('401 error redirects to /login', async () => {

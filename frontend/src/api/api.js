@@ -6,11 +6,20 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Send token via Authorization header — works in all environments including cross-domain.
+// The HttpOnly cookie set on login provides defence-in-depth for same-domain deployments.
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
     if (status === 401) {
+      localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.replace('/login');
     }
