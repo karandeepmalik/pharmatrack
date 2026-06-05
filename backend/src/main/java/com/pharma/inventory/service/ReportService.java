@@ -5,6 +5,7 @@ import com.pharma.inventory.entity.Inventory;
 import com.pharma.inventory.entity.InventoryAdjustment;
 import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Transaction;
+import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
@@ -119,15 +120,17 @@ public class ReportService {
      * Writes one user quantity line, using in-transit format when applicable.
      * Format: "  username: settled + transit (in transit)" or "  username: qty"
      */
-    private void appendUserQtyLine(StringBuilder sb, Inventory inv, Map<String, Integer> inTransitMap) {
-        String key = inv.getUser().getId() + "|" + inv.getMedicine().getId() + "|"
-                + (inv.getInventoryType() != null ? inv.getInventoryType().name() : "REGULAR_MEDICINE_STOCK");
+    private void appendUserQtyLine(StringBuilder sb, String username, Long userId, Long medicineId,
+                                    Inventory.InventoryType type, int qty,
+                                    Map<String, Integer> inTransitMap) {
+        String key = userId + "|" + medicineId + "|"
+                + (type != null ? type.name() : "REGULAR_MEDICINE_STOCK");
         int transit = inTransitMap.getOrDefault(key, 0);
-        sb.append("  ").append(inv.getUser().getUsername()).append(": ");
+        sb.append("  ").append(username).append(": ");
         if (transit > 0) {
-            sb.append(inv.getQuantity() - transit).append(" + ").append(transit).append(" (in transit)");
+            sb.append(qty - transit).append(" + ").append(transit).append(" (in transit)");
         } else {
-            sb.append(inv.getQuantity());
+            sb.append(qty);
         }
         sb.append("\n");
     }
@@ -157,7 +160,8 @@ public class ReportService {
             sb.append("-".repeat(35)).append("\n");
             int total = 0;
             for (Inventory inv : entries) {
-                appendUserQtyLine(sb, inv, inTransitMap);
+                appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
+                        inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
                 total += inv.getQuantity();
             }
             sb.append("  TOTAL: ").append(total).append("\n\n");
@@ -165,7 +169,16 @@ public class ReportService {
     }
 
     @Transactional(readOnly = true)
+    public ReportResponse inventoryValuation(LocalDate date) {
+        return date == null ? inventoryValuationCurrent() : inventoryValuationHistorical(date);
+    }
+
     public ReportResponse inventoryValuation() {
+        return inventoryValuation(null);
+    }
+
+    @Transactional(readOnly = true)
+    private ReportResponse inventoryValuationCurrent() {
         List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         Map<String, Integer> inTransitMap = buildInTransitMap();
 
@@ -186,7 +199,7 @@ public class ReportService {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("CURRENT MEDICINE STOCK VALUATION\n");
+        sb.append("MEDICINE STOCK VALUATION\n");
         sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
 
@@ -214,8 +227,135 @@ public class ReportService {
 
                 sb.append(spec[2]).append("\n");
                 for (Inventory inv : entries) {
-                    appendUserQtyLine(sb, inv, inTransitMap);
+                    appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
+                            inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
                 }
+                sb.append("  TOTAL: ").append(totalQty).append("\n");
+                sb.append("  Price: Rs ").append(String.format("%,d", price))
+                  .append("  |  Value: Rs ").append(String.format("%,d", valuation)).append("\n\n");
+            }
+        }
+
+        sb.append("-".repeat(40)).append("\n");
+        sb.append("TOTAL VALUATION: Rs ").append(String.format("%,d", grandTotal)).append("\n");
+
+        return new ReportResponse("INVENTORY_VALUATION", nowIST(), sb.toString());
+    }
+
+    @Transactional(readOnly = true)
+    private ReportResponse inventoryValuationHistorical(LocalDate date) {
+        LocalDateTime endExclusive = date.plusDays(1).atStartOfDay();
+
+        List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findAllUpTo(endExclusive);
+        List<Transaction> transactions = transactionRepository.findApprovedUpTo(
+                Transaction.TransactionStatus.APPROVED, endExclusive);
+
+        // key = userId|medicineId|inventoryType
+        record MedUserKey(Long userId, Long medicineId, String inventoryType) {}
+        record MedUserMeta(User user, Medicine medicine, Inventory.InventoryType type) {}
+
+        Map<MedUserKey, Integer> qtyMap = new LinkedHashMap<>();
+        Map<MedUserKey, MedUserMeta> metaMap = new LinkedHashMap<>();
+
+        for (InventoryAdjustment adj : adjustments) {
+            MedUserKey k = new MedUserKey(adj.getUser().getId(), adj.getMedicine().getId(),
+                    adj.getInventoryType().name());
+            int delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : -adj.getQuantity();
+            qtyMap.merge(k, delta, Integer::sum);
+            metaMap.putIfAbsent(k, new MedUserMeta(adj.getUser(), adj.getMedicine(), adj.getInventoryType()));
+        }
+        for (Transaction tx : transactions) {
+            Inventory.InventoryType type = tx.getInventoryType() != null
+                    ? tx.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
+            MedUserKey k = new MedUserKey(tx.getSubmittedBy().getId(), tx.getMedicine().getId(), type.name());
+            qtyMap.merge(k, -tx.getQuantity(), Integer::sum);
+            metaMap.putIfAbsent(k, new MedUserMeta(tx.getSubmittedBy(), tx.getMedicine(), type));
+        }
+
+        // Build in-transit map for date D
+        Map<String, Integer> inTransitMap = new java.util.HashMap<>();
+        for (InventoryAdjustment adj : adjustments) {
+            if ("ADD".equals(adj.getAdjustmentType()) && adj.isInTransit()
+                    && adj.getAdjustedAt().plusDays(adj.getTransitDays()).isAfter(date.atStartOfDay())) {
+                String key = adj.getUser().getId() + "|" + adj.getMedicine().getId() + "|" + adj.getInventoryType().name();
+                inTransitMap.merge(key, adj.getQuantity(), Integer::sum);
+            }
+        }
+
+        // Group REGULAR_MEDICINE_STOCK by pharma → specKey → (user, medicine, qty)
+        LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
+        LinkedHashMap<Long, Map<String, List<long[]>>> pharmaSpecUserQty = new LinkedHashMap<>();
+        // long[] = { userId, qty }, medicine looked up from metaMap
+        LinkedHashMap<Long, Map<String, Medicine>> pharmaSpecMedicine = new LinkedHashMap<>();
+        LinkedHashMap<Long, Map<String, Map<Long, String>>> pharmaSpecUsernames = new LinkedHashMap<>();
+
+        for (Map.Entry<MedUserKey, Integer> entry : qtyMap.entrySet()) {
+            MedUserKey k = entry.getKey();
+            int qty = entry.getValue();
+            if (qty <= 0) continue;
+            if (!Inventory.InventoryType.REGULAR_MEDICINE_STOCK.name().equals(k.inventoryType())) continue;
+
+            MedUserMeta meta = metaMap.get(k);
+            if (meta == null) continue;
+            Medicine med = meta.medicine();
+            Long pharmaId = med.getPharmaCompany().getId();
+            String sk = specKey(med);
+
+            pharmaNames.putIfAbsent(pharmaId, med.getPharmaCompany().getName());
+            pharmaSpecMedicine.computeIfAbsent(pharmaId, x -> new LinkedHashMap<>()).putIfAbsent(sk, med);
+            pharmaSpecUsernames.computeIfAbsent(pharmaId, x -> new LinkedHashMap<>())
+                               .computeIfAbsent(sk, x -> new LinkedHashMap<>())
+                               .put(k.userId(), meta.user().getUsername());
+            pharmaSpecUserQty.computeIfAbsent(pharmaId, x -> new LinkedHashMap<>())
+                             .computeIfAbsent(sk, x -> new java.util.ArrayList<>())
+                             .add(new long[]{ k.userId(), qty });
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("MEDICINE STOCK VALUATION\n");
+        sb.append("As of: ").append(date.format(DATE_FMT)).append("\n");
+        sb.append("Generated: ").append(nowIST()).append("\n");
+        sb.append("=".repeat(40)).append("\n\n");
+
+        long grandTotal = 0;
+
+        for (Map.Entry<Long, String> pharmaEntry : pharmaNames.entrySet()) {
+            Long pharmaId = pharmaEntry.getKey();
+            String pharmaName = pharmaEntry.getValue();
+            sb.append(pharmaName).append("\n");
+            sb.append("-".repeat(pharmaName.length())).append("\n");
+
+            Map<String, List<long[]>> specUserQty = pharmaSpecUserQty.getOrDefault(pharmaId, Collections.emptyMap());
+            Map<String, Medicine>   specMed      = pharmaSpecMedicine.getOrDefault(pharmaId, Collections.emptyMap());
+            Map<String, Map<Long, String>> specUsernames = pharmaSpecUsernames.getOrDefault(pharmaId, Collections.emptyMap());
+
+            for (String[] spec : DAILY_SPEC_ORDER) {
+                String sk = spec[0] + "|" + spec[1];
+                List<long[]> userQtys = specUserQty.getOrDefault(sk, Collections.emptyList());
+                if (userQtys.isEmpty()) continue;
+                Medicine med = specMed.get(sk);
+                Map<Long, String> usernames = specUsernames.getOrDefault(sk, Collections.emptyMap());
+
+                sb.append(spec[2]).append("\n");
+                int totalQty = 0;
+                for (long[] uq : userQtys) {
+                    long uid = uq[0];
+                    int qty = (int) uq[1];
+                    totalQty += qty;
+                    String uname = usernames.getOrDefault(uid, "unknown");
+                    String itKey = uid + "|" + med.getId() + "|REGULAR_MEDICINE_STOCK";
+                    int transit = inTransitMap.getOrDefault(itKey, 0);
+                    sb.append("  ").append(uname).append(": ");
+                    if (transit > 0) {
+                        sb.append(qty - transit).append(" + ").append(transit).append(" (in transit)");
+                    } else {
+                        sb.append(qty);
+                    }
+                    sb.append("\n");
+                }
+                int price = med.getPrice();
+                long valuation = (long) totalQty * price;
+                grandTotal += valuation;
                 sb.append("  TOTAL: ").append(totalQty).append("\n");
                 sb.append("  Price: Rs ").append(String.format("%,d", price))
                   .append("  |  Value: Rs ").append(String.format("%,d", valuation)).append("\n\n");
@@ -431,7 +571,8 @@ public class ReportService {
                 int total = 0;
                 sb.append("\n").append(spec[2]).append("\n");
                 for (Inventory inv : entries) {
-                    appendUserQtyLine(sb, inv, inTransitMap);
+                    appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
+                            inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
                     total += inv.getQuantity();
                 }
                 sb.append("  TOTAL: ").append(total).append("\n");
@@ -471,7 +612,8 @@ public class ReportService {
                 sb.append("\n").append(header).append("\n");
                 int total = 0;
                 for (Inventory inv : entries) {
-                    appendUserQtyLine(sb, inv, inTransitMap);
+                    appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
+                            inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
                     total += inv.getQuantity();
                 }
                 sb.append("  TOTAL: ").append(total).append("\n");

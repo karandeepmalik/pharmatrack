@@ -67,10 +67,27 @@ class ReportControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanGetValuation() throws Exception {
-            when(reportService.inventoryValuation()).thenReturn(sampleReport("INVENTORY_VALUATION"));
+            when(reportService.inventoryValuation((LocalDate) null)).thenReturn(sampleReport("INVENTORY_VALUATION"));
             mockMvc.perform(get("/api/reports/inventory-valuation"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.reportType").value("INVENTORY_VALUATION"));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanGetValuationWithDateParam() throws Exception {
+            when(reportService.inventoryValuation(ArgumentMatchers.any(LocalDate.class)))
+                    .thenReturn(sampleReport("INVENTORY_VALUATION"));
+            mockMvc.perform(get("/api/reports/inventory-valuation").param("date", "2026-05-01"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reportType").value("INVENTORY_VALUATION"));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanGetValuationWithoutDateParam() throws Exception {
+            when(reportService.inventoryValuation((LocalDate) null))
+                    .thenReturn(sampleReport("INVENTORY_VALUATION"));
+            mockMvc.perform(get("/api/reports/inventory-valuation"))
+                    .andExpect(status().isOk());
         }
 
         @Test @WithMockUser(roles = "USER")

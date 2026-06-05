@@ -782,8 +782,16 @@ async function run() {
     const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     assert(r.data.reportType === 'INVENTORY_VALUATION', `Expected INVENTORY_VALUATION, got ${r.data.reportType}`);
-    assert(r.data.content.includes('CURRENT MEDICINE STOCK VALUATION'), 'Expected report header');
+    assert(r.data.content.includes('MEDICINE STOCK VALUATION'), 'Expected report header');
     assert(r.data.content.includes('TOTAL VALUATION'), 'Expected total valuation line');
+  });
+
+  await test('inventory-valuation report with date param returns 200', async () => {
+    const r = await apiGet(`${API}/reports/inventory-valuation?date=2026-01-01`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(r.data.reportType === 'INVENTORY_VALUATION', `Got ${r.data.reportType}`);
+    assert(r.data.content.includes('MEDICINE STOCK VALUATION'), 'Expected MEDICINE STOCK VALUATION header');
+    assert(r.data.content.includes('As of:'), 'Expected As of: date line');
   });
 
   await test('Inventory-valuation total is non-zero', async () => {

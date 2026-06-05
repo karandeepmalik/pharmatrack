@@ -106,9 +106,15 @@ describe('ViewReports — inventory by user report', () => {
 });
 
 describe('ViewReports — inventory valuation report', () => {
+  test('dropdown shows "Medicine Stock Valuation" option', () => {
+    renderPage();
+    expect(screen.getByRole('option', { name: /^medicine stock valuation$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /current medicine stock valuation/i })).not.toBeInTheDocument();
+  });
+
   test('generates inventory-valuation report', async () => {
     api.getReportInventoryValuation.mockResolvedValue(
-      sampleReport('INVENTORY_VALUATION', 'CURRENT MEDICINE STOCK VALUATION\nTOTAL VALUATION: Rs 200,000')
+      sampleReport('INVENTORY_VALUATION', 'MEDICINE STOCK VALUATION\nTOTAL VALUATION: Rs 200,000')
     );
     renderPage();
 
@@ -122,6 +128,40 @@ describe('ViewReports — inventory valuation report', () => {
       expect(screen.getByText(/total valuation: rs 200,000/i)).toBeInTheDocument()
     );
     expect(api.getReportInventoryValuation).toHaveBeenCalledTimes(1);
+  });
+
+  test('shows As of Date picker when inventory-valuation is selected', async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-valuation');
+    expect(screen.getByLabelText(/as of date/i)).toBeInTheDocument();
+  });
+
+  test('As of Date picker not shown for other reports', async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-by-user');
+    expect(screen.queryByLabelText(/as of date/i)).not.toBeInTheDocument();
+  });
+
+  test('As of Date picker defaults to today', async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-valuation');
+    const today = new Date().toISOString().slice(0, 10);
+    expect(screen.getByLabelText(/as of date/i)).toHaveValue(today);
+  });
+
+  test('calls getReportInventoryValuation with selected date', async () => {
+    api.getReportInventoryValuation.mockResolvedValue(
+      sampleReport('INVENTORY_VALUATION', 'MEDICINE STOCK VALUATION\nAs of: 01 May 2026\nTOTAL VALUATION: Rs 0')
+    );
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-valuation');
+    fireEvent.change(screen.getByLabelText(/as of date/i), { target: { value: '2026-05-01' } });
+    await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
+
+    await waitFor(() =>
+      expect(api.getReportInventoryValuation).toHaveBeenCalledWith('2026-05-01')
+    );
   });
 });
 
