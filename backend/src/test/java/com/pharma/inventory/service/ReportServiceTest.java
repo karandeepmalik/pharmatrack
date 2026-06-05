@@ -277,12 +277,17 @@ class ReportServiceTest {
     @Nested @DisplayName("inventoryValuation")
     class InventoryValuation {
 
+        private void stubInTransitEmpty() {
+            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of());
+        }
+
         @Test
         void reportCalculatesValuationCorrectly() {
             when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 10, null),
                             makeInv(2L, jane, vial, 5, null)));
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
 
@@ -296,11 +301,24 @@ class ReportServiceTest {
         }
 
         @Test
+        void reportHeaderIsMedicineStockValuation() {
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            stubInTransitEmpty();
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            assertThat(r.getContent()).contains("MEDICINE STOCK VALUATION");
+            assertThat(r.getContent()).doesNotContain("CURRENT MEDICINE STOCK VALUATION");
+        }
+
+        @Test
         void reportShowsGrandTotal() {
             when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 5, null),
                             makeInv(2L, jane, tablet, 2, null)));
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
 
@@ -312,6 +330,7 @@ class ReportServiceTest {
         void tabletHeaderHasNoSpecSuffix() {
             when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, tablet, 5, null)));
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
 
@@ -322,6 +341,7 @@ class ReportServiceTest {
         void pharmaNameHeadingAppearsInReport() {
             when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
 
@@ -332,6 +352,7 @@ class ReportServiceTest {
         void shortSpecNameUsedNotFullMedicineName() {
             when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
 
@@ -343,6 +364,7 @@ class ReportServiceTest {
         void emptyInventoryShowsZeroTotal() {
             when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of());
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
 
@@ -355,6 +377,7 @@ class ReportServiceTest {
             // Verify the service totals only what the repository returns.
             when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 5, null)));
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
 
@@ -369,6 +392,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeInv(1L, john, vial, 10, null),
                             makeInv(2L, jane, vial, 6, null)));
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
             String content = r.getContent();
@@ -384,6 +408,7 @@ class ReportServiceTest {
         void valuationLineShowsPriceAndValuePerSpec() {
             when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, tablet, 3, null)));
+            stubInTransitEmpty();
 
             ReportResponse r = reportService.inventoryValuation();
 
@@ -391,6 +416,172 @@ class ReportServiceTest {
             assertThat(r.getContent()).contains("john.doe: 3");
             assertThat(r.getContent()).contains("TOTAL: 3");
             assertThat(r.getContent()).contains("Price: Rs 4,000  |  Value: Rs 12,000");
+        }
+    }
+
+    @Nested @DisplayName("inventoryValuation — historical date")
+    class InventoryValuationHistorical {
+
+        private InventoryAdjustment makeAdj(User u, Medicine m, Inventory.InventoryType type,
+                                            String adjType, int qty, LocalDateTime at) {
+            return InventoryAdjustment.builder()
+                    .id(100L).user(u).medicine(m).quantity(qty)
+                    .adjustmentType(adjType).note("test").inTransit(false)
+                    .transitDays(2).internalMovement(false)
+                    .inventoryType(type).adjustedAt(at)
+                    .build();
+        }
+
+        private Transaction makeApprovedTx(Long id, User u, Medicine m, int qty,
+                                           Inventory.InventoryType type, LocalDateTime approvedAt) {
+            Transaction tx = Transaction.builder()
+                    .id(id).submittedBy(u).medicine(m).quantity(qty)
+                    .status(Transaction.TransactionStatus.APPROVED).notes("test")
+                    .inventoryType(type)
+                    .submittedAt(approvedAt).build();
+            tx.setApprovedAt(approvedAt);
+            return tx;
+        }
+
+        @Test
+        @DisplayName("historical report contains MEDICINE STOCK VALUATION header")
+        void historicalReportContainsMedicineStockValuationHeader() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of());
+            when(transactionRepository.findApprovedUpTo(
+                    eq(Transaction.TransactionStatus.APPROVED),
+                    eq(date.plusDays(1).atStartOfDay())))
+                    .thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            assertThat(r.getContent()).contains("MEDICINE STOCK VALUATION");
+            assertThat(r.getReportType()).isEqualTo("INVENTORY_VALUATION");
+        }
+
+        @Test
+        @DisplayName("historical report shows As of: date line")
+        void historicalReportShowsAsOfDateLine() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of());
+            when(transactionRepository.findApprovedUpTo(any(), any()))
+                    .thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            assertThat(r.getContent()).contains("As of: 01 May 2026");
+        }
+
+        @Test
+        @DisplayName("historical report calculates quantity from adjustments")
+        void historicalReportCalculatesQuantityFromAdjustments() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            LocalDateTime at = LocalDateTime.of(2026, 4, 20, 10, 0);
+            InventoryAdjustment adj = makeAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 10, at);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(adj));
+            when(transactionRepository.findApprovedUpTo(any(), any()))
+                    .thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            assertThat(r.getContent()).contains("john.doe: 10");
+            assertThat(r.getContent()).contains("TOTAL: 10");
+        }
+
+        @Test
+        @DisplayName("historical report subtracts approved transactions")
+        void historicalReportSubtractsApprovedTransactions() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            LocalDateTime at = LocalDateTime.of(2026, 4, 20, 10, 0);
+            InventoryAdjustment adj = makeAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 10, at);
+            Transaction tx = makeApprovedTx(1L, john, vial, 3,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK,
+                    LocalDateTime.of(2026, 4, 25, 12, 0));
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(adj));
+            when(transactionRepository.findApprovedUpTo(any(), any()))
+                    .thenReturn(List.of(tx));
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            assertThat(r.getContent()).contains("john.doe: 7");
+            assertThat(r.getContent()).contains("TOTAL: 7");
+        }
+
+        @Test
+        @DisplayName("historical report shows zero when no data before date")
+        void historicalReportShowsZeroWhenNoDataBeforeDate() {
+            LocalDate date = LocalDate.of(2025, 1, 1);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of());
+            when(transactionRepository.findApprovedUpTo(any(), any()))
+                    .thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 0");
+        }
+
+        @Test
+        @DisplayName("historical report only includes REGULAR_MEDICINE_STOCK")
+        void historicalReportOnlyIncludesRegularMedicineStock() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            LocalDateTime at = LocalDateTime.of(2026, 4, 20, 10, 0);
+            InventoryAdjustment regularAdj = makeAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 10, at);
+            InventoryAdjustment adminAdj = makeAdj(john, vial,
+                    Inventory.InventoryType.ADMIN_MEDICINE_STOCK, "ADD", 5, at);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(regularAdj, adminAdj));
+            when(transactionRepository.findApprovedUpTo(any(), any()))
+                    .thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            // Regular stock john.doe: 10 (price 4000 = 40000), admin stock excluded
+            assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 40,000");
+        }
+
+        @Test
+        @DisplayName("historical report grand total is correct")
+        void historicalReportGrandTotalIsCorrect() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            LocalDateTime at = LocalDateTime.of(2026, 4, 20, 10, 0);
+            // john: 5 vials (10ml, price 4000) = 20000
+            // jane: 2 tablets (25mg, price 4000) = 8000
+            // total = 28000
+            InventoryAdjustment adjVial = makeAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 5, at);
+            InventoryAdjustment adjTablet = makeAdj(jane, tablet,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 2, at);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(adjVial, adjTablet));
+            when(transactionRepository.findApprovedUpTo(any(), any()))
+                    .thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 28,000");
+        }
+
+        @Test
+        @DisplayName("no-arg inventoryValuation() delegates to current (not historical)")
+        void noArgDelegatesToCurrent() {
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            assertThat(r.getReportType()).isEqualTo("INVENTORY_VALUATION");
+            assertThat(r.getContent()).contains("MEDICINE STOCK VALUATION");
+            // Current report does NOT have "As of:" line
+            assertThat(r.getContent()).doesNotContain("As of:");
         }
     }
 

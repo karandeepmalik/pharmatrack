@@ -5,7 +5,7 @@ import * as api from '../../api/api';
 const REPORTS = [
     { value: '', label: '-- Select a Report --' },
     { value: 'inventory-by-user', label: 'Current Medicine Stock Per User' },
-    { value: 'inventory-valuation', label: 'Current Medicine Stock Valuation' },
+    { value: 'inventory-valuation', label: 'Medicine Stock Valuation' },
     { value: 'today-sales', label: "Sales Report" },
     { value: 'daily', label: 'Daily Report' },
 ];
@@ -16,6 +16,7 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 export default function ViewReports() {
     const [selected, setSelected] = useState('');
     const [dailyDate, setDailyDate] = useState(todayStr());
+    const [valuationDate, setValuationDate] = useState(todayStr());
     const [salesFrom, setSalesFrom] = useState(todayStr());
     const [salesTo, setSalesTo] = useState(todayStr());
     const [content, setContent] = useState('');
@@ -30,7 +31,7 @@ export default function ViewReports() {
         try {
             let res;
             if (selected === 'inventory-by-user') res = await api.getReportInventoryByUser();
-            else if (selected === 'inventory-valuation') res = await api.getReportInventoryValuation();
+            else if (selected === 'inventory-valuation') res = await api.getReportInventoryValuation(valuationDate || null);
             else if (selected === 'today-sales') res = await api.getReportTodaySales(salesFrom, salesTo);
             else if (selected === 'daily') res = await api.getReportDaily(dailyDate || null);
             setContent(res.data.content);
@@ -104,6 +105,18 @@ export default function ViewReports() {
                     <p className="form-error" role="alert">
                         "From" date must be before or equal to "To" date.
                     </p>
+                )}
+
+                {selected === 'inventory-valuation' && (
+                    <div className="form-group">
+                        <label htmlFor="valuation-date-input">As of Date</label>
+                        <input
+                            id="valuation-date-input"
+                            type="date"
+                            value={valuationDate}
+                            onChange={e => { setValuationDate(e.target.value); setContent(''); }}
+                        />
+                    </div>
                 )}
 
                 {selected === 'daily' && (

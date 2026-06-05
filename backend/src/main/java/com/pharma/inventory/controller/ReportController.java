@@ -27,8 +27,10 @@ public class ReportController {
     }
 
     @GetMapping("/inventory-valuation")
-    public ResponseEntity<ReportResponse> inventoryValuation() {
-        return ResponseEntity.ok(reportService.inventoryValuation());
+    public ResponseEntity<ReportResponse> inventoryValuation(
+            @RequestParam(value = "date", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(reportService.inventoryValuation(date));
     }
 
     @GetMapping("/today-sales")

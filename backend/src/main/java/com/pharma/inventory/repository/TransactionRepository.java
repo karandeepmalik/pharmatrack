@@ -42,4 +42,12 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
             @Param("status") Transaction.TransactionStatus status);
+
+    @Query("SELECT t FROM Transaction t " +
+           "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
+           "WHERE t.status = :status AND t.approvedAt IS NOT NULL AND t.approvedAt < :endExclusive " +
+           "ORDER BY u.fullName, m.name")
+    List<Transaction> findApprovedUpTo(
+            @Param("status") Transaction.TransactionStatus status,
+            @Param("endExclusive") LocalDateTime endExclusive);
 }
