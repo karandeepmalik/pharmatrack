@@ -13,7 +13,7 @@ export default function ModifyInventory() {
     const [form, setForm]           = useState({
         userId: '', medicineId: '', adjustmentType: 'ADD',
         quantity: '', note: '', inventoryType: 'REGULAR_MEDICINE_STOCK',
-        internalMovement: false, inTransit: false,
+        internalMovement: false, inTransit: false, transitDays: 2,
         adjustmentDate: today,
     });
     const [msg, setMsg]             = useState('');
@@ -63,6 +63,7 @@ export default function ModifyInventory() {
                 inventoryType:   form.inventoryType,
                 internalMovement: form.internalMovement,
                 inTransit:       form.inTransit,
+                transitDays:     form.inTransit ? Number(form.transitDays) : 2,
                 adjustmentDate:  form.adjustmentDate,
             });
             setMsg(`Medicine stock ${form.adjustmentType === 'ADD' ? 'added' : 'reduced'} successfully.`);
@@ -240,19 +241,43 @@ export default function ModifyInventory() {
                         </label>
                     </div>
 
-                    <div className="checkbox-row">
+                    <div className="checkbox-row" style={{ alignItems: 'flex-start' }}>
                         <input
                             id="in-transit-checkbox"
                             type="checkbox"
                             checked={form.inTransit}
-                            onChange={e => setForm(f => ({ ...f, inTransit: e.target.checked }))}
+                            onChange={e => setForm(f => ({
+                                ...f,
+                                inTransit: e.target.checked,
+                                transitDays: e.target.checked ? f.transitDays : 2,
+                            }))}
                         />
-                        <label htmlFor="in-transit-checkbox">
-                            In Transit
-                            <small style={{ display: 'block', fontWeight: 'normal', color: '#666' }}>
-                                Stock will appear separately in reports for 2 days, then merge into total.
-                            </small>
-                        </label>
+                        <div>
+                            <label htmlFor="in-transit-checkbox" style={{ cursor: 'pointer' }}>
+                                In Transit
+                            </label>
+                            {form.inTransit && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.4rem' }}>
+                                    <label htmlFor="transit-days-input" style={{ fontWeight: 'normal', marginBottom: 0 }}>
+                                        Days in transit:
+                                    </label>
+                                    <input
+                                        id="transit-days-input"
+                                        type="number"
+                                        min="1"
+                                        max="365"
+                                        value={form.transitDays}
+                                        onChange={e => setForm(f => ({ ...f, transitDays: e.target.value }))}
+                                        style={{ width: '70px' }}
+                                    />
+                                </div>
+                            )}
+                            {!form.inTransit && (
+                                <small style={{ display: 'block', fontWeight: 'normal', color: '#666' }}>
+                                    Stock will appear separately in reports for the specified number of days, then merge into total.
+                                </small>
+                            )}
+                        </div>
                     </div>
 
                     <button type="submit" className="btn btn-primary"

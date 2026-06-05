@@ -59,13 +59,14 @@ public class ReportService {
         return m.getType().name() + "|" + m.getSpecification();
     }
 
-    /** Builds a map of userId|medicineId|inventoryType → total in-transit ADD quantity (≤ 2 days old). */
+    /** Builds a map of userId|medicineId|inventoryType → total in-transit ADD quantity (still within each record's transitDays). */
     private Map<String, Integer> buildInTransitMap() {
-        LocalDateTime cutoff = LocalDateTime.now(IST_ZONE).minusDays(2);
-        List<InventoryAdjustment> active = inventoryAdjustmentRepository.findActiveInTransitAdjustments(cutoff);
+        LocalDateTime now = LocalDateTime.now(IST_ZONE);
+        List<InventoryAdjustment> active = inventoryAdjustmentRepository.findAllActiveInTransit();
         Map<String, Integer> map = new java.util.HashMap<>();
         for (InventoryAdjustment a : active) {
-            if ("ADD".equals(a.getAdjustmentType())) {
+            if ("ADD".equals(a.getAdjustmentType())
+                    && a.getAdjustedAt().plusDays(a.getTransitDays()).isAfter(now)) {
                 String key = a.getUser().getId() + "|" + a.getMedicine().getId() + "|" + a.getInventoryType().name();
                 map.merge(key, a.getQuantity(), Integer::sum);
             }
