@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 
@@ -11,13 +11,18 @@ const weekAgoStr = () => {
 };
 
 const STATUS_OPTIONS = [
-    { value: 'ALL', label: 'All' },
+    { value: 'ALL',      label: 'All' },
     { value: 'APPROVED', label: 'Approved' },
     { value: 'REJECTED', label: 'Rejected' },
 ];
 
 const specLabel = (type, spec) =>
     type === 'VIAL' ? `${spec} ml` : `${spec} mg (10 Tablets)`;
+
+const medOptionLabel = (m) =>
+    m.type === 'VIAL'
+        ? `Vial ${m.specification} ml`
+        : `Tablet ${m.specification} mg (10 Tablets)`;
 
 export default function ViewPastTransactions() {
     const [from, setFrom]             = useState(weekAgoStr());
@@ -27,6 +32,18 @@ export default function ViewPastTransactions() {
     const [searched, setSearched]     = useState(false);
     const [loading, setLoading]       = useState(false);
     const [error, setError]           = useState('');
+
+    const [users, setUsers]           = useState([]);
+    const [medicines, setMedicines]   = useState([]);
+    const [userFilter, setUserFilter] = useState('ALL');
+    const [medicineFilter, setMedicineFilter] = useState('ALL');
+
+    useEffect(() => {
+        api.getUsers().then(r => setUsers(
+            (r.data || []).filter(u => u.role !== 'ADMIN')
+        )).catch(() => {});
+        api.getMedicines().then(r => setMedicines(r.data || [])).catch(() => {});
+    }, []);
 
     const isValid = Boolean(from) && Boolean(to) && from <= to;
 
@@ -44,6 +61,11 @@ export default function ViewPastTransactions() {
             setLoading(false);
         }
     };
+
+    // Client-side filters applied on top of the fetched results
+    const displayedTransactions = transactions
+        .filter(tx => userFilter === 'ALL' || tx.submittedByUsername === userFilter)
+        .filter(tx => medicineFilter === 'ALL' || String(tx.medicineId) === medicineFilter);
 
     const statusBadge = (s) => {
         const cls = s === 'APPROVED' ? 'badge-approved'
@@ -94,6 +116,37 @@ export default function ViewPastTransactions() {
                     </div>
                 </div>
 
+                <div className="form-row">
+                    <div className="form-group">
+                        <label htmlFor="user-filter">User</label>
+                        <select
+                            id="user-filter"
+                            value={userFilter}
+                            onChange={e => setUserFilter(e.target.value)}>
+                            <option value="ALL">All Users</option>
+                            {users.map(u => (
+                                <option key={u.id} value={u.username}>
+                                    {u.fullName} ({u.username})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="medicine-filter">Medicine Spec</label>
+                        <select
+                            id="medicine-filter"
+                            value={medicineFilter}
+                            onChange={e => setMedicineFilter(e.target.value)}>
+                            <option value="ALL">All Medicines</option>
+                            {medicines.map(m => (
+                                <option key={m.id} value={String(m.id)}>
+                                    {medOptionLabel(m)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
                 {from > to && (
                     <p className="form-error" role="alert">
                         "From" date must be before or equal to "To" date.
@@ -110,11 +163,11 @@ export default function ViewPastTransactions() {
             </div>
 
             {searched && (
-                transactions.length === 0 ? (
+                displayedTransactions.length === 0 ? (
                     <p className="empty-state">No transactions found for the selected criteria.</p>
                 ) : (
                     <div className="form-section" style={{ marginTop: '1.5rem' }}>
-                        <h2>Results ({transactions.length})</h2>
+                        <h2>Results ({displayedTransactions.length})</h2>
                         <div className="table-wrapper">
                             <table className="data-table">
                                 <thead>
@@ -131,7 +184,7 @@ export default function ViewPastTransactions() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {transactions.map(tx => (
+                                    {displayedTransactions.map(tx => (
                                         <tr key={tx.id}>
                                             <td>{tx.submittedAt
                                                 ? new Date(tx.submittedAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
