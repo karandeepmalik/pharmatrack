@@ -14,6 +14,7 @@ public class InventoryAdjustment {
     @Column(length=500) private String note;
     @Column(nullable=false) private boolean internalMovement;
     @Column(nullable=false, columnDefinition="boolean default false") private boolean inTransit;
+    @Builder.Default @Column(nullable=false, columnDefinition="integer default 2") private int transitDays = 2;
     @Convert(converter = InventoryTypeConverter.class) @Column(name="inventory_type",nullable=false)
     private Inventory.InventoryType inventoryType;
     @Column(nullable=false) private LocalDateTime adjustedAt;

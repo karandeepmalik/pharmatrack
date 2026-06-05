@@ -985,9 +985,16 @@ class ReportServiceTest {
     private InventoryAdjustment makeInTransitAdj(User u, Medicine m,
                                                   Inventory.InventoryType type,
                                                   int qty, LocalDateTime at) {
+        return makeInTransitAdj(u, m, type, qty, at, 2);
+    }
+
+    private InventoryAdjustment makeInTransitAdj(User u, Medicine m,
+                                                  Inventory.InventoryType type,
+                                                  int qty, LocalDateTime at, int transitDays) {
         return InventoryAdjustment.builder()
                 .id(99L).user(u).medicine(m).quantity(qty)
                 .adjustmentType("ADD").note("shipment").inTransit(true)
+                .transitDays(transitDays)
                 .internalMovement(false).inventoryType(type).adjustedAt(at)
                 .build();
     }
@@ -1011,7 +1018,7 @@ class ReportServiceTest {
 
             InventoryAdjustment adj = makeInTransitAdj(john, vial,
                     Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(1));
-            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+            when(inventoryAdjustmentRepository.findAllActiveInTransit())
                     .thenReturn(List.of(adj));
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1031,7 +1038,7 @@ class ReportServiceTest {
 
             InventoryAdjustment adj = makeInTransitAdj(john, vial,
                     Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(1));
-            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+            when(inventoryAdjustmentRepository.findAllActiveInTransit())
                     .thenReturn(List.of(adj));
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1044,15 +1051,18 @@ class ReportServiceTest {
 
         @Test
         void expiredInTransitNotShownAsTransit() {
-            // adjustment is 3 days old — findActiveInTransitAdjustments returns empty
+            // adjustment is 3 days old with transitDays=2 — Java filter excludes it
             Inventory inv = makeInv(1L, john, vial, 15, null);
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(inv));
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             stubEmptyTransactions();
-            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
-                    .thenReturn(List.of()); // expired — repo returns nothing
+            InventoryAdjustment expiredAdj = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5,
+                    LocalDateTime.now().minusDays(3), 2); // 3 days old, only 2 days transit
+            when(inventoryAdjustmentRepository.findAllActiveInTransit())
+                    .thenReturn(List.of(expiredAdj)); // repo returns it; Java will filter it out
 
             ReportResponse r = reportService.dailyReport(null);
 
@@ -1068,7 +1078,7 @@ class ReportServiceTest {
             when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             stubEmptyTransactions();
-            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+            when(inventoryAdjustmentRepository.findAllActiveInTransit())
                     .thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1088,7 +1098,7 @@ class ReportServiceTest {
 
             InventoryAdjustment adj = makeInTransitAdj(john, vial,
                     Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 8, LocalDateTime.now().minusHours(2));
-            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+            when(inventoryAdjustmentRepository.findAllActiveInTransit())
                     .thenReturn(List.of(adj));
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1112,7 +1122,7 @@ class ReportServiceTest {
                     Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 3, LocalDateTime.now().minusHours(1));
             InventoryAdjustment adj2 = makeInTransitAdj(john, vial,
                     Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(2));
-            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+            when(inventoryAdjustmentRepository.findAllActiveInTransit())
                     .thenReturn(List.of(adj1, adj2));
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1134,7 +1144,7 @@ class ReportServiceTest {
 
             InventoryAdjustment adj = makeInTransitAdj(john, tablet,
                     Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(1));
-            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+            when(inventoryAdjustmentRepository.findAllActiveInTransit())
                     .thenReturn(List.of(adj));
 
             ReportResponse r = reportService.inventoryByUser();
@@ -1152,7 +1162,7 @@ class ReportServiceTest {
 
             InventoryAdjustment adj = makeInTransitAdj(john, vial,
                     Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 2, LocalDateTime.now().minusHours(3));
-            when(inventoryAdjustmentRepository.findActiveInTransitAdjustments(any()))
+            when(inventoryAdjustmentRepository.findAllActiveInTransit())
                     .thenReturn(List.of(adj));
 
             ReportResponse r = reportService.inventoryByUser();

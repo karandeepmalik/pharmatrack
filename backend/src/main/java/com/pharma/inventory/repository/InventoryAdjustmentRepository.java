@@ -24,10 +24,6 @@ public interface InventoryAdjustmentRepository extends JpaRepository<InventoryAd
 
     @Query("SELECT a FROM InventoryAdjustment a " +
            "JOIN FETCH a.user JOIN FETCH a.medicine " +
-           "WHERE a.inTransit = true AND a.adjustedAt >= :cutoff")
-    List<InventoryAdjustment> findActiveInTransitAdjustments(@Param("cutoff") LocalDateTime cutoff);
-
-    @org.springframework.data.jpa.repository.Modifying
-    @Query("UPDATE InventoryAdjustment a SET a.inTransit = false WHERE a.inTransit = true AND a.adjustedAt < :cutoff")
-    int expireOldInTransitAdjustments(@Param("cutoff") LocalDateTime cutoff);
+           "WHERE a.inTransit = true")
+    List<InventoryAdjustment> findAllActiveInTransit();
 }
