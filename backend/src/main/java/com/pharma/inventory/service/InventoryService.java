@@ -53,7 +53,7 @@ public class InventoryService {
 
         LocalDateTime adjustedAt = req.getAdjustmentDate() != null
             ? req.getAdjustmentDate().atStartOfDay()
-            : LocalDateTime.now();
+            : LocalDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
 
         User adjustedBy = userRepository.findByUsername(adjustedByUsername).orElse(null);
         inventoryAdjustmentRepository.save(InventoryAdjustment.builder()
