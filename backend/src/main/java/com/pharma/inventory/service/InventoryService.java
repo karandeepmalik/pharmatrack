@@ -62,6 +62,7 @@ public class InventoryService {
             .note(req.getNote())
             .internalMovement(req.isInternalMovement())
             .inTransit(req.isInTransit())
+            .wasInTransit(req.isInTransit())
             .transitDays(req.isInTransit() ? req.getTransitDays() : 2)
             .inventoryType(invType)
             .adjustedAt(adjustedAt)
