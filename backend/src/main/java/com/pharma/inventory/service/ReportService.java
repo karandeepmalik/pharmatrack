@@ -60,14 +60,19 @@ public class ReportService {
         return m.getType().name() + "|" + m.getSpecification();
     }
 
-    /** Builds a map of userId|medicineId|inventoryType → total in-transit ADD quantity (still within each record's transitDays). */
-    private Map<String, Integer> buildInTransitMap() {
-        LocalDateTime now = LocalDateTime.now(IST_ZONE);
+    /**
+     * Builds a map of userId|medicineId|inventoryType → total in-transit ADD quantity.
+     * Only includes adjustments whose adjustedAt ≤ asOf AND whose transit window hasn't expired by asOf.
+     * Passing LocalDateTime.now() gives "currently in transit"; passing reportDate+1.atStartOfDay() gives
+     * "in transit as of the end of reportDate" for historical daily reports.
+     */
+    private Map<String, Integer> buildInTransitMap(LocalDateTime asOf) {
         List<InventoryAdjustment> active = inventoryAdjustmentRepository.findAllActiveInTransit();
         Map<String, Integer> map = new java.util.HashMap<>();
         for (InventoryAdjustment a : active) {
             if ("ADD".equals(a.getAdjustmentType())
-                    && a.getAdjustedAt().plusDays(a.getTransitDays()).isAfter(now)) {
+                    && !a.getAdjustedAt().isAfter(asOf)
+                    && a.getAdjustedAt().plusDays(a.getTransitDays()).isAfter(asOf)) {
                 String key = a.getUser().getId() + "|" + a.getMedicine().getId() + "|" + a.getInventoryType().name();
                 map.merge(key, a.getQuantity(), Integer::sum);
             }
@@ -79,7 +84,7 @@ public class ReportService {
     public ReportResponse inventoryByUser() {
         List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
-        Map<String, Integer> inTransitMap = buildInTransitMap();
+        Map<String, Integer> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
 
         // Derive pharma name from whichever list is non-empty
         String pharmaName = regularRecords.stream()
@@ -180,7 +185,7 @@ public class ReportService {
     @Transactional(readOnly = true)
     private ReportResponse inventoryValuationCurrent() {
         List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-        Map<String, Integer> inTransitMap = buildInTransitMap();
+        Map<String, Integer> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
 
         // Group by pharmaId → specKey → individual records (preserves per-user detail)
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
@@ -272,11 +277,15 @@ public class ReportService {
             metaMap.putIfAbsent(k, new MedUserMeta(tx.getSubmittedBy(), tx.getMedicine(), type));
         }
 
-        // Build in-transit map for date D
+        // Build in-transit map for date D.
+        // Use wasInTransit (set at creation, never modified by scheduler) so historical accuracy
+        // is preserved even after the scheduler has set inTransit=false on the same records.
+        // Use end-of-day boundary so transit expiry is evaluated at the close of the report date.
         Map<String, Integer> inTransitMap = new java.util.HashMap<>();
+        LocalDateTime endOfReportDay = endExclusive;
         for (InventoryAdjustment adj : adjustments) {
-            if ("ADD".equals(adj.getAdjustmentType()) && adj.isInTransit()
-                    && adj.getAdjustedAt().plusDays(adj.getTransitDays()).isAfter(date.atStartOfDay())) {
+            if ("ADD".equals(adj.getAdjustmentType()) && adj.isWasInTransit()
+                    && adj.getAdjustedAt().plusDays(adj.getTransitDays()).isAfter(endOfReportDay)) {
                 String key = adj.getUser().getId() + "|" + adj.getMedicine().getId() + "|" + adj.getInventoryType().name();
                 inTransitMap.merge(key, adj.getQuantity(), Integer::sum);
             }
@@ -462,7 +471,8 @@ public class ReportService {
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
         List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findByDateRange(start, end);
-        Map<String, Integer> inTransitMap = buildInTransitMap();
+        // Use end-of-reportDate as asOf so adjustments made after the report date are excluded
+        Map<String, Integer> inTransitMap = buildInTransitMap(end);
 
         StringBuilder sb = new StringBuilder();
         sb.append("DAILY REPORT - ").append(reportDate.format(DATE_FMT)).append("\n");
