@@ -54,6 +54,14 @@ public interface InventoryRepository extends JpaRepository<Inventory,Long> {
            "ORDER BY m.name, m.specification")
     List<Inventory> findAllNonZeroRegularForValuation(@Param("type") Inventory.InventoryType type);
 
+    /**
+     * ALL REGULAR inventory rows (including zero-quantity) for backward historical reconstruction.
+     * Zero-quantity rows are needed when a user has fully dispensed their stock since the target date.
+     */
+    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
+           "WHERE (i.inventoryType = :type OR i.inventoryType IS NULL)")
+    List<Inventory> findAllRegularInventory(@Param("type") Inventory.InventoryType type);
+
     /** All non-zero inventory of a given type — used by daily report (ADMIN_STOCK section). */
     @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
            "WHERE i.quantity > 0 AND i.inventoryType = :type " +
