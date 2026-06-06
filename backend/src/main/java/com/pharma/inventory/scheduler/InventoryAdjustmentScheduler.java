@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 @Component
 @RequiredArgsConstructor
@@ -18,7 +19,7 @@ public class InventoryAdjustmentScheduler {
     @Scheduled(cron = "0 0 * * * *")
     @Transactional
     public void expireInTransitAdjustments() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
         var expired = inventoryAdjustmentRepository.findAllActiveInTransit().stream()
                 .filter(a -> a.getAdjustedAt().plusDays(a.getTransitDays()).isBefore(now))
                 .peek(a -> a.setInTransit(false))

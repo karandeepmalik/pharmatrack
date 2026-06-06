@@ -61,7 +61,7 @@ beforeEach(() => {
 describe('ViewInventoryAdjustments — render', () => {
     test('renders page heading', () => {
         renderPage();
-        expect(screen.getByRole('heading', { name: /view stock modifications/i })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /medicine stock modifications history/i })).toBeInTheDocument();
     });
 
     test('renders Back link to admin dashboard', () => {

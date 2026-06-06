@@ -2,6 +2,7 @@ package com.pharma.inventory.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 @Entity @Table(name="inventory",uniqueConstraints=@UniqueConstraint(columnNames={"user_id","medicine_id","inventory_type"}))
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class Inventory {
@@ -22,5 +23,5 @@ public class Inventory {
     @Builder.Default
     private InventoryType inventoryType = InventoryType.REGULAR_MEDICINE_STOCK;
 
-    @PrePersist @PreUpdate protected void onUpdate(){ lastUpdated=LocalDateTime.now(); }
+    @PrePersist @PreUpdate protected void onUpdate(){ lastUpdated=LocalDateTime.now(ZoneId.of("Asia/Kolkata")); }
 }

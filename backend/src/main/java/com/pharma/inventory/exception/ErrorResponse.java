@@ -1,6 +1,7 @@
 package com.pharma.inventory.exception;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
@@ -32,7 +33,7 @@ public class ErrorResponse {
         this.error = error;
         this.message = message;
         this.path = path;
-        this.timestamp = LocalDateTime.now();
+        this.timestamp = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
     }
 
     public int getStatus() { return status; }

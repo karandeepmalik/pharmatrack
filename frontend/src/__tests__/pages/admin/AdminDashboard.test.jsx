@@ -93,9 +93,9 @@ describe('AdminDashboard — navigation cards', () => {
       .toHaveAttribute('href', '/admin/dispatch-records');
   });
 
-  test('has link to view stock modifications', () => {
+  test('has link to medicine stock modifications history', () => {
     renderPage();
-    expect(screen.getByRole('link', { name: /view stock modifications/i }))
+    expect(screen.getByRole('link', { name: /medicine stock modifications history/i }))
       .toHaveAttribute('href', '/admin/inventory-adjustments');
   });
 });

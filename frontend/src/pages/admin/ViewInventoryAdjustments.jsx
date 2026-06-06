@@ -77,7 +77,7 @@ export default function ViewInventoryAdjustments() {
     return (
         <div className="page">
             <div className="page-header">
-                <h1>View Stock Modifications</h1>
+                <h1>Medicine Stock Modifications History</h1>
                 <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
             </div>
 

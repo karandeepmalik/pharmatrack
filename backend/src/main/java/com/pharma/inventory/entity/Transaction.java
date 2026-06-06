@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -84,7 +85,7 @@ public class Transaction {
 
     @PrePersist
     protected void onCreate() {
-        if (submittedAt == null) submittedAt = LocalDateTime.now();
+        if (submittedAt == null) submittedAt = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
     }
 
     public enum TransactionStatus {
