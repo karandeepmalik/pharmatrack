@@ -88,6 +88,12 @@ export const updateUser          = (id, data)   => api.put(`/users/${id}`, data)
 export const changePassword      = (data)       => api.put('/users/me/password', data);
 export const adminChangePassword = (id, data)   => api.put(`/users/${id}/password`, data);
 
+// ── Inventory adjustments (admin) ─────────────────────────────────────
+export const getInventoryAdjustments    = (from, to) =>
+    api.get('/inventory/adjustments', { params: { from, to } });
+export const deleteInventoryAdjustment  = (id) =>
+    api.delete(`/inventory/adjustments/${id}`);
+
 // ── Reports ────────────────────────────────────────────────────────────
 export const getReportInventoryByUser    = ()      => api.get('/reports/inventory-by-user');
 export const getReportInventoryValuation = (date = null) =>

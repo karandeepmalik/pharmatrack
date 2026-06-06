@@ -32,4 +32,13 @@ public interface InventoryAdjustmentRepository extends JpaRepository<InventoryAd
            "WHERE a.adjustedAt < :endExclusive " +
            "ORDER BY m.name, m.specification, u.fullName")
     List<InventoryAdjustment> findAllUpTo(@Param("endExclusive") LocalDateTime endExclusive);
+
+    @Query("SELECT a FROM InventoryAdjustment a " +
+           "JOIN FETCH a.user u JOIN FETCH a.medicine m JOIN FETCH m.pharmaCompany " +
+           "LEFT JOIN FETCH a.adjustedBy " +
+           "WHERE a.adjustedAt >= :start AND a.adjustedAt < :end " +
+           "ORDER BY a.adjustedAt DESC")
+    List<InventoryAdjustment> findWithDetailsBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 }

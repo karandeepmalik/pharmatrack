@@ -1,6 +1,7 @@
 package com.pharma.inventory.service;
 
 import com.pharma.inventory.dto.AdjustInventoryRequest;
+import com.pharma.inventory.dto.InventoryAdjustmentResponse;
 import com.pharma.inventory.dto.InventoryResponse;
 import com.pharma.inventory.entity.*;
 import com.pharma.inventory.exception.InsufficientInventoryException;
@@ -12,6 +13,7 @@ import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -407,6 +409,156 @@ class InventoryServiceTest {
 
             assertThat(result.get(0).getUsername()).isEqualTo("john.doe");
             assertThat(result.get(0).getMedicineName()).isEqualTo("Shield FX Vial 10 ml");
+        }
+    }
+
+    // ── getAdjustments ────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("getAdjustments")
+    class GetAdjustments {
+
+        private InventoryAdjustment makeAdj(String type, int qty) {
+            return InventoryAdjustment.builder()
+                    .id(10L).user(user).medicine(medicine).quantity(qty)
+                    .adjustmentType(type).note("Test note for adjustment")
+                    .inTransit(false).wasInTransit(false).transitDays(2)
+                    .internalMovement(false)
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .adjustedAt(LocalDateTime.of(2026, 6, 1, 10, 0))
+                    .adjustedBy(adminUser)
+                    .build();
+        }
+
+        @Test
+        @DisplayName("returns list of adjustment responses for date range")
+        void returnsAdjustmentsForDateRange() {
+            when(inventoryAdjustmentRepository.findWithDetailsBetween(any(), any()))
+                    .thenReturn(List.of(makeAdj("ADD", 10)));
+
+            List<InventoryAdjustmentResponse> result =
+                    inventoryService.getAdjustments(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 6));
+
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).getUsername()).isEqualTo("john.doe");
+            assertThat(result.get(0).getAdjustmentType()).isEqualTo("ADD");
+            assertThat(result.get(0).getQuantity()).isEqualTo(10);
+        }
+
+        @Test
+        @DisplayName("maps adjustedByUsername from adjustedBy entity")
+        void mapsAdjustedByUsername() {
+            when(inventoryAdjustmentRepository.findWithDetailsBetween(any(), any()))
+                    .thenReturn(List.of(makeAdj("ADD", 5)));
+
+            List<InventoryAdjustmentResponse> result =
+                    inventoryService.getAdjustments(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 1));
+
+            assertThat(result.get(0).getAdjustedByUsername()).isEqualTo("admin");
+        }
+
+        @Test
+        @DisplayName("returns empty list when no adjustments in range")
+        void returnsEmptyList() {
+            when(inventoryAdjustmentRepository.findWithDetailsBetween(any(), any()))
+                    .thenReturn(List.of());
+
+            List<InventoryAdjustmentResponse> result =
+                    inventoryService.getAdjustments(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 1));
+
+            assertThat(result).isEmpty();
+        }
+    }
+
+    // ── deleteAdjustment ──────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("deleteAdjustment")
+    class DeleteAdjustment {
+
+        private InventoryAdjustment addAdj(int qty) {
+            return InventoryAdjustment.builder()
+                    .id(20L).user(user).medicine(medicine).quantity(qty)
+                    .adjustmentType("ADD").note("Test ADD")
+                    .inTransit(false).wasInTransit(false).transitDays(2)
+                    .internalMovement(false)
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .adjustedAt(LocalDateTime.now())
+                    .build();
+        }
+
+        private InventoryAdjustment reduceAdj(int qty) {
+            return InventoryAdjustment.builder()
+                    .id(21L).user(user).medicine(medicine).quantity(qty)
+                    .adjustmentType("REDUCE").note("Test REDUCE")
+                    .inTransit(false).wasInTransit(false).transitDays(2)
+                    .internalMovement(false)
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .adjustedAt(LocalDateTime.now())
+                    .build();
+        }
+
+        @Test
+        @DisplayName("deleting ADD adjustment reduces inventory quantity")
+        void deletingAddReducesInventory() {
+            when(inventoryAdjustmentRepository.findById(20L)).thenReturn(Optional.of(addAdj(10)));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
+                    .thenReturn(Optional.of(inventory)); // qty = 50
+
+            inventoryService.deleteAdjustment(20L);
+
+            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 40));
+            verify(inventoryAdjustmentRepository).deleteById(20L);
+        }
+
+        @Test
+        @DisplayName("deleting REDUCE adjustment restores inventory quantity")
+        void deletingReduceRestoresInventory() {
+            when(inventoryAdjustmentRepository.findById(21L)).thenReturn(Optional.of(reduceAdj(10)));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
+                    .thenReturn(Optional.of(inventory)); // qty = 50
+
+            inventoryService.deleteAdjustment(21L);
+
+            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 60));
+            verify(inventoryAdjustmentRepository).deleteById(21L);
+        }
+
+        @Test
+        @DisplayName("deleting ADD clamps inventory to 0 if reversal would go negative")
+        void deletingAddClampsToZero() {
+            inventory.setQuantity(5); // only 5 remains, but adjustment was for 10
+            when(inventoryAdjustmentRepository.findById(20L)).thenReturn(Optional.of(addAdj(10)));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
+                    .thenReturn(Optional.of(inventory));
+
+            inventoryService.deleteAdjustment(20L);
+
+            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 0));
+        }
+
+        @Test
+        @DisplayName("skips inventory update when inventory record not found")
+        void skipsInventoryUpdateWhenNotFound() {
+            when(inventoryAdjustmentRepository.findById(20L)).thenReturn(Optional.of(addAdj(10)));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
+                    .thenReturn(Optional.empty());
+
+            inventoryService.deleteAdjustment(20L);
+
+            verify(inventoryRepository, never()).save(any());
+            verify(inventoryAdjustmentRepository).deleteById(20L);
+        }
+
+        @Test
+        @DisplayName("throws ResourceNotFoundException when adjustment does not exist")
+        void throwsWhenAdjustmentNotFound() {
+            when(inventoryAdjustmentRepository.findById(999L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> inventoryService.deleteAdjustment(999L))
+                    .isInstanceOf(ResourceNotFoundException.class);
+
+            verify(inventoryAdjustmentRepository, never()).deleteById(any());
         }
     }
 

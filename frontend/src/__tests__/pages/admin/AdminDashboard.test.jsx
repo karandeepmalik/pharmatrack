@@ -92,6 +92,12 @@ describe('AdminDashboard — navigation cards', () => {
     expect(screen.getByRole('link', { name: /modify or delete a medicine dispatch record/i }))
       .toHaveAttribute('href', '/admin/dispatch-records');
   });
+
+  test('has link to view stock modifications', () => {
+    renderPage();
+    expect(screen.getByRole('link', { name: /view stock modifications/i }))
+      .toHaveAttribute('href', '/admin/inventory-adjustments');
+  });
 });
 
 // ── Sign out ──────────────────────────────────────────────────────────────

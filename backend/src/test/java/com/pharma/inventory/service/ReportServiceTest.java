@@ -417,6 +417,28 @@ class ReportServiceTest {
             assertThat(r.getContent()).contains("TOTAL: 3");
             assertThat(r.getContent()).contains("Price: Rs 4,000  |  Value: Rs 12,000");
         }
+
+        @Test
+        void currentValuationShowsInTransitBreakdownForActiveTransit() {
+            // john has 12 total (4 settled + 8 in-transit)
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, vial, 12, null)));
+
+            // Active in-transit adjustment
+            InventoryAdjustment adj = InventoryAdjustment.builder()
+                    .id(99L).user(john).medicine(vial).quantity(8)
+                    .adjustmentType("ADD").inTransit(true).wasInTransit(true)
+                    .transitDays(3).internalMovement(false)
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .adjustedAt(LocalDateTime.now().minusHours(2))
+                    .build();
+            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            assertThat(r.getContent()).contains("john.doe: 4 + 8 (in transit)");
+            assertThat(r.getContent()).contains("TOTAL: 12");
+        }
     }
 
     @Nested @DisplayName("inventoryValuation — historical date")
@@ -654,6 +676,33 @@ class ReportServiceTest {
 
             assertThat(r.getContent()).contains("john.doe: 10");
             assertThat(r.getContent()).doesNotContain("in transit");
+        }
+
+        @Test
+        @DisplayName("historical: legacy record with wasInTransit=false but inTransit=true shown as in-transit")
+        void historicalShowsInTransitForLegacyRecordWhereWasInTransitNotSet() {
+            // Simulates a record created BEFORE the wasInTransit field was added.
+            // wasInTransit=false (default, field didn't exist), but inTransit=true (still active).
+            LocalDate reportDate = LocalDate.of(2026, 6, 5);
+            LocalDateTime june3 = LocalDateTime.of(2026, 6, 3, 10, 0);
+
+            // Legacy-style adjustment: wasInTransit=false, inTransit=true (not yet expired by scheduler)
+            InventoryAdjustment legacyAdj = InventoryAdjustment.builder()
+                    .id(200L).user(john).medicine(vial).quantity(6)
+                    .adjustmentType("ADD").note("legacy").inTransit(true).wasInTransit(false) // legacy: wasInTransit not set
+                    .transitDays(5).internalMovement(false)
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .adjustedAt(june3)
+                    .build();
+
+            when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(legacyAdj));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(reportDate);
+
+            // june3 + 5 days = june8, still active on june5 — should show as in-transit
+            assertThat(r.getContent()).contains("john.doe: 0 + 6 (in transit)");
         }
     }
 
@@ -1439,6 +1488,54 @@ class ReportServiceTest {
                     Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june6Morning, 3);
             when(inventoryAdjustmentRepository.findAllActiveInTransit())
                     .thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.dailyReport(reportDate);
+
+            assertThat(r.getContent()).contains("john.doe: 7 + 8 (in transit)");
+        }
+
+        @Test
+        @DisplayName("adjustment at midnight of NEXT day is excluded (boundary: adjustedAt == end)")
+        void adjustmentAtMidnightOfNextDayExcludedFromReport() {
+            // Report for June 5; adjustment adjustedAt = 2026-06-06T00:00:00 (midnight, exact boundary).
+            // With !isAfter this was incorrectly INCLUDED; with isBefore it is correctly EXCLUDED.
+            LocalDate reportDate = LocalDate.of(2026, 6, 5);
+            LocalDateTime june6Midnight = LocalDateTime.of(2026, 6, 6, 0, 0);
+
+            Inventory inv = makeInv(1L, john, vial, 15, null);
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(inv));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            stubEmptyTransactions();
+
+            InventoryAdjustment adj = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june6Midnight, 3);
+            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.dailyReport(reportDate);
+
+            assertThat(r.getContent()).doesNotContain("in transit");
+            assertThat(r.getContent()).contains("john.doe: 15");
+        }
+
+        @Test
+        @DisplayName("adjustment at last moment of report date IS shown as in-transit")
+        void adjustmentAtLastMomentOfReportDateShownAsInTransit() {
+            // Report for June 5; adjustment made June 5 at 23:59:59 — must appear.
+            LocalDate reportDate = LocalDate.of(2026, 6, 5);
+            LocalDateTime june5End = LocalDateTime.of(2026, 6, 5, 23, 59, 59);
+
+            Inventory inv = makeInv(1L, john, vial, 15, null);  // 7 settled + 8 in-transit
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(inv));
+            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            stubEmptyTransactions();
+
+            InventoryAdjustment adj = makeInTransitAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june5End, 3);
+            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of(adj));
 
             ReportResponse r = reportService.dailyReport(reportDate);
 

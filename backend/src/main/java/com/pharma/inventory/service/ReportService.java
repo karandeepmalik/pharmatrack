@@ -71,7 +71,7 @@ public class ReportService {
         Map<String, Integer> map = new java.util.HashMap<>();
         for (InventoryAdjustment a : active) {
             if ("ADD".equals(a.getAdjustmentType())
-                    && !a.getAdjustedAt().isAfter(asOf)
+                    && a.getAdjustedAt().isBefore(asOf)
                     && a.getAdjustedAt().plusDays(a.getTransitDays()).isAfter(asOf)) {
                 String key = a.getUser().getId() + "|" + a.getMedicine().getId() + "|" + a.getInventoryType().name();
                 map.merge(key, a.getQuantity(), Integer::sum);
@@ -284,7 +284,7 @@ public class ReportService {
         Map<String, Integer> inTransitMap = new java.util.HashMap<>();
         LocalDateTime endOfReportDay = endExclusive;
         for (InventoryAdjustment adj : adjustments) {
-            if ("ADD".equals(adj.getAdjustmentType()) && adj.isWasInTransit()
+            if ("ADD".equals(adj.getAdjustmentType()) && (adj.isWasInTransit() || adj.isInTransit())
                     && adj.getAdjustedAt().plusDays(adj.getTransitDays()).isAfter(endOfReportDay)) {
                 String key = adj.getUser().getId() + "|" + adj.getMedicine().getId() + "|" + adj.getInventoryType().name();
                 inTransitMap.merge(key, adj.getQuantity(), Integer::sum);

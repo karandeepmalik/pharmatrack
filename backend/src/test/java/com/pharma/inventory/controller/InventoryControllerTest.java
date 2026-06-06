@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pharma.inventory.config.AppConfig;
 import com.pharma.inventory.config.SecurityConfig;
 import com.pharma.inventory.dto.AdjustInventoryRequest;
+import com.pharma.inventory.dto.InventoryAdjustmentResponse;
 import com.pharma.inventory.dto.InventoryResponse;
 import com.pharma.inventory.exception.InsufficientInventoryException;
+import com.pharma.inventory.exception.ResourceNotFoundException;
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.UserRepository;
 import com.pharma.inventory.security.JwtService;
@@ -27,6 +29,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -289,6 +292,108 @@ class InventoryControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isBadRequest());
+        }
+    }
+
+    // ── GET /api/inventory/adjustments ────────────────────────────────
+
+    @Nested @DisplayName("GET /api/inventory/adjustments")
+    class GetAdjustments {
+
+        private InventoryAdjustmentResponse sampleAdj() {
+            return InventoryAdjustmentResponse.builder()
+                    .id(1L).userId(2L).username("john.doe").userFullName("John Doe")
+                    .medicineId(1L).medicineName("Shield FX Vial 10 ml")
+                    .medicineType("VIAL").specification(10.0)
+                    .quantity(10).adjustmentType("ADD").note("Restocking Ward 3")
+                    .adjustedAt("01 Jun 2026, 10:00 AM").inTransit(false).transitDays(2)
+                    .internalMovement(false).inventoryType("REGULAR_MEDICINE_STOCK")
+                    .build();
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanGetAdjustments() throws Exception {
+            when(inventoryService.getAdjustments(any(LocalDate.class), any(LocalDate.class)))
+                    .thenReturn(List.of(sampleAdj()));
+            mockMvc.perform(get("/api/inventory/adjustments")
+                            .param("from", "2026-06-01")
+                            .param("to", "2026-06-06"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].username").value("john.doe"))
+                    .andExpect(jsonPath("$[0].adjustmentType").value("ADD"))
+                    .andExpect(jsonPath("$[0].quantity").value(10));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void returnsEmptyListWhenNoAdjustments() throws Exception {
+            when(inventoryService.getAdjustments(any(LocalDate.class), any(LocalDate.class)))
+                    .thenReturn(List.of());
+            mockMvc.perform(get("/api/inventory/adjustments")
+                            .param("from", "2026-01-01")
+                            .param("to", "2026-01-01"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(0));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void missingFromParamReturnsBadRequest() throws Exception {
+            mockMvc.perform(get("/api/inventory/adjustments").param("to", "2026-06-06"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void missingToParamReturnsBadRequest() throws Exception {
+            mockMvc.perform(get("/api/inventory/adjustments").param("from", "2026-06-01"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userIsForbidden() throws Exception {
+            mockMvc.perform(get("/api/inventory/adjustments")
+                            .param("from", "2026-06-01").param("to", "2026-06-06"))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedIsUnauthorized() throws Exception {
+            mockMvc.perform(get("/api/inventory/adjustments")
+                            .param("from", "2026-06-01").param("to", "2026-06-06"))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    // ── DELETE /api/inventory/adjustments/{id} ────────────────────────
+
+    @Nested @DisplayName("DELETE /api/inventory/adjustments/{id}")
+    class DeleteAdjustment {
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanDeleteAdjustment() throws Exception {
+            doNothing().when(inventoryService).deleteAdjustment(1L);
+            mockMvc.perform(delete("/api/inventory/adjustments/1").with(csrf()))
+                    .andExpect(status().isNoContent());
+            verify(inventoryService).deleteAdjustment(1L);
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void returnsNotFoundForMissingAdjustment() throws Exception {
+            doThrow(new ResourceNotFoundException("InventoryAdjustment", 999L))
+                    .when(inventoryService).deleteAdjustment(999L);
+            mockMvc.perform(delete("/api/inventory/adjustments/999").with(csrf()))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userIsForbidden() throws Exception {
+            mockMvc.perform(delete("/api/inventory/adjustments/1").with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedIsUnauthorized() throws Exception {
+            mockMvc.perform(delete("/api/inventory/adjustments/1").with(csrf()))
+                    .andExpect(status().isUnauthorized());
         }
     }
 }
