@@ -11,7 +11,7 @@ import com.pharma.inventory.exception.ResourceNotFoundException;
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.UserRepository;
 import com.pharma.inventory.security.JwtService;
-import com.pharma.inventory.service.InventoryService;
+import com.pharma.inventory.service.MedicineStockService;
 import com.pharma.inventory.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +41,7 @@ class InventoryControllerTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
-    @MockBean InventoryService inventoryService;
+    @MockBean MedicineStockService medicineStockService;
     @MockBean UserService userService;
     @MockBean JwtService jwtService;
     @MockBean UserRepository userRepository;
@@ -75,7 +75,7 @@ class InventoryControllerTest {
     class GetAll {
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanGetAll() throws Exception {
-            when(inventoryService.getAll()).thenReturn(List.of(sampleResponse));
+            when(medicineStockService.getAll()).thenReturn(List.of(sampleResponse));
             mockMvc.perform(get("/api/inventory"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(1))
@@ -104,7 +104,7 @@ class InventoryControllerTest {
         @Test @WithMockUser(roles = "USER", username = "john.doe")
         void userCanGetAvailable() throws Exception {
             when(userService.getByUsername("john.doe")).thenReturn(mockUser);
-            when(inventoryService.getAvailableForUser(2L)).thenReturn(List.of(sampleResponse));
+            when(medicineStockService.getAvailableForUser(2L)).thenReturn(List.of(sampleResponse));
             mockMvc.perform(get("/api/inventory/available"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(1))
@@ -147,7 +147,7 @@ class InventoryControllerTest {
         void adminCanAddInventory() throws Exception {
             InventoryResponse added = new InventoryResponse();
             added.setQuantity(110); added.setUsername("john.doe");
-            when(inventoryService.adjustInventory(any(), any())).thenReturn(added);
+            when(medicineStockService.adjustInventory(any(), any())).thenReturn(added);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validAddReq())))
@@ -159,7 +159,7 @@ class InventoryControllerTest {
         void adminCanReduceInventory() throws Exception {
             InventoryResponse reduced = new InventoryResponse();
             reduced.setQuantity(45); reduced.setUsername("john.doe");
-            when(inventoryService.adjustInventory(any(), any())).thenReturn(reduced);
+            when(medicineStockService.adjustInventory(any(), any())).thenReturn(reduced);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validReduceReq())))
@@ -169,7 +169,7 @@ class InventoryControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void returnsConflictWhenInsufficientStock() throws Exception {
-            when(inventoryService.adjustInventory(any(), any()))
+            when(medicineStockService.adjustInventory(any(), any()))
                     .thenThrow(new InsufficientInventoryException(3, 5));
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
@@ -247,7 +247,7 @@ class InventoryControllerTest {
         void acceptsInTransitFlagTrue() throws Exception {
             InventoryResponse added = new InventoryResponse();
             added.setQuantity(110); added.setUsername("john.doe");
-            when(inventoryService.adjustInventory(any(), any())).thenReturn(added);
+            when(medicineStockService.adjustInventory(any(), any())).thenReturn(added);
             AdjustInventoryRequest req = validAddReq();
             req.setInTransit(true);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
@@ -261,7 +261,7 @@ class InventoryControllerTest {
         void acceptsInTransitFlagFalse() throws Exception {
             InventoryResponse added = new InventoryResponse();
             added.setQuantity(110); added.setUsername("john.doe");
-            when(inventoryService.adjustInventory(any(), any())).thenReturn(added);
+            when(medicineStockService.adjustInventory(any(), any())).thenReturn(added);
             AdjustInventoryRequest req = validAddReq();
             req.setInTransit(false);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
@@ -274,7 +274,7 @@ class InventoryControllerTest {
         void acceptsValidAdjustmentDate() throws Exception {
             InventoryResponse added = new InventoryResponse();
             added.setQuantity(110); added.setUsername("john.doe");
-            when(inventoryService.adjustInventory(any(), any())).thenReturn(added);
+            when(medicineStockService.adjustInventory(any(), any())).thenReturn(added);
             AdjustInventoryRequest req = validAddReq();
             req.setAdjustmentDate(LocalDate.now().minusDays(1));
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
@@ -313,7 +313,7 @@ class InventoryControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanGetAdjustments() throws Exception {
-            when(inventoryService.getAdjustments(any(LocalDate.class), any(LocalDate.class)))
+            when(medicineStockService.getAdjustments(any(LocalDate.class), any(LocalDate.class)))
                     .thenReturn(List.of(sampleAdj()));
             mockMvc.perform(get("/api/inventory/adjustments")
                             .param("from", "2026-06-01")
@@ -327,7 +327,7 @@ class InventoryControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void returnsEmptyListWhenNoAdjustments() throws Exception {
-            when(inventoryService.getAdjustments(any(LocalDate.class), any(LocalDate.class)))
+            when(medicineStockService.getAdjustments(any(LocalDate.class), any(LocalDate.class)))
                     .thenReturn(List.of());
             mockMvc.perform(get("/api/inventory/adjustments")
                             .param("from", "2026-01-01")
@@ -370,16 +370,16 @@ class InventoryControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanDeleteAdjustment() throws Exception {
-            doNothing().when(inventoryService).deleteAdjustment(1L);
+            doNothing().when(medicineStockService).deleteAdjustment(1L);
             mockMvc.perform(delete("/api/inventory/adjustments/1").with(csrf()))
                     .andExpect(status().isNoContent());
-            verify(inventoryService).deleteAdjustment(1L);
+            verify(medicineStockService).deleteAdjustment(1L);
         }
 
         @Test @WithMockUser(roles = "ADMIN")
         void returnsNotFoundForMissingAdjustment() throws Exception {
             doThrow(new ResourceNotFoundException("InventoryAdjustment", 999L))
-                    .when(inventoryService).deleteAdjustment(999L);
+                    .when(medicineStockService).deleteAdjustment(999L);
             mockMvc.perform(delete("/api/inventory/adjustments/999").with(csrf()))
                     .andExpect(status().isNotFound());
         }

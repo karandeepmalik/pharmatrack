@@ -13,20 +13,20 @@ import java.time.LocalDate;
 import java.util.List;
 @RestController @RequestMapping("/api/inventory") @RequiredArgsConstructor
 public class InventoryController {
-    private final InventoryService inventoryService;
+    private final MedicineStockService medicineStockService;
     private final UserService userService;
 
     @GetMapping("/available")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<List<InventoryResponse>> getAvailable(@AuthenticationPrincipal UserDetails ud) {
         Long uid = userService.getByUsername(ud.getUsername()).getId();
-        return ResponseEntity.ok(inventoryService.getAvailableForUser(uid));
+        return ResponseEntity.ok(medicineStockService.getAvailableForUser(uid));
     }
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<InventoryResponse>> getAll() {
-        return ResponseEntity.ok(inventoryService.getAll());
+        return ResponseEntity.ok(medicineStockService.getAll());
     }
 
     @PostMapping("/adjust")
@@ -34,7 +34,7 @@ public class InventoryController {
     public ResponseEntity<InventoryResponse> adjust(
             @Valid @RequestBody AdjustInventoryRequest req,
             @AuthenticationPrincipal UserDetails ud) {
-        return ResponseEntity.ok(inventoryService.adjustInventory(req, ud.getUsername()));
+        return ResponseEntity.ok(medicineStockService.adjustInventory(req, ud.getUsername()));
     }
 
     @GetMapping("/adjustments")
@@ -42,13 +42,13 @@ public class InventoryController {
     public ResponseEntity<List<InventoryAdjustmentResponse>> getAdjustments(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ResponseEntity.ok(inventoryService.getAdjustments(from, to));
+        return ResponseEntity.ok(medicineStockService.getAdjustments(from, to));
     }
 
     @DeleteMapping("/adjustments/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteAdjustment(@PathVariable Long id) {
-        inventoryService.deleteAdjustment(id);
+        medicineStockService.deleteAdjustment(id);
         return ResponseEntity.noContent().build();
     }
 }

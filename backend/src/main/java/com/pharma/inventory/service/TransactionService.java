@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -147,7 +148,7 @@ public class TransactionService {
             inventoryRepository.save(inv);
         }
         tx.setApprovedBy(admin);
-        tx.setApprovedAt(LocalDateTime.now());
+        tx.setApprovedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
         return transactionMapper.toResponse(transactionRepository.save(tx));
     }
 

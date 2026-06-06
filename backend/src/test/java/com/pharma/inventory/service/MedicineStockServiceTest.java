@@ -22,15 +22,15 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("InventoryService")
-class InventoryServiceTest {
+@DisplayName("MedicineStockService")
+class MedicineStockServiceTest {
 
     @Mock InventoryRepository inventoryRepository;
     @Mock InventoryAdjustmentRepository inventoryAdjustmentRepository;
     @Mock UserRepository userRepository;
     @Mock MedicineRepository medicineRepository;
 
-    @InjectMocks InventoryService inventoryService;
+    @InjectMocks MedicineStockService medicineStockService;
 
     private User user;
     private User adminUser;
@@ -89,7 +89,7 @@ class InventoryServiceTest {
             when(inventoryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
 
-            InventoryResponse result = inventoryService.adjustInventory(addReq(10), "admin");
+            InventoryResponse result = medicineStockService.adjustInventory(addReq(10), "admin");
 
             assertThat(result.getQuantity()).isEqualTo(60);
         }
@@ -104,7 +104,7 @@ class InventoryServiceTest {
             when(inventoryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
 
-            InventoryResponse result = inventoryService.adjustInventory(reduceReq(20), "admin");
+            InventoryResponse result = medicineStockService.adjustInventory(reduceReq(20), "admin");
 
             assertThat(result.getQuantity()).isEqualTo(30);
         }
@@ -119,7 +119,7 @@ class InventoryServiceTest {
             when(inventoryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             when(userRepository.findByUsername("admin")).thenReturn(Optional.empty());
 
-            InventoryResponse result = inventoryService.adjustInventory(addReq(5), "admin");
+            InventoryResponse result = medicineStockService.adjustInventory(addReq(5), "admin");
 
             assertThat(result.getQuantity()).isEqualTo(5);
         }
@@ -131,7 +131,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setUserId(999L);
 
-            assertThatThrownBy(() -> inventoryService.adjustInventory(req, "admin"))
+            assertThatThrownBy(() -> medicineStockService.adjustInventory(req, "admin"))
                     .isInstanceOf(ResourceNotFoundException.class);
 
             verifyNoInteractions(inventoryRepository, medicineRepository);
@@ -144,7 +144,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setUserId(1L);
 
-            assertThatThrownBy(() -> inventoryService.adjustInventory(req, "admin"))
+            assertThatThrownBy(() -> medicineStockService.adjustInventory(req, "admin"))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Admin user cannot hold inventory");
         }
@@ -157,7 +157,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setMedicineId(999L);
 
-            assertThatThrownBy(() -> inventoryService.adjustInventory(req, "admin"))
+            assertThatThrownBy(() -> medicineStockService.adjustInventory(req, "admin"))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
@@ -169,7 +169,7 @@ class InventoryServiceTest {
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
                     .thenReturn(Optional.of(inventory)); // quantity = 50
 
-            assertThatThrownBy(() -> inventoryService.adjustInventory(reduceReq(100), "admin"))
+            assertThatThrownBy(() -> medicineStockService.adjustInventory(reduceReq(100), "admin"))
                     .isInstanceOf(InsufficientInventoryException.class);
         }
 
@@ -183,7 +183,7 @@ class InventoryServiceTest {
             when(inventoryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             when(userRepository.findByUsername("admin")).thenReturn(Optional.empty());
 
-            InventoryResponse result = inventoryService.adjustInventory(reduceReq(50), "admin");
+            InventoryResponse result = medicineStockService.adjustInventory(reduceReq(50), "admin");
 
             assertThat(result.getQuantity()).isEqualTo(0);
         }
@@ -198,7 +198,7 @@ class InventoryServiceTest {
             when(inventoryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
 
-            inventoryService.adjustInventory(addReq(7), "admin");
+            medicineStockService.adjustInventory(addReq(7), "admin");
 
             verify(inventoryAdjustmentRepository).save(argThat(adj ->
                     adj.getQuantity() == 7 &&
@@ -221,7 +221,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setAdjustmentDate(LocalDate.of(2026, 1, 15));
 
-            inventoryService.adjustInventory(req, "admin");
+            medicineStockService.adjustInventory(req, "admin");
 
             verify(inventoryAdjustmentRepository).save(argThat(adj ->
                     adj.getAdjustedAt().toLocalDate().equals(LocalDate.of(2026, 1, 15))
@@ -241,7 +241,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setInTransit(true);
 
-            inventoryService.adjustInventory(req, "admin");
+            medicineStockService.adjustInventory(req, "admin");
 
             verify(inventoryAdjustmentRepository).save(argThat(InventoryAdjustment::isInTransit));
         }
@@ -259,7 +259,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setInternalMovement(true);
 
-            inventoryService.adjustInventory(req, "admin");
+            medicineStockService.adjustInventory(req, "admin");
 
             verify(inventoryAdjustmentRepository).save(argThat(InventoryAdjustment::isInternalMovement));
         }
@@ -278,7 +278,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setInventoryType("ADMIN_MEDICINE_STOCK");
 
-            InventoryResponse result = inventoryService.adjustInventory(req, "admin");
+            InventoryResponse result = medicineStockService.adjustInventory(req, "admin");
 
             assertThat(result.getInventoryType()).isEqualTo("ADMIN_MEDICINE_STOCK");
         }
@@ -297,7 +297,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setInventoryType("NOT_A_REAL_TYPE");
 
-            inventoryService.adjustInventory(req, "admin");
+            medicineStockService.adjustInventory(req, "admin");
 
             verify(inventoryRepository).findByUserIdAndMedicineIdAndInventoryType(
                     2L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
@@ -316,7 +316,7 @@ class InventoryServiceTest {
             AdjustInventoryRequest req = addReq(5);
             req.setNote("Custom note for this adjustment");
 
-            inventoryService.adjustInventory(req, "admin");
+            medicineStockService.adjustInventory(req, "admin");
 
             verify(inventoryRepository).save(argThat(inv ->
                     "Custom note for this adjustment".equals(inv.getLastNote())
@@ -333,7 +333,7 @@ class InventoryServiceTest {
             when(inventoryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
             when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
 
-            inventoryService.adjustInventory(addReq(3), "admin");
+            medicineStockService.adjustInventory(addReq(3), "admin");
 
             verify(inventoryAdjustmentRepository).save(argThat(adj ->
                     adj.getAdjustedBy() != null && adj.getAdjustedBy().getId().equals(1L)
@@ -360,7 +360,7 @@ class InventoryServiceTest {
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of(admin));
 
-            List<InventoryResponse> result = inventoryService.getAvailableForUser(2L);
+            List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
 
             assertThat(result).hasSize(2);
         }
@@ -378,7 +378,7 @@ class InventoryServiceTest {
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of(admin));
 
-            List<InventoryResponse> result = inventoryService.getAvailableForUser(2L);
+            List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
 
             assertThat(result.get(0).getInventoryType()).isEqualTo("REGULAR_MEDICINE_STOCK");
             assertThat(result.get(1).getInventoryType()).isEqualTo("ADMIN_MEDICINE_STOCK");
@@ -389,7 +389,7 @@ class InventoryServiceTest {
         void returnsEmptyWhenNoInventory() {
             when(inventoryRepository.findAvailableByUserIdAndType(any(), any())).thenReturn(List.of());
 
-            List<InventoryResponse> result = inventoryService.getAvailableForUser(2L);
+            List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
 
             assertThat(result).isEmpty();
         }
@@ -405,7 +405,7 @@ class InventoryServiceTest {
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
 
-            List<InventoryResponse> result = inventoryService.getAvailableForUser(2L);
+            List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
 
             assertThat(result.get(0).getUsername()).isEqualTo("john.doe");
             assertThat(result.get(0).getMedicineName()).isEqualTo("Shield FX Vial 10 ml");
@@ -437,7 +437,7 @@ class InventoryServiceTest {
                     .thenReturn(List.of(makeAdj("ADD", 10)));
 
             List<InventoryAdjustmentResponse> result =
-                    inventoryService.getAdjustments(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 6));
+                    medicineStockService.getAdjustments(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 6));
 
             assertThat(result).hasSize(1);
             assertThat(result.get(0).getUsername()).isEqualTo("john.doe");
@@ -452,7 +452,7 @@ class InventoryServiceTest {
                     .thenReturn(List.of(makeAdj("ADD", 5)));
 
             List<InventoryAdjustmentResponse> result =
-                    inventoryService.getAdjustments(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 1));
+                    medicineStockService.getAdjustments(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 1));
 
             assertThat(result.get(0).getAdjustedByUsername()).isEqualTo("admin");
         }
@@ -464,7 +464,7 @@ class InventoryServiceTest {
                     .thenReturn(List.of());
 
             List<InventoryAdjustmentResponse> result =
-                    inventoryService.getAdjustments(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 1));
+                    medicineStockService.getAdjustments(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 1));
 
             assertThat(result).isEmpty();
         }
@@ -505,7 +505,7 @@ class InventoryServiceTest {
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
                     .thenReturn(Optional.of(inventory)); // qty = 50
 
-            inventoryService.deleteAdjustment(20L);
+            medicineStockService.deleteAdjustment(20L);
 
             verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 40));
             verify(inventoryAdjustmentRepository).deleteById(20L);
@@ -518,7 +518,7 @@ class InventoryServiceTest {
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
                     .thenReturn(Optional.of(inventory)); // qty = 50
 
-            inventoryService.deleteAdjustment(21L);
+            medicineStockService.deleteAdjustment(21L);
 
             verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 60));
             verify(inventoryAdjustmentRepository).deleteById(21L);
@@ -532,7 +532,7 @@ class InventoryServiceTest {
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
                     .thenReturn(Optional.of(inventory));
 
-            inventoryService.deleteAdjustment(20L);
+            medicineStockService.deleteAdjustment(20L);
 
             verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 0));
         }
@@ -544,7 +544,7 @@ class InventoryServiceTest {
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
                     .thenReturn(Optional.empty());
 
-            inventoryService.deleteAdjustment(20L);
+            medicineStockService.deleteAdjustment(20L);
 
             verify(inventoryRepository, never()).save(any());
             verify(inventoryAdjustmentRepository).deleteById(20L);
@@ -555,7 +555,7 @@ class InventoryServiceTest {
         void throwsWhenAdjustmentNotFound() {
             when(inventoryAdjustmentRepository.findById(999L)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> inventoryService.deleteAdjustment(999L))
+            assertThatThrownBy(() -> medicineStockService.deleteAdjustment(999L))
                     .isInstanceOf(ResourceNotFoundException.class);
 
             verify(inventoryAdjustmentRepository, never()).deleteById(any());
@@ -573,7 +573,7 @@ class InventoryServiceTest {
         void returnsAllMapped() {
             when(inventoryRepository.findAll()).thenReturn(List.of(inventory));
 
-            List<InventoryResponse> result = inventoryService.getAll();
+            List<InventoryResponse> result = medicineStockService.getAll();
 
             assertThat(result).hasSize(1);
             assertThat(result.get(0).getUsername()).isEqualTo("john.doe");
@@ -585,7 +585,7 @@ class InventoryServiceTest {
         void returnsEmptyList() {
             when(inventoryRepository.findAll()).thenReturn(List.of());
 
-            List<InventoryResponse> result = inventoryService.getAll();
+            List<InventoryResponse> result = medicineStockService.getAll();
 
             assertThat(result).isEmpty();
         }
@@ -595,7 +595,7 @@ class InventoryServiceTest {
         void mapsMedicineAndPharma() {
             when(inventoryRepository.findAll()).thenReturn(List.of(inventory));
 
-            List<InventoryResponse> result = inventoryService.getAll();
+            List<InventoryResponse> result = medicineStockService.getAll();
 
             assertThat(result.get(0).getMedicineName()).isEqualTo("Shield FX Vial 10 ml");
             assertThat(result.get(0).getPharmaName()).isEqualTo("Shield FX");
@@ -607,7 +607,7 @@ class InventoryServiceTest {
         void setsVialSpecUnit() {
             when(inventoryRepository.findAll()).thenReturn(List.of(inventory));
 
-            List<InventoryResponse> result = inventoryService.getAll();
+            List<InventoryResponse> result = medicineStockService.getAll();
 
             assertThat(result.get(0).getSpecUnit()).isEqualTo("ml");
         }
@@ -623,7 +623,7 @@ class InventoryServiceTest {
 
             when(inventoryRepository.findAll()).thenReturn(List.of(tabletInv));
 
-            List<InventoryResponse> result = inventoryService.getAll();
+            List<InventoryResponse> result = medicineStockService.getAll();
 
             assertThat(result.get(0).getSpecUnit()).isEqualTo("mg (10 Tablets)");
         }

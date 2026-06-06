@@ -8,15 +8,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Service @RequiredArgsConstructor
-public class InventoryService {
+public class MedicineStockService {
     private final InventoryRepository inventoryRepository;
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private final UserRepository userRepository;
     private final MedicineRepository medicineRepository;
+
+    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
     @Transactional
     public InventoryResponse adjustInventory(AdjustInventoryRequest req, String adjustedByUsername) {
@@ -53,7 +56,7 @@ public class InventoryService {
 
         LocalDateTime adjustedAt = req.getAdjustmentDate() != null
             ? req.getAdjustmentDate().atStartOfDay()
-            : LocalDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
+            : LocalDateTime.now(IST);
 
         User adjustedBy = userRepository.findByUsername(adjustedByUsername).orElse(null);
         inventoryAdjustmentRepository.save(InventoryAdjustment.builder()
