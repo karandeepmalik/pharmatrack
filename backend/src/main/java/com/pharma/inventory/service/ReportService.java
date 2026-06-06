@@ -82,7 +82,7 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public ReportResponse inventoryByUser() {
-        List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+        List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroRegularOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
         Map<String, Integer> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
 
@@ -184,7 +184,7 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     private ReportResponse inventoryValuationCurrent() {
-        List<Inventory> records = inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+        List<Inventory> records = inventoryRepository.findAllNonZeroRegularForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         Map<String, Integer> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
 
         // Group by pharmaId → specKey → individual records (preserves per-user detail)
@@ -466,7 +466,7 @@ public class ReportService {
         LocalDateTime start = reportDate.atStartOfDay();
         LocalDateTime end   = reportDate.plusDays(1).atStartOfDay();
 
-        List<Inventory> regularRecords  = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+        List<Inventory> regularRecords  = inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
