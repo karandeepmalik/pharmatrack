@@ -806,6 +806,29 @@ async function run() {
       '(possible inventory_type enum mismatch in DB)');
   });
 
+  await test('inventory-valuation report has per-spec Valuation line format', async () => {
+    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    assert(
+      r.data.content.includes('Valuation:') && r.data.content.includes('units x Rs'),
+      `Expected "Valuation: N units x Rs Y = Rs Z" format in report. Content snippet: ${r.data.content.slice(0, 500)}`
+    );
+    assert(
+      !r.data.content.includes('Price: Rs'),
+      'Old "Price: Rs" format must not appear in new valuation report'
+    );
+  });
+
+  await test('inventory-valuation report shows in-transit stock with + notation when present', async () => {
+    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    if (r.data.content.includes('(in transit)')) {
+      const match = r.data.content.match(/\d+ \+ \d+ \(in transit\)/);
+      assert(match, 'Expected "N + M (in transit)" format for in-transit stock, got: ' + r.data.content.slice(0, 500));
+    }
+    // test passes if no in-transit stock is present
+  });
+
   await test("Admin can access today-sales report", async () => {
     const r = await apiGet(`${API}/reports/today-sales`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);

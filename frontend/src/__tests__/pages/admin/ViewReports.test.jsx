@@ -163,6 +163,22 @@ describe('ViewReports — inventory valuation report', () => {
       expect(api.getReportInventoryValuation).toHaveBeenCalledWith('2026-05-01')
     );
   });
+
+  test('renders report with new valuation format (Valuation: N units x Rs Y = Rs Z)', async () => {
+    api.getReportInventoryValuation.mockResolvedValue(
+      sampleReport('INVENTORY_VALUATION',
+        'MEDICINE STOCK VALUATION\nShield FX\n---------\nVial 10 ml\n  john.doe: 7 + 3 (in transit)\n  Valuation: 10 units x Rs 4,000 = Rs 40,000\n\nTOTAL VALUATION: Rs 40,000')
+    );
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-valuation');
+    await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/valuation: 10 units x rs 4,000 = rs 40,000/i)).toBeInTheDocument()
+    );
+    expect(screen.getByText(/7 \+ 3 \(in transit\)/i)).toBeInTheDocument();
+  });
 });
 
 describe("ViewReports — sales report label", () => {

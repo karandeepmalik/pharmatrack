@@ -235,9 +235,9 @@ public class ReportService {
                     appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
                             inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
                 }
-                sb.append("  TOTAL: ").append(totalQty).append("\n");
-                sb.append("  Price: Rs ").append(String.format("%,d", price))
-                  .append("  |  Value: Rs ").append(String.format("%,d", valuation)).append("\n\n");
+                sb.append("  Valuation: ").append(totalQty).append(" units x Rs ")
+                  .append(String.format("%,d", price)).append(" = Rs ")
+                  .append(String.format("%,d", valuation)).append("\n\n");
             }
         }
 
@@ -365,9 +365,9 @@ public class ReportService {
                 int price = med.getPrice();
                 long valuation = (long) totalQty * price;
                 grandTotal += valuation;
-                sb.append("  TOTAL: ").append(totalQty).append("\n");
-                sb.append("  Price: Rs ").append(String.format("%,d", price))
-                  .append("  |  Value: Rs ").append(String.format("%,d", valuation)).append("\n\n");
+                sb.append("  Valuation: ").append(totalQty).append(" units x Rs ")
+                  .append(String.format("%,d", price)).append(" = Rs ")
+                  .append(String.format("%,d", valuation)).append("\n\n");
             }
         }
 

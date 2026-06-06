@@ -295,8 +295,7 @@ class ReportServiceTest {
             assertThat(r.getContent()).contains("Vial 10 ml");
             assertThat(r.getContent()).contains("john.doe: 10");
             assertThat(r.getContent()).contains("jane.smith: 5");
-            assertThat(r.getContent()).contains("TOTAL: 15");
-            assertThat(r.getContent()).contains("Value: Rs 60,000");
+            assertThat(r.getContent()).contains("Valuation: 15 units x Rs 4,000 = Rs 60,000");
             assertThat(r.getContent()).contains("TOTAL VALUATION");
         }
 
@@ -382,7 +381,7 @@ class ReportServiceTest {
             ReportResponse r = reportService.inventoryValuation();
 
             assertThat(r.getContent()).contains("john.doe: 5");
-            assertThat(r.getContent()).contains("TOTAL: 5");
+            assertThat(r.getContent()).contains("Valuation: 5 units x Rs 4,000 = Rs 20,000");
             assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 20,000");
         }
 
@@ -399,9 +398,7 @@ class ReportServiceTest {
 
             assertThat(content).contains("john.doe: 10");
             assertThat(content).contains("jane.smith: 6");
-            assertThat(content).contains("TOTAL: 16");
-            assertThat(content).contains("Price: Rs 4,000");
-            assertThat(content).contains("Value: Rs 64,000");
+            assertThat(content).contains("Valuation: 16 units x Rs 4,000 = Rs 64,000");
         }
 
         @Test
@@ -414,8 +411,7 @@ class ReportServiceTest {
 
             assertThat(r.getContent()).contains("Tablet 25 mg (10 Tablets)");
             assertThat(r.getContent()).contains("john.doe: 3");
-            assertThat(r.getContent()).contains("TOTAL: 3");
-            assertThat(r.getContent()).contains("Price: Rs 4,000  |  Value: Rs 12,000");
+            assertThat(r.getContent()).contains("Valuation: 3 units x Rs 4,000 = Rs 12,000");
         }
 
         @Test
@@ -437,7 +433,59 @@ class ReportServiceTest {
             ReportResponse r = reportService.inventoryValuation();
 
             assertThat(r.getContent()).contains("john.doe: 4 + 8 (in transit)");
-            assertThat(r.getContent()).contains("TOTAL: 12");
+            assertThat(r.getContent()).contains("Valuation: 12 units x Rs 4,000 = Rs 48,000");
+        }
+
+        @Test
+        @DisplayName("valuation line is the last content line of each spec section — no TOTAL or Price lines")
+        void valuationLineIsLastLineOfSpecSection() {
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
+            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation();
+            String content = r.getContent();
+
+            assertThat(content).contains("Valuation: 10 units x Rs 4,000 = Rs 40,000");
+            assertThat(content).doesNotContain("  TOTAL:");
+            assertThat(content).doesNotContain("Price: Rs");
+        }
+
+        @Test
+        @DisplayName("valuation calculation uses total quantity including in-transit stock")
+        void valuationUsesTotalQtyIncludingTransit() {
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, vial, 12, null)));
+
+            InventoryAdjustment adj = InventoryAdjustment.builder()
+                    .id(99L).user(john).medicine(vial).quantity(8)
+                    .adjustmentType("ADD").inTransit(true).wasInTransit(true)
+                    .transitDays(3).internalMovement(false)
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .adjustedAt(LocalDateTime.now().minusHours(2))
+                    .build();
+            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of(adj));
+
+            ReportResponse r = reportService.inventoryValuation();
+
+            assertThat(r.getContent()).contains("john.doe: 4 + 8 (in transit)");
+            assertThat(r.getContent()).contains("Valuation: 12 units x Rs 4,000 = Rs 48,000");
+        }
+
+        @Test
+        @DisplayName("multiple specs each have their own valuation line")
+        void multipleSpecsEachHaveValuationLine() {
+            when(inventoryRepository.findAllNonZeroForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(
+                            makeInv(1L, john, vial, 5, null),
+                            makeInv(2L, jane, tablet, 2, null)));
+            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation();
+            String content = r.getContent();
+
+            assertThat(content).contains("Valuation: 5 units x Rs 4,000 = Rs 20,000");
+            assertThat(content).contains("Valuation: 2 units x Rs 4,000 = Rs 8,000");
         }
     }
 
@@ -522,7 +570,7 @@ class ReportServiceTest {
             ReportResponse r = reportService.inventoryValuation(date);
 
             assertThat(r.getContent()).contains("john.doe: 10");
-            assertThat(r.getContent()).contains("TOTAL: 10");
+            assertThat(r.getContent()).contains("Valuation: 10 units x Rs 4,000 = Rs 40,000");
         }
 
         @Test
@@ -543,7 +591,7 @@ class ReportServiceTest {
             ReportResponse r = reportService.inventoryValuation(date);
 
             assertThat(r.getContent()).contains("john.doe: 7");
-            assertThat(r.getContent()).contains("TOTAL: 7");
+            assertThat(r.getContent()).contains("Valuation: 7 units x Rs 4,000 = Rs 28,000");
         }
 
         @Test
@@ -703,6 +751,44 @@ class ReportServiceTest {
 
             // june3 + 5 days = june8, still active on june5 — should show as in-transit
             assertThat(r.getContent()).contains("john.doe: 0 + 6 (in transit)");
+        }
+
+        @Test
+        @DisplayName("historical: valuation line is last content line of each spec section — no TOTAL or Price lines")
+        void historicalValuationLineIsLastLineOfSpecSection() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            LocalDateTime at = LocalDateTime.of(2026, 4, 20, 10, 0);
+            InventoryAdjustment adj = makeAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 10, at);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(adj));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            assertThat(r.getContent()).contains("Valuation: 10 units x Rs 4,000 = Rs 40,000");
+            assertThat(r.getContent()).doesNotContain("  TOTAL:");
+            assertThat(r.getContent()).doesNotContain("Price: Rs");
+        }
+
+        @Test
+        @DisplayName("historical: multiple specs each have their own valuation line")
+        void historicalMultipleSpecsHaveValuationLine() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            LocalDateTime at = LocalDateTime.of(2026, 4, 20, 10, 0);
+            InventoryAdjustment adjVial = makeAdj(john, vial,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 5, at);
+            InventoryAdjustment adjTablet = makeAdj(jane, tablet,
+                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 2, at);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(adjVial, adjTablet));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.inventoryValuation(date);
+            String content = r.getContent();
+
+            assertThat(content).contains("Valuation: 5 units x Rs 4,000 = Rs 20,000");
+            assertThat(content).contains("Valuation: 2 units x Rs 4,000 = Rs 8,000");
         }
     }
 
