@@ -911,6 +911,87 @@ async function run() {
     assert(r.status === 401 || r.status === 403, `Expected 401, got ${r.status}`);
   });
 
+  // ── Inventory Adjustments — GET & DELETE ─────────────────────────────
+  console.log('\n-- Inventory Adjustments (GET & DELETE)');
+  const today = new Date().toISOString().slice(0, 10);
+  let adjustmentIdForDelete;
+
+  await test('Admin can list inventory adjustments for a date range', async () => {
+    const r = await apiGet(`${API}/inventory/adjustments?from=${today}&to=${today}`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(Array.isArray(r.data), 'Expected array response');
+  });
+
+  await test('Adjustment list entries have expected fields', async () => {
+    const r = await apiGet(`${API}/inventory/adjustments?from=2026-01-01&to=${today}`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    if (r.data.length === 0) return;
+    const a = r.data[0];
+    assert(a.id !== undefined, 'Missing id');
+    assert(a.username !== undefined, 'Missing username');
+    assert(a.adjustmentType !== undefined, 'Missing adjustmentType');
+    assert(a.quantity !== undefined, 'Missing quantity');
+    assert(a.adjustedAt !== undefined, 'Missing adjustedAt');
+  });
+
+  await test('Non-admin cannot list inventory adjustments (401/403)', async () => {
+    const r = await apiGet(`${API}/inventory/adjustments?from=${today}&to=${today}`, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  await test('Missing from/to params returns 400', async () => {
+    const r = await apiGet(`${API}/inventory/adjustments`, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}`);
+  });
+
+  await test('[SETUP] Create adjustment for deletion test', async () => {
+    assert(johnId && adjustMedicineId, 'Need johnId and adjustMedicineId');
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 2,
+      note: 'E2E test adjustment for deletion test',
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    const adjR = await apiGet(`${API}/inventory/adjustments?from=${today}&to=${today}`, adminToken);
+    assert(adjR.status === 200, `Could not fetch adjustments: ${adjR.status}`);
+    const adj = adjR.data.find(a => a.username === 'john.doe' && a.adjustmentType === 'ADD' && a.quantity === 2);
+    assert(adj, 'Could not find newly created adjustment in list');
+    adjustmentIdForDelete = adj.id;
+  });
+
+  await test('Admin can delete an inventory adjustment and stock is reversed', async () => {
+    assert(adjustmentIdForDelete, 'No adjustmentIdForDelete — setup test must have passed');
+    const beforeR = await apiGet(`${API}/inventory`, adminToken);
+    const before = beforeR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
+    const beforeQty = before ? before.quantity : 0;
+    const r = await apiDelete(`${API}/inventory/adjustments/${adjustmentIdForDelete}`, adminToken);
+    assert(r.status === 204, `Expected 204, got ${r.status}`);
+    const afterR = await apiGet(`${API}/inventory`, adminToken);
+    const after = afterR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
+    const afterQty = after ? after.quantity : 0;
+    assert(afterQty === beforeQty - 2, `Expected qty ${beforeQty - 2} after reversal, got ${afterQty}`);
+  });
+
+  await test('Deleted adjustment no longer appears in list', async () => {
+    if (!adjustmentIdForDelete) return;
+    const r = await apiGet(`${API}/inventory/adjustments?from=${today}&to=${today}`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const found = r.data.find(a => a.id === adjustmentIdForDelete);
+    assert(!found, `Expected adjustment ${adjustmentIdForDelete} to be gone from list`);
+  });
+
+  await test('Delete non-existent adjustment returns 404', async () => {
+    const r = await apiDelete(`${API}/inventory/adjustments/999999`, adminToken);
+    assert(r.status === 404, `Expected 404, got ${r.status}`);
+  });
+
+  await test('Non-admin cannot delete an inventory adjustment (401/403)', async () => {
+    const r = await apiDelete(`${API}/inventory/adjustments/1`, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
   // ── Multi-Screenshot Transactions ────────────────────────────────────
   console.log('\n-- Multi-Screenshot Transactions');
 

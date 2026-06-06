@@ -6,7 +6,9 @@ import com.pharma.inventory.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Service @RequiredArgsConstructor
@@ -70,6 +72,58 @@ public class InventoryService {
             .build());
 
         return response;
+    }
+
+    private static final DateTimeFormatter ADJ_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
+
+    @Transactional(readOnly = true)
+    public List<InventoryAdjustmentResponse> getAdjustments(LocalDate from, LocalDate to) {
+        LocalDateTime start = from.atStartOfDay();
+        LocalDateTime end   = to.plusDays(1).atStartOfDay();
+        return inventoryAdjustmentRepository.findWithDetailsBetween(start, end)
+                .stream().map(this::toAdjResponse).toList();
+    }
+
+    @Transactional
+    public void deleteAdjustment(Long id) {
+        InventoryAdjustment adj = inventoryAdjustmentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("InventoryAdjustment", id));
+
+        // Reverse the inventory effect of this adjustment
+        inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(
+                adj.getUser().getId(), adj.getMedicine().getId(), adj.getInventoryType())
+                .ifPresent(inv -> {
+                    if ("ADD".equals(adj.getAdjustmentType())) {
+                        inv.setQuantity(Math.max(0, inv.getQuantity() - adj.getQuantity()));
+                    } else {
+                        inv.setQuantity(inv.getQuantity() + adj.getQuantity());
+                    }
+                    inventoryRepository.save(inv);
+                });
+
+        inventoryAdjustmentRepository.deleteById(id);
+    }
+
+    private InventoryAdjustmentResponse toAdjResponse(InventoryAdjustment a) {
+        return InventoryAdjustmentResponse.builder()
+                .id(a.getId())
+                .userId(a.getUser().getId())
+                .username(a.getUser().getUsername())
+                .userFullName(a.getUser().getFullName())
+                .medicineId(a.getMedicine().getId())
+                .medicineName(a.getMedicine().getName())
+                .medicineType(a.getMedicine().getType().name())
+                .specification(a.getMedicine().getSpecification())
+                .quantity(a.getQuantity())
+                .adjustmentType(a.getAdjustmentType())
+                .note(a.getNote())
+                .adjustedAt(a.getAdjustedAt() != null ? a.getAdjustedAt().format(ADJ_FMT) : null)
+                .adjustedByUsername(a.getAdjustedBy() != null ? a.getAdjustedBy().getUsername() : null)
+                .inTransit(a.isInTransit())
+                .transitDays(a.getTransitDays())
+                .internalMovement(a.isInternalMovement())
+                .inventoryType(a.getInventoryType() != null ? a.getInventoryType().name() : "REGULAR_MEDICINE_STOCK")
+                .build();
     }
 
     @Transactional(readOnly=true)
