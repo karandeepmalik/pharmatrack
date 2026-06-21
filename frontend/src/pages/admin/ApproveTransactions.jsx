@@ -149,8 +149,12 @@ export default function ApproveTransactions() {
     loadPage(0, filter);
   }, [filter, loadPage]);
 
-  // Infinite-scroll sentinel — fires when the bottom div enters the viewport
+  // Infinite-scroll sentinel — (re)attaches whenever the sentinel enters the DOM
+  // hasMore must be in deps: at mount hasMore=false so the sentinel isn't rendered
+  // yet and sentinelRef.current is null. The effect re-runs when hasMore flips true
+  // and the sentinel is in the DOM.
   useEffect(() => {
+    if (!hasMore) return;
     const el = sentinelRef.current;
     if (!el) return;
     const obs = new IntersectionObserver(([entry]) => {
@@ -160,7 +164,7 @@ export default function ApproveTransactions() {
     }, { threshold: 0 });
     obs.observe(el);
     return () => obs.disconnect();
-  }, [loadPage]);
+  }, [hasMore, loadPage]);
 
   const handleDecision = async (id, approved) => {
     setActionLoading(id);
