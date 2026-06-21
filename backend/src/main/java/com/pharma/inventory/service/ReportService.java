@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.pharma.inventory.dto.SalesGraphResponse;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -667,6 +669,75 @@ public class ReportService {
             sb.append("  ").append(tx.getNotes());
         }
         sb.append("\n");
+    }
+
+    @Transactional(readOnly = true)
+    public SalesGraphResponse salesGraph(String period, LocalDate from, LocalDate to) {
+        if (from == null) from = todayIST().minusDays(29);
+        if (to == null) to = todayIST();
+        if (period == null || period.isBlank()) period = "daily";
+
+        LocalDateTime start = from.atStartOfDay();
+        LocalDateTime end = to.plusDays(1).atStartOfDay();
+
+        List<Transaction> txns = transactionRepository.findApprovedBetween(
+                Transaction.TransactionStatus.APPROVED, start, end);
+
+        Map<String, long[]> grouped = new LinkedHashMap<>();
+        for (Transaction t : txns) {
+            String key = groupKey(t.getSubmittedAt().toLocalDate(), period);
+            grouped.computeIfAbsent(key, k -> new long[]{0, 0});
+            int price = t.getPricePerUnit() != null ? t.getPricePerUnit() : t.getMedicine().getPrice();
+            grouped.get(key)[0] += t.getQuantity();
+            grouped.get(key)[1] += (long) t.getQuantity() * price;
+        }
+
+        List<SalesGraphResponse.DataPoint> dataPoints = new ArrayList<>();
+        for (String key : allPeriodKeys(period, from, to)) {
+            long[] agg = grouped.getOrDefault(key, new long[]{0, 0});
+            dataPoints.add(new SalesGraphResponse.DataPoint(keyToLabel(key, period), (int) agg[0], agg[1]));
+        }
+
+        return new SalesGraphResponse(period, dataPoints);
+    }
+
+    private String groupKey(LocalDate date, String period) {
+        if ("monthly".equals(period)) return date.format(DateTimeFormatter.ofPattern("yyyy-MM"));
+        if ("weekly".equals(period)) return date.with(DayOfWeek.MONDAY).toString();
+        return date.toString();
+    }
+
+    private String keyToLabel(String key, String period) {
+        if ("monthly".equals(period)) {
+            return LocalDate.parse(key + "-01").format(DateTimeFormatter.ofPattern("MMM yy"));
+        }
+        return LocalDate.parse(key).format(DateTimeFormatter.ofPattern("d MMM"));
+    }
+
+    private List<String> allPeriodKeys(String period, LocalDate from, LocalDate to) {
+        List<String> keys = new ArrayList<>();
+        if ("monthly".equals(period)) {
+            LocalDate cur = from.withDayOfMonth(1);
+            LocalDate last = to.withDayOfMonth(1);
+            while (!cur.isAfter(last)) {
+                keys.add(cur.format(DateTimeFormatter.ofPattern("yyyy-MM")));
+                cur = cur.plusMonths(1);
+            }
+        } else if ("weekly".equals(period)) {
+            LocalDate cur = from.with(DayOfWeek.MONDAY);
+            LocalDate last = to.with(DayOfWeek.MONDAY);
+            while (!cur.isAfter(last)) {
+                keys.add(cur.toString());
+                cur = cur.plusWeeks(1);
+            }
+        } else {
+            LocalDate cur = from;
+            while (!cur.isAfter(to)) {
+                keys.add(cur.toString());
+                cur = cur.plusDays(1);
+            }
+        }
+        return keys;
     }
 
     private void appendAdjustmentLine(StringBuilder sb, InventoryAdjustment a) {
