@@ -50,16 +50,16 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
      * Step 1: fetch a page of IDs via lightweight scalar queries.
      * Step 2: fetch the full entity graph for those IDs (findByIdsWithDetails).
      */
-    @Query(value = "SELECT DISTINCT t.id FROM Transaction t ORDER BY t.submittedAt DESC",
-           countQuery = "SELECT COUNT(DISTINCT t) FROM Transaction t")
+    @Query(value = "SELECT t.id FROM Transaction t ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(t) FROM Transaction t")
     Page<Long> findAllIds(Pageable pageable);
 
-    @Query(value = "SELECT DISTINCT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt DESC",
-           countQuery = "SELECT COUNT(DISTINCT t) FROM Transaction t WHERE t.status = :status")
+    @Query(value = "SELECT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.status = :status")
     Page<Long> findIdsByStatus(@Param("status") Transaction.TransactionStatus status, Pageable pageable);
 
-    @Query(value = "SELECT DISTINCT t.id FROM Transaction t WHERE t.submittedBy = :user ORDER BY t.submittedAt DESC",
-           countQuery = "SELECT COUNT(DISTINCT t) FROM Transaction t WHERE t.submittedBy = :user")
+    @Query(value = "SELECT t.id FROM Transaction t WHERE t.submittedBy = :user ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.submittedBy = :user")
     Page<Long> findIdsByUser(@Param("user") User user, Pageable pageable);
 
     @Query("SELECT DISTINCT t FROM Transaction t " +
