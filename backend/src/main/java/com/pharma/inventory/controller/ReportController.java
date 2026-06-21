@@ -1,6 +1,7 @@
 package com.pharma.inventory.controller;
 
 import com.pharma.inventory.dto.ReportResponse;
+import com.pharma.inventory.dto.SalesGraphResponse;
 import com.pharma.inventory.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -52,5 +53,15 @@ public class ReportController {
             @RequestParam(value = "date", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ResponseEntity.ok(reportService.dailyReport(date));
+    }
+
+    @GetMapping("/sales-graph")
+    public ResponseEntity<SalesGraphResponse> salesGraph(
+            @RequestParam(value = "period", defaultValue = "daily") String period,
+            @RequestParam(value = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(value = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(reportService.salesGraph(period, from, to));
     }
 }

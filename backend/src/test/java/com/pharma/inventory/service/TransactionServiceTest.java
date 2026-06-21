@@ -280,7 +280,7 @@ class TransactionServiceTest {
 
         @Test @DisplayName("returns empty list when no transactions exist")
         void getAll_noTransactions_returnsEmpty() {
-            when(transactionRepository.findAllByOrderBySubmittedAtDesc())
+            when(transactionRepository.findAllWithDetails())
                     .thenReturn(List.of());
             assertThat(transactionService.getAll()).isEmpty();
         }
@@ -293,7 +293,7 @@ class TransactionServiceTest {
             TransactionResponse r1 = stubResponse(t1);
             TransactionResponse r2 = stubResponse(t2);
 
-            when(transactionRepository.findAllByOrderBySubmittedAtDesc())
+            when(transactionRepository.findAllWithDetails())
                     .thenReturn(List.of(t1, t2));
             when(transactionMapper.toResponse(t1)).thenReturn(r1);
             when(transactionMapper.toResponse(t2)).thenReturn(r2);
@@ -309,7 +309,7 @@ class TransactionServiceTest {
             TransactionResponse resp = stubResponse(tx);
             resp.setScreenshots(List.of(new ScreenshotDto(b64, "image/png")));
 
-            when(transactionRepository.findAllByOrderBySubmittedAtDesc())
+            when(transactionRepository.findAllWithDetails())
                     .thenReturn(List.of(tx));
             when(transactionMapper.toResponse(tx)).thenReturn(resp);
 
@@ -328,7 +328,7 @@ class TransactionServiceTest {
         @Test @DisplayName("returns empty list when user has no transactions")
         void getByUser_noTransactions_returnsEmpty() {
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
-            when(transactionRepository.findBySubmittedByOrderBySubmittedAtDesc(regularUser))
+            when(transactionRepository.findByUserWithDetails(regularUser))
                     .thenReturn(List.of());
             assertThat(transactionService.getByUser("john.doe")).isEmpty();
         }
@@ -347,7 +347,7 @@ class TransactionServiceTest {
             TransactionResponse resp = stubResponse(tx);
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
-            when(transactionRepository.findBySubmittedByOrderBySubmittedAtDesc(regularUser))
+            when(transactionRepository.findByUserWithDetails(regularUser))
                     .thenReturn(List.of(tx));
             when(transactionMapper.toResponse(tx)).thenReturn(resp);
 

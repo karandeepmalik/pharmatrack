@@ -107,4 +107,7 @@ export const getReportTodaySales         = (from, to) => api.get('/reports/today
 export const getReportDaily = (date) =>
   api.get('/reports/daily', date ? { params: { date } } : {});
 
+export const getReportSalesGraph = (period, from, to) =>
+  api.get('/reports/sales-graph', { params: { period, from, to } });
+
 export default api;

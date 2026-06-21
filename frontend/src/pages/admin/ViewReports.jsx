@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
+import SalesGraphReport from './SalesGraphReport';
 
 const REPORTS = [
     { value: '', label: '-- Select a Report --' },
     { value: 'inventory-by-user', label: 'Current Medicine Stock Per User' },
     { value: 'inventory-valuation', label: 'Medicine Stock Valuation' },
-    { value: 'today-sales', label: "Sales Report" },
+    { value: 'today-sales', label: 'Sales Report' },
     { value: 'daily', label: 'Daily Report' },
+    { value: 'sales-graph', label: 'Sales Trend Graph' },
 ];
 
 // Default date = today in YYYY-MM-DD
@@ -55,6 +57,7 @@ export default function ViewReports() {
     };
 
     const salesDateValid = salesFrom && salesTo && salesFrom <= salesTo;
+    const isSalesGraph = selected === 'sales-graph';
 
     return (
         <div className="page">
@@ -63,7 +66,7 @@ export default function ViewReports() {
                 <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
             </div>
 
-            {error && <div role="alert" className="alert alert-error">{error}</div>}
+            {error && !isSalesGraph && <div role="alert" className="alert alert-error">{error}</div>}
 
             <div className="form-card">
                 <div className="form-group">
@@ -78,69 +81,77 @@ export default function ViewReports() {
                     </select>
                 </div>
 
-                {selected === 'today-sales' && (
-                    <div className="form-row">
-                        <div className="form-group">
-                            <label htmlFor="sales-from-input">From Date</label>
-                            <input
-                                id="sales-from-input"
-                                type="date"
-                                value={salesFrom}
-                                onChange={e => { setSalesFrom(e.target.value); setContent(''); }}
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="sales-to-input">To Date</label>
-                            <input
-                                id="sales-to-input"
-                                type="date"
-                                value={salesTo}
-                                onChange={e => { setSalesTo(e.target.value); setContent(''); }}
-                            />
-                        </div>
-                    </div>
-                )}
+                {/* Sales Trend Graph — renders its own controls inline */}
+                {isSalesGraph && <SalesGraphReport />}
 
-                {selected === 'today-sales' && salesFrom > salesTo && (
-                    <p className="form-error" role="alert">
-                        "From" date must be before or equal to "To" date.
-                    </p>
-                )}
+                {/* Standard text-report controls */}
+                {!isSalesGraph && (
+                    <>
+                        {selected === 'today-sales' && (
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label htmlFor="sales-from-input">From Date</label>
+                                    <input
+                                        id="sales-from-input"
+                                        type="date"
+                                        value={salesFrom}
+                                        onChange={e => { setSalesFrom(e.target.value); setContent(''); }}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="sales-to-input">To Date</label>
+                                    <input
+                                        id="sales-to-input"
+                                        type="date"
+                                        value={salesTo}
+                                        onChange={e => { setSalesTo(e.target.value); setContent(''); }}
+                                    />
+                                </div>
+                            </div>
+                        )}
 
-                {selected === 'inventory-valuation' && (
-                    <div className="form-group">
-                        <label htmlFor="valuation-date-input">As of Date</label>
-                        <input
-                            id="valuation-date-input"
-                            type="date"
-                            value={valuationDate}
-                            onChange={e => { setValuationDate(e.target.value); setContent(''); }}
-                        />
-                    </div>
-                )}
+                        {selected === 'today-sales' && salesFrom > salesTo && (
+                            <p className="form-error" role="alert">
+                                "From" date must be before or equal to "To" date.
+                            </p>
+                        )}
 
-                {selected === 'daily' && (
-                    <div className="form-group">
-                        <label htmlFor="daily-date-input">Report Date</label>
-                        <input
-                            id="daily-date-input"
-                            type="date"
-                            value={dailyDate}
-                            onChange={e => { setDailyDate(e.target.value); setContent(''); }}
-                        />
-                    </div>
-                )}
+                        {selected === 'inventory-valuation' && (
+                            <div className="form-group">
+                                <label htmlFor="valuation-date-input">As of Date</label>
+                                <input
+                                    id="valuation-date-input"
+                                    type="date"
+                                    value={valuationDate}
+                                    onChange={e => { setValuationDate(e.target.value); setContent(''); }}
+                                />
+                            </div>
+                        )}
 
-                <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={!selected || loading || (selected === 'today-sales' && !salesDateValid)}
-                    onClick={handleGenerate}>
-                    {loading ? 'Generating…' : 'Generate Report'}
-                </button>
+                        {selected === 'daily' && (
+                            <div className="form-group">
+                                <label htmlFor="daily-date-input">Report Date</label>
+                                <input
+                                    id="daily-date-input"
+                                    type="date"
+                                    value={dailyDate}
+                                    onChange={e => { setDailyDate(e.target.value); setContent(''); }}
+                                />
+                            </div>
+                        )}
+
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={!selected || loading || (selected === 'today-sales' && !salesDateValid)}
+                            onClick={handleGenerate}>
+                            {loading ? 'Generating…' : 'Generate Report'}
+                        </button>
+                    </>
+                )}
             </div>
 
-            {content && (
+            {content && !isSalesGraph && (
                 <div className="report-section">
                     <div className="report-header">
                         <h2>{REPORTS.find(r => r.value === selected)?.label}</h2>

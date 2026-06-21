@@ -3,7 +3,11 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
-@Entity @Table(name="inventory_adjustments")
+@Entity @Table(name="inventory_adjustments", indexes = {
+    @Index(name = "idx_adj_adjusted_at",  columnList = "adjusted_at"),
+    @Index(name = "idx_adj_user_id",      columnList = "user_id"),
+    @Index(name = "idx_adj_medicine_id",  columnList = "medicine_id"),
+})
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class InventoryAdjustment {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
