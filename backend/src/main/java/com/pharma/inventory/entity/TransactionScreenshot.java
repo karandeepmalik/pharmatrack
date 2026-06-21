@@ -7,7 +7,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "transaction_screenshots")
+@Table(name = "transaction_screenshots", indexes = {
+    @Index(name = "idx_ts_transaction_id", columnList = "transaction_id"),
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -30,4 +32,8 @@ public class TransactionScreenshot {
 
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
+
+    /** Null = not yet processed by compression migration; true = compressed. */
+    @Column(name = "compressed")
+    private Boolean compressed;
 }

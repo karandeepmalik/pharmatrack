@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -12,7 +13,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "transactions")
+@Table(name = "transactions", indexes = {
+    @Index(name = "idx_tx_status",        columnList = "status"),
+    @Index(name = "idx_tx_submitted_at",  columnList = "submitted_at"),
+    @Index(name = "idx_tx_submitted_by",  columnList = "submitted_by"),
+    @Index(name = "idx_tx_medicine_id",   columnList = "medicine_id"),
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -79,8 +85,9 @@ public class Transaction {
 
     @Builder.Default
     @OneToMany(mappedBy = "transaction", cascade = CascadeType.ALL,
-               fetch = FetchType.EAGER, orphanRemoval = true)
+               fetch = FetchType.LAZY, orphanRemoval = true)
     @OrderBy("displayOrder ASC")
+    @BatchSize(size = 50)
     private List<TransactionScreenshot> screenshots = new ArrayList<>();
 
     @PrePersist

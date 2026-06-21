@@ -95,14 +95,14 @@ public class TransactionService {
 
     @Transactional(readOnly = true)
     public List<TransactionResponse> getAll() {
-        return transactionRepository.findAllByOrderBySubmittedAtDesc()
+        return transactionRepository.findAllWithDetails()
                 .stream().map(transactionMapper::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<TransactionResponse> getByUser(String username) {
         User user = findUserByUsername(username);
-        return transactionRepository.findBySubmittedByOrderBySubmittedAtDesc(user)
+        return transactionRepository.findByUserWithDetails(user)
                 .stream().map(transactionMapper::toResponse).toList();
     }
 
