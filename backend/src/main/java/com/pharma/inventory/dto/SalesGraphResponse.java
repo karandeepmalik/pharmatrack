@@ -15,9 +15,19 @@ public class SalesGraphResponse {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class SpecBreakdown {
+        private String specName;
+        private int quantity;
+        private long value;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class DataPoint {
         private String label;
         private int quantity;
         private long value;
+        private List<SpecBreakdown> specs;
     }
 }

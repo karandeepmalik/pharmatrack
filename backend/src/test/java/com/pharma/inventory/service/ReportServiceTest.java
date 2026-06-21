@@ -1,6 +1,7 @@
 package com.pharma.inventory.service;
 
 import com.pharma.inventory.dto.ReportResponse;
+import com.pharma.inventory.dto.SalesGraphResponse;
 import com.pharma.inventory.entity.*;
 import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
@@ -1736,6 +1737,216 @@ class ReportServiceTest {
 
             assertThat(r.getContent()).contains("john.doe: 10 + 2 (in transit)");
             assertThat(r.getContent()).contains("TOTAL: 12");
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // SalesGraph
+    // ────────────────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("SalesGraph")
+    class SalesGraph {
+
+        private Transaction makeTx(Long id, User u, Medicine m, int qty, LocalDateTime at) {
+            Transaction tx = Transaction.builder()
+                    .id(id).submittedBy(u).medicine(m).quantity(qty)
+                    .status(Transaction.TransactionStatus.APPROVED).notes("t")
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .submittedAt(at).build();
+            tx.setApprovedAt(at);
+            return tx;
+        }
+
+        @Test
+        @DisplayName("daily period produces one data point per day with correct label")
+        void dailyPeriodLabelFormat() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(makeTx(1L, john, vial, 5, at)));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+
+            assertThat(resp.getPeriod()).isEqualTo("daily");
+            assertThat(resp.getDataPoints()).hasSize(1);
+            assertThat(resp.getDataPoints().get(0).getLabel()).isEqualTo("15 Jun");
+        }
+
+        @Test
+        @DisplayName("each bar has spec breakdowns matching DAILY_SPEC_ORDER names")
+        void barsContainSpecBreakdowns() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial,   3, at),
+                            makeTx(2L, jane, vial5,  2, at)
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+
+            var dp = resp.getDataPoints().get(0);
+            assertThat(dp.getQuantity()).isEqualTo(5);
+            assertThat(dp.getSpecs()).isNotEmpty();
+
+            var vial10Spec = dp.getSpecs().stream()
+                    .filter(s -> "Vial 10 ml".equals(s.getSpecName())).findFirst();
+            assertThat(vial10Spec).isPresent();
+            assertThat(vial10Spec.get().getQuantity()).isEqualTo(3);
+
+            var vial5Spec = dp.getSpecs().stream()
+                    .filter(s -> "Vial 5 ml".equals(s.getSpecName())).findFirst();
+            assertThat(vial5Spec).isPresent();
+            assertThat(vial5Spec.get().getQuantity()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("total quantity equals sum of all spec quantities")
+        void totalQuantityEqualsSumOfSpecs() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial,   3, at),
+                            makeTx(2L, jane, vial5,  7, at),
+                            makeTx(3L, john, tablet, 4, at)
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+
+            var dp = resp.getDataPoints().get(0);
+            int specSum = dp.getSpecs().stream()
+                    .mapToInt(SalesGraphResponse.SpecBreakdown::getQuantity).sum();
+            assertThat(dp.getQuantity()).isEqualTo(specSum).isEqualTo(14);
+        }
+
+        @Test
+        @DisplayName("total value equals sum of all spec values")
+        void totalValueEqualsSumOfSpecs() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial,  2, at),   // 2 * 4000 = 8000
+                            makeTx(2L, jane, vial5, 3, at)    // 3 * 3000 = 9000
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+
+            var dp = resp.getDataPoints().get(0);
+            long specValueSum = dp.getSpecs().stream()
+                    .mapToLong(SalesGraphResponse.SpecBreakdown::getValue).sum();
+            assertThat(dp.getValue()).isEqualTo(specValueSum).isEqualTo(17000L);
+        }
+
+        @Test
+        @DisplayName("pricePerUnit overrides medicine price in spec value calculation")
+        void pricePerUnitOverridesMedicinePrice() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            Transaction tx = makeTx(1L, john, vial, 2, at);
+            tx.setPricePerUnit(5000);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(tx));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+
+            var dp = resp.getDataPoints().get(0);
+            assertThat(dp.getValue()).isEqualTo(10000L);
+            var spec = dp.getSpecs().stream()
+                    .filter(s -> "Vial 10 ml".equals(s.getSpecName())).findFirst().orElseThrow();
+            assertThat(spec.getValue()).isEqualTo(10000L);
+        }
+
+        @Test
+        @DisplayName("gap-fills empty days with zero-quantity data points")
+        void gapFillsEmptyDays() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(makeTx(1L, john, vial, 5, at)));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 14), LocalDate.of(2026, 6, 16));
+
+            assertThat(resp.getDataPoints()).hasSize(3);
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualTo(0);  // 14 Jun
+            assertThat(resp.getDataPoints().get(1).getQuantity()).isEqualTo(5);  // 15 Jun
+            assertThat(resp.getDataPoints().get(2).getQuantity()).isEqualTo(0);  // 16 Jun
+        }
+
+        @Test
+        @DisplayName("weekly grouping merges Mon-Sun into single bar starting Monday")
+        void weeklyGroupingUsesMondayStart() {
+            // June 15, 2026 = Monday; June 17, 2026 = Wednesday (same week)
+            LocalDateTime mon = LocalDateTime.of(2026, 6, 15, 10, 0);
+            LocalDateTime wed = LocalDateTime.of(2026, 6, 17, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial, 3, mon),
+                            makeTx(2L, jane, vial, 2, wed)
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "weekly", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 21));
+
+            assertThat(resp.getDataPoints()).hasSize(1);
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("monthly grouping groups all days in same month into one bar")
+        void monthlyGroupsAllDaysInMonth() {
+            LocalDateTime d1 = LocalDateTime.of(2026, 6, 1,  10, 0);
+            LocalDateTime d2 = LocalDateTime.of(2026, 6, 20, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial, 4, d1),
+                            makeTx(2L, jane, vial, 6, d2)
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "monthly", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30));
+
+            assertThat(resp.getDataPoints()).hasSize(1);
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualTo(10);
+            assertThat(resp.getDataPoints().get(0).getLabel()).isEqualTo("Jun 26");
+        }
+
+        @Test
+        @DisplayName("null period defaults to daily")
+        void nullPeriodDefaultsToDaily() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of());
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    null, LocalDate.now().minusDays(1), LocalDate.now());
+
+            assertThat(resp.getPeriod()).isEqualTo("daily");
+        }
+
+        @Test
+        @DisplayName("spec order is anchored to DAILY_SPEC_ORDER across all bars")
+        void specOrderIsConsistentAcrossBars() {
+            LocalDateTime d1 = LocalDateTime.of(2026, 6, 15, 10, 0);
+            LocalDateTime d2 = LocalDateTime.of(2026, 6, 16, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial5, 1, d1),   // only Vial 5ml on day1
+                            makeTx(2L, jane, vial,  1, d2)    // only Vial 10ml on day2
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 16));
+
+            var day1 = resp.getDataPoints().get(0);
+            var day2 = resp.getDataPoints().get(1);
+            // Both bars must list specs in the same order
+            var specs1 = day1.getSpecs().stream().map(SalesGraphResponse.SpecBreakdown::getSpecName).toList();
+            var specs2 = day2.getSpecs().stream().map(SalesGraphResponse.SpecBreakdown::getSpecName).toList();
+            assertThat(specs1).isEqualTo(specs2);
+            // Vial 10 ml must come before Vial 5 ml (DAILY_SPEC_ORDER ordering)
+            assertThat(specs1.indexOf("Vial 10 ml")).isLessThan(specs1.indexOf("Vial 5 ml"));
         }
     }
 }

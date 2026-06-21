@@ -934,6 +934,105 @@ async function run() {
     assert(r.status === 401 || r.status === 403, `Expected 401, got ${r.status}`);
   });
 
+  // ── Sales Graph — stacked spec breakdown ────────────────────────────
+  console.log('\n-- Sales Graph (stacked spec breakdown)');
+
+  await test('sales-graph returns 200 with period and dataPoints', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.period === 'daily', `Expected period=daily, got ${r.data.period}`);
+    assert(Array.isArray(r.data.dataPoints), 'Expected dataPoints array');
+  });
+
+  await test('sales-graph dataPoints have specs array', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    for (const dp of r.data.dataPoints) {
+      assert(Array.isArray(dp.specs), `dataPoint "${dp.label}" missing specs array`);
+      assert(typeof dp.quantity === 'number', 'quantity must be number');
+      assert(typeof dp.value === 'number', 'value must be number');
+    }
+  });
+
+  await test('sales-graph total quantity equals sum of spec quantities', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    for (const dp of r.data.dataPoints) {
+      const specSum = dp.specs.reduce((s, sp) => s + sp.quantity, 0);
+      assert(specSum === dp.quantity,
+        `Bar "${dp.label}": spec sum ${specSum} !== total quantity ${dp.quantity}`);
+    }
+  });
+
+  await test('sales-graph total value equals sum of spec values', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    for (const dp of r.data.dataPoints) {
+      const specValSum = dp.specs.reduce((s, sp) => s + Number(sp.value), 0);
+      assert(Math.abs(specValSum - Number(dp.value)) < 1,
+        `Bar "${dp.label}": spec value sum ${specValSum} !== total value ${dp.value}`);
+    }
+  });
+
+  await test('sales-graph weekly period returns weekly-labelled data', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph?period=weekly`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    assert(r.data.period === 'weekly', `Expected period=weekly, got ${r.data.period}`);
+  });
+
+  await test('sales-graph monthly period returns monthly-labelled data', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph?period=monthly`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    assert(r.data.period === 'monthly', `Expected period=monthly, got ${r.data.period}`);
+  });
+
+  await test('sales-graph all bars have the same spec list order', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph`, adminToken);
+    assert(r.status === 200, `Got ${r.status}`);
+    if (r.data.dataPoints.length < 2) return; // skip if < 2 bars
+    const firstSpecOrder = r.data.dataPoints[0].specs.map(s => s.specName).join(',');
+    for (const dp of r.data.dataPoints.slice(1)) {
+      const order = dp.specs.map(s => s.specName).join(',');
+      assert(order === firstSpecOrder,
+        `Spec order inconsistent: "${order}" vs "${firstSpecOrder}"`);
+    }
+  });
+
+  await test('non-admin cannot access sales-graph (401/403)', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph`, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401/403, got ${r.status}`);
+  });
+
+  // ── Telemetry ────────────────────────────────────────────────────────
+  console.log('\n-- Telemetry');
+
+  await test('admin can post telemetry event and gets 200', async () => {
+    const r = await apiPost(`${API}/telemetry`, {
+      eventName: 'sales_graph_loaded',
+      page: '/admin/reports',
+      properties: { period: 'daily', dataPoints: 5 },
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('regular user can post telemetry event', async () => {
+    const r = await apiPost(`${API}/telemetry`, {
+      eventName: 'page_view',
+      page: '/dashboard',
+      properties: {},
+    }, userToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+  });
+
+  await test('unauthenticated telemetry request is rejected', async () => {
+    const r = await apiPost(`${API}/telemetry`, {
+      eventName: 'ping',
+      page: '/login',
+      properties: {},
+    });
+    assert(r.status === 401, `Expected 401, got ${r.status}`);
+  });
+
   // ── Inventory Adjustments — GET & DELETE ─────────────────────────────
   console.log('\n-- Inventory Adjustments (GET & DELETE)');
   const today = new Date().toISOString().slice(0, 10);

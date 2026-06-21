@@ -9,6 +9,7 @@ import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.TransactionRepository;
+import io.micrometer.core.annotation.Timed;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -82,6 +83,7 @@ public class ReportService {
         return map;
     }
 
+    @Timed(value = "pharmatrack.report.inventory_by_user", description = "Time to build inventory-by-user report")
     @Transactional(readOnly = true)
     public ReportResponse inventoryByUser() {
         List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroRegularOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
@@ -406,6 +408,7 @@ public class ReportService {
     /** Convenience overload — defaults to today only. */
     public ReportResponse todaySales() { return todaySales(todayIST(), todayIST()); }
 
+    @Timed(value = "pharmatrack.report.today_sales", description = "Time to build sales report")
     @Transactional(readOnly = true)
     public ReportResponse todaySales(LocalDate from, LocalDate to) {
         LocalDate effectiveFrom = from != null ? from : todayIST();
@@ -671,6 +674,7 @@ public class ReportService {
         sb.append("\n");
     }
 
+    @Timed(value = "pharmatrack.report.sales_graph", description = "Time to build the sales graph response")
     @Transactional(readOnly = true)
     public SalesGraphResponse salesGraph(String period, LocalDate from, LocalDate to) {
         if (from == null) from = todayIST().minusDays(29);
@@ -683,22 +687,56 @@ public class ReportService {
         List<Transaction> txns = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
 
-        Map<String, long[]> grouped = new LinkedHashMap<>();
+        // Spec order: DAILY_SPEC_ORDER first (consistent colours), unknown specs appended
+        LinkedHashSet<String> specOrder = new LinkedHashSet<>();
+        for (String[] spec : DAILY_SPEC_ORDER) specOrder.add(spec[2]);
+
+        // Map<periodKey, Map<specName, long[]{qty, val}>>
+        Map<String, Map<String, long[]>> grouped = new LinkedHashMap<>();
         for (Transaction t : txns) {
             String key = groupKey(t.getSubmittedAt().toLocalDate(), period);
-            grouped.computeIfAbsent(key, k -> new long[]{0, 0});
+            String specName = specDisplayName(t.getMedicine());
+            specOrder.add(specName);
+            grouped.computeIfAbsent(key, k -> new LinkedHashMap<>())
+                   .computeIfAbsent(specName, s -> new long[]{0, 0});
             int price = t.getPricePerUnit() != null ? t.getPricePerUnit() : t.getMedicine().getPrice();
-            grouped.get(key)[0] += t.getQuantity();
-            grouped.get(key)[1] += (long) t.getQuantity() * price;
+            long[] agg = grouped.get(key).get(specName);
+            agg[0] += t.getQuantity();
+            agg[1] += (long) t.getQuantity() * price;
         }
+
+        List<String> orderedSpecs = new ArrayList<>(specOrder);
 
         List<SalesGraphResponse.DataPoint> dataPoints = new ArrayList<>();
         for (String key : allPeriodKeys(period, from, to)) {
-            long[] agg = grouped.getOrDefault(key, new long[]{0, 0});
-            dataPoints.add(new SalesGraphResponse.DataPoint(keyToLabel(key, period), (int) agg[0], agg[1]));
+            Map<String, long[]> specMap = grouped.getOrDefault(key, Collections.emptyMap());
+            long totalQty = 0, totalVal = 0;
+            List<SalesGraphResponse.SpecBreakdown> specs = new ArrayList<>();
+            for (String specName : orderedSpecs) {
+                long[] agg = specMap.getOrDefault(specName, new long[]{0, 0});
+                specs.add(new SalesGraphResponse.SpecBreakdown(specName, (int) agg[0], agg[1]));
+                totalQty += agg[0];
+                totalVal += agg[1];
+            }
+            dataPoints.add(new SalesGraphResponse.DataPoint(
+                    keyToLabel(key, period), (int) totalQty, totalVal, specs));
         }
 
         return new SalesGraphResponse(period, dataPoints);
+    }
+
+    private String specDisplayName(Medicine m) {
+        String key = specKey(m);
+        for (String[] spec : DAILY_SPEC_ORDER) {
+            if ((spec[0] + "|" + spec[1]).equals(key)) return spec[2];
+        }
+        int s = m.getSpecification().intValue();
+        return switch (m.getType()) {
+            case VIAL    -> "Vial " + s + " ml";
+            case TABLET  -> "Tablet " + s + " mg";
+            case CAPSULE -> "Capsule " + s + " mg";
+            case SYRUP   -> "Syrup " + s + " ml";
+        };
     }
 
     private String groupKey(LocalDate date, String period) {
