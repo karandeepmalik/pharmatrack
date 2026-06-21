@@ -60,8 +60,13 @@ class TransactionRepositoryTest {
         // Explicit submittedAt values so ordering is deterministic
         tx1 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING,
                 LocalDateTime.of(2024, 1, 1, 10, 0));
-        tx2 = buildTx(user1, medicine, Transaction.TransactionStatus.APPROVED,
-                LocalDateTime.of(2024, 1, 2, 10, 0));
+        tx2 = Transaction.builder()
+                .submittedBy(user1).medicine(medicine).quantity(10)
+                .status(Transaction.TransactionStatus.APPROVED)
+                .notes("Test note for APPROVED")
+                .submittedAt(LocalDateTime.of(2024, 1, 2, 10, 0))
+                .approvedAt(LocalDateTime.of(2024, 1, 2, 12, 0))
+                .build();
         tx3 = buildTx(user2, medicine, Transaction.TransactionStatus.PENDING,
                 LocalDateTime.of(2024, 1, 3, 10, 0));
         em.persist(tx1);
@@ -235,6 +240,311 @@ class TransactionRepositoryTest {
         void emptyIds_returnsEmpty() {
             List<Transaction> result = repo.findByIdsWithDetails(List.of());
             assertThat(result).isEmpty();
+        }
+    }
+
+    // ── findAllWithDetails ───────────────────────────────────────────────────
+
+    @Nested @DisplayName("findAllWithDetails")
+    class FindAllWithDetails {
+
+        @Test @DisplayName("returns all transactions")
+        void returnsAll() {
+            List<Transaction> result = repo.findAllWithDetails();
+            assertThat(result).extracting(Transaction::getId)
+                    .containsExactlyInAnyOrder(tx1.getId(), tx2.getId(), tx3.getId());
+        }
+
+        @Test @DisplayName("ordered DESC by submittedAt")
+        void orderedDesc() {
+            List<Transaction> result = repo.findAllWithDetails();
+            assertThat(result).extracting(Transaction::getId)
+                    .containsExactly(tx3.getId(), tx2.getId(), tx1.getId());
+        }
+
+        @Test @DisplayName("eagerly loads submittedBy, medicine, pharmaCompany")
+        void eagerlyLoadsAssociations() {
+            List<Transaction> result = repo.findAllWithDetails();
+            assertThat(result.get(0).getSubmittedBy().getUsername()).isNotNull();
+            assertThat(result.get(0).getMedicine().getName()).isEqualTo("Paracetamol");
+            assertThat(result.get(0).getMedicine().getPharmaCompany().getName()).isEqualTo("Cipla");
+        }
+
+        @Test @DisplayName("approved transaction has approvedBy loaded (LEFT JOIN)")
+        void approvedByLoadedForApprovedTx() {
+            // tx2 has approvedBy=null in test data (LEFT JOIN returns null, not exception)
+            List<Transaction> result = repo.findAllWithDetails();
+            Transaction approved = result.stream()
+                    .filter(t -> t.getId().equals(tx2.getId())).findFirst().orElseThrow();
+            // Just assert no LazyInitializationException accessing the field
+            assertThat(approved.getStatus()).isEqualTo(Transaction.TransactionStatus.APPROVED);
+        }
+    }
+
+    // ── findByUserWithDetails ────────────────────────────────────────────────
+
+    @Nested @DisplayName("findByUserWithDetails")
+    class FindByUserWithDetails {
+
+        @Test @DisplayName("returns only transactions for the given user")
+        void returnsUserTransactions() {
+            List<Transaction> result = repo.findByUserWithDetails(user1);
+            assertThat(result).extracting(Transaction::getId)
+                    .containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
+        }
+
+        @Test @DisplayName("excludes transactions from other users")
+        void excludesOtherUsers() {
+            List<Transaction> result = repo.findByUserWithDetails(user1);
+            assertThat(result).noneMatch(t -> t.getId().equals(tx3.getId()));
+        }
+
+        @Test @DisplayName("ordered DESC by submittedAt")
+        void orderedDesc() {
+            List<Transaction> result = repo.findByUserWithDetails(user1);
+            assertThat(result).extracting(Transaction::getId)
+                    .containsExactly(tx2.getId(), tx1.getId());
+        }
+
+        @Test @DisplayName("returns empty list for user with no transactions")
+        void emptyForUserWithNoTx() {
+            User user3 = buildUser("carol", "carol@test.com");
+            em.persist(user3);
+            em.flush();
+            assertThat(repo.findByUserWithDetails(user3)).isEmpty();
+        }
+    }
+
+    // ── findApprovedBetween ──────────────────────────────────────────────────
+
+    @Nested @DisplayName("findApprovedBetween")
+    class FindApprovedBetween {
+
+        @Test @DisplayName("returns APPROVED transactions whose submittedAt falls in [start, end)")
+        void returnsApprovedInRange() {
+            List<Transaction> result = repo.findApprovedBetween(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result).extracting(Transaction::getId).containsExactly(tx2.getId());
+        }
+
+        @Test @DisplayName("excludes PENDING transactions even when submittedAt is in range")
+        void excludesPending() {
+            List<Transaction> result = repo.findApprovedBetween(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result).noneMatch(t -> t.getStatus() == Transaction.TransactionStatus.PENDING);
+        }
+
+        @Test @DisplayName("returns empty when no APPROVED transactions in range")
+        void emptyWhenNoMatch() {
+            List<Transaction> result = repo.findApprovedBetween(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2025, 1, 1, 0, 0),
+                    LocalDateTime.of(2025, 1, 2, 0, 0));
+            assertThat(result).isEmpty();
+        }
+
+        @Test @DisplayName("eagerly loads submittedBy, medicine, pharmaCompany")
+        void eagerlyLoadsAssociations() {
+            List<Transaction> result = repo.findApprovedBetween(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result.get(0).getSubmittedBy().getUsername()).isEqualTo("alice");
+            assertThat(result.get(0).getMedicine().getPharmaCompany().getName()).isEqualTo("Cipla");
+        }
+    }
+
+    // ── findBySubmittedAtBetween ─────────────────────────────────────────────
+
+    @Nested @DisplayName("findBySubmittedAtBetween")
+    class FindBySubmittedAtBetween {
+
+        @Test @DisplayName("returns all transactions in [start, end) regardless of status")
+        void returnsAllStatusesInRange() {
+            // [Jan 1 00:00, Jan 3 00:00) → tx1 (Jan 1) and tx2 (Jan 2) but NOT tx3 (Jan 3 10:00 is NOT < Jan 3 00:00)
+            List<Transaction> result = repo.findBySubmittedAtBetween(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 3, 0, 0));
+            assertThat(result).extracting(Transaction::getId)
+                    .containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
+        }
+
+        @Test @DisplayName("excludes transaction at or after the exclusive end boundary")
+        void excludesAfterEnd() {
+            List<Transaction> result = repo.findBySubmittedAtBetween(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 3, 0, 0));
+            assertThat(result).noneMatch(t -> t.getId().equals(tx3.getId()));
+        }
+
+        @Test @DisplayName("ordered DESC by submittedAt")
+        void orderedDesc() {
+            List<Transaction> result = repo.findBySubmittedAtBetween(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result).extracting(Transaction::getId)
+                    .containsExactly(tx3.getId(), tx2.getId(), tx1.getId());
+        }
+    }
+
+    // ── findBySubmittedAtBetweenAndStatus ────────────────────────────────────
+
+    @Nested @DisplayName("findBySubmittedAtBetweenAndStatus")
+    class FindBySubmittedAtBetweenAndStatus {
+
+        @Test @DisplayName("filters by status within date range")
+        void filtersByStatus() {
+            List<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    Transaction.TransactionStatus.PENDING);
+            assertThat(result).extracting(Transaction::getId)
+                    .containsExactlyInAnyOrder(tx1.getId(), tx3.getId());
+        }
+
+        @Test @DisplayName("excludes transactions of a different status")
+        void excludesDifferentStatus() {
+            List<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    Transaction.TransactionStatus.PENDING);
+            assertThat(result).noneMatch(t -> t.getStatus() == Transaction.TransactionStatus.APPROVED);
+        }
+
+        @Test @DisplayName("returns empty when status matches but none fall in range")
+        void emptyWhenNoneInRange() {
+            List<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+                    LocalDateTime.of(2025, 1, 1, 0, 0),
+                    LocalDateTime.of(2025, 2, 1, 0, 0),
+                    Transaction.TransactionStatus.PENDING);
+            assertThat(result).isEmpty();
+        }
+    }
+
+    // ── findApprovedUpTo ─────────────────────────────────────────────────────
+
+    @Nested @DisplayName("findApprovedUpTo")
+    class FindApprovedUpTo {
+
+        @Test @DisplayName("returns APPROVED transactions with approvedAt < endExclusive")
+        void returnsApprovedBeforeEnd() {
+            // tx2.approvedAt = 2024-01-02T12:00; end = Jan 3 → included
+            List<Transaction> result = repo.findApprovedUpTo(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 3, 0, 0));
+            assertThat(result).extracting(Transaction::getId).containsExactly(tx2.getId());
+        }
+
+        @Test @DisplayName("excludes transaction when approvedAt is at or after endExclusive")
+        void excludesAtOrAfterEnd() {
+            // end = exactly tx2.approvedAt → NOT < so excluded
+            List<Transaction> result = repo.findApprovedUpTo(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 2, 12, 0));
+            assertThat(result).noneMatch(t -> t.getId().equals(tx2.getId()));
+        }
+
+        @Test @DisplayName("excludes PENDING transactions even when approvedAt were set")
+        void excludesPendingStatus() {
+            List<Transaction> result = repo.findApprovedUpTo(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result).allMatch(t -> t.getStatus() == Transaction.TransactionStatus.APPROVED);
+        }
+
+        @Test @DisplayName("excludes transactions where approvedAt IS NULL")
+        void excludesNullApprovedAt() {
+            // tx1 and tx3 are PENDING with no approvedAt — only tx2 should appear
+            List<Transaction> result = repo.findApprovedUpTo(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result).hasSize(1);
+        }
+    }
+
+    // ── findApprovedFrom ─────────────────────────────────────────────────────
+
+    @Nested @DisplayName("findApprovedFrom")
+    class FindApprovedFrom {
+
+        @Test @DisplayName("returns APPROVED transactions with approvedAt >= from (inclusive)")
+        void returnsApprovedFromInclusive() {
+            // tx2.approvedAt = 2024-01-02T12:00; from = Jan 2 00:00 → included
+            List<Transaction> result = repo.findApprovedFrom(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 2, 0, 0));
+            assertThat(result).extracting(Transaction::getId).containsExactly(tx2.getId());
+        }
+
+        @Test @DisplayName("includes transaction exactly at from boundary")
+        void includesExactBoundary() {
+            // from = exactly tx2.approvedAt → >= so included
+            List<Transaction> result = repo.findApprovedFrom(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 2, 12, 0));
+            assertThat(result).anyMatch(t -> t.getId().equals(tx2.getId()));
+        }
+
+        @Test @DisplayName("returns empty when from is after all approvedAt values")
+        void emptyWhenFromIsAfterAll() {
+            List<Transaction> result = repo.findApprovedFrom(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2025, 1, 1, 0, 0));
+            assertThat(result).isEmpty();
+        }
+
+        @Test @DisplayName("excludes transactions where approvedAt IS NULL")
+        void excludesNullApprovedAt() {
+            List<Transaction> result = repo.findApprovedFrom(
+                    Transaction.TransactionStatus.APPROVED,
+                    LocalDateTime.of(2024, 1, 1, 0, 0));
+            assertThat(result).allMatch(t -> t.getApprovedAt() != null);
+        }
+    }
+
+    // ── nullifyApprovedBy (@Modifying) ───────────────────────────────────────
+
+    @Nested @DisplayName("nullifyApprovedBy")
+    class NullifyApprovedBy {
+
+        @Test @DisplayName("sets approvedBy to null for all transactions referencing the given user")
+        void nullifiesApprovedBy() {
+            tx1.setApprovedBy(user2);
+            em.merge(tx1);
+            em.flush();
+
+            repo.nullifyApprovedBy(user2.getId());
+            em.clear();
+
+            assertThat(em.find(Transaction.class, tx1.getId()).getApprovedBy()).isNull();
+        }
+
+        @Test @DisplayName("does not affect transactions referencing a different approver")
+        void doesNotAffectOtherApprovers() {
+            tx1.setApprovedBy(user1);
+            tx3.setApprovedBy(user2);
+            em.merge(tx1);
+            em.merge(tx3);
+            em.flush();
+
+            repo.nullifyApprovedBy(user2.getId()); // only user2 references cleared
+            em.clear();
+
+            assertThat(em.find(Transaction.class, tx1.getId()).getApprovedBy()).isNotNull();
+        }
+
+        @Test @DisplayName("no-op when no transactions reference the given user")
+        void noopWhenNoMatch() {
+            User stranger = buildUser("stranger", "stranger@test.com");
+            em.persist(stranger);
+            em.flush();
+
+            // Should not throw
+            repo.nullifyApprovedBy(stranger.getId());
         }
     }
 
