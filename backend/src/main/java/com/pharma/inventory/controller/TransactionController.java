@@ -1,6 +1,7 @@
 package com.pharma.inventory.controller;
 
 import com.pharma.inventory.dto.ApprovalRequest;
+import com.pharma.inventory.dto.PagedResponse;
 import com.pharma.inventory.dto.TransactionRequest;
 import com.pharma.inventory.dto.TransactionResponse;
 import com.pharma.inventory.dto.UpdateTransactionRequest;
@@ -61,15 +62,20 @@ public class TransactionController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<TransactionResponse>> getAll() {
-        return ResponseEntity.ok(transactionService.getAll());
+    public ResponseEntity<PagedResponse<TransactionResponse>> getAll(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "ALL") String status) {
+        return ResponseEntity.ok(PagedResponse.of(transactionService.getAllPaged(status, page, size)));
     }
 
     @GetMapping("/my")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<List<TransactionResponse>> getMy(
+    public ResponseEntity<PagedResponse<TransactionResponse>> getMy(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(transactionService.getByUser(userDetails.getUsername()));
+        return ResponseEntity.ok(PagedResponse.of(transactionService.getByUserPaged(userDetails.getUsername(), page, size)));
     }
 
     /**

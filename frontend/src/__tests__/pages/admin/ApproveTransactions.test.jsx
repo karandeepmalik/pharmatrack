@@ -7,6 +7,16 @@ import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
 
+// IntersectionObserver not available in JSDOM; stub it so the sentinel hook doesn't throw
+beforeAll(() => {
+  global.IntersectionObserver = class {
+    constructor() {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
+
 const FAKE_B64 = btoa('fake-image-bytes');
 
 const makeTx = (overrides = {}) => ({
@@ -29,6 +39,11 @@ const makeTx = (overrides = {}) => ({
   ...overrides,
 });
 
+// Wrap a list into the paginated response shape the component expects
+const mkPage = (items, { last = true } = {}) => ({
+  data: { content: items, last, totalElements: items.length },
+});
+
 const renderPage = () =>
   render(
     <MemoryRouter>
@@ -44,13 +59,13 @@ beforeEach(() => {
 
 describe('ApproveTransactions — loading & empty states', () => {
   test('shows loading indicator while fetching', () => {
-    api.getAllTransactions.mockResolvedValue({ data: [] });
+    api.getAllTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
   test('shows empty message when no PENDING transactions', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [] });
+    api.getAllTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/no pending transactions found/i)).toBeInTheDocument()
@@ -70,7 +85,7 @@ describe('ApproveTransactions — loading & empty states', () => {
 
 describe('ApproveTransactions — navigation', () => {
   test('renders a Back link pointing to /admin/dashboard', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [] });
+    api.getAllTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() =>
       expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
@@ -85,7 +100,7 @@ describe('ApproveTransactions — navigation', () => {
 
 describe('ApproveTransactions — transaction card', () => {
   test('renders transaction details including notes', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await waitFor(() =>
@@ -96,7 +111,7 @@ describe('ApproveTransactions — transaction card', () => {
   });
 
   test('shows Approve and Reject buttons for PENDING transactions', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await waitFor(() => screen.getByRole('button', { name: /✓ approve/i }));
@@ -104,9 +119,9 @@ describe('ApproveTransactions — transaction card', () => {
   });
 
   test('does not show action buttons for APPROVED transactions', async () => {
-    api.getAllTransactions.mockResolvedValue({
-      data: [makeTx({ id: 2, status: 'APPROVED', approvedByUsername: 'admin', approvedAt: '2026-04-01T11:00:00' })],
-    });
+    api.getAllTransactions.mockResolvedValue(
+      mkPage([makeTx({ id: 2, status: 'APPROVED', approvedByUsername: 'admin', approvedAt: '2026-04-01T11:00:00' })])
+    );
     renderPage();
 
     // Switch to ALL filter to see approved tx
@@ -123,7 +138,7 @@ describe('ApproveTransactions — transaction card', () => {
 
 describe('ApproveTransactions — no screenshot uploaded', () => {
   test('shows "No screenshot" text when paymentScreenshot is null', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await waitFor(() =>
@@ -132,7 +147,7 @@ describe('ApproveTransactions — no screenshot uploaded', () => {
   });
 
   test('does not render screenshot thumbnail when paymentScreenshot is null', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await waitFor(() => screen.getByText(/payment screenshot/i));
@@ -157,7 +172,7 @@ describe('ApproveTransactions — with screenshot', () => {
   };
 
   test('renders screenshot thumbnail button when screenshot is present', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await waitFor(() =>
@@ -168,7 +183,7 @@ describe('ApproveTransactions — with screenshot', () => {
   });
 
   test('thumbnail img has correct data URI src', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await waitFor(() =>
@@ -180,7 +195,7 @@ describe('ApproveTransactions — with screenshot', () => {
   });
 
   test('clicking thumbnail opens the lightbox dialog', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await openThumbnail();
@@ -191,7 +206,7 @@ describe('ApproveTransactions — with screenshot', () => {
   });
 
   test('lightbox shows full-size image with correct src', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await openThumbnail();
@@ -202,7 +217,7 @@ describe('ApproveTransactions — with screenshot', () => {
   });
 
   test('lightbox has a close button', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await openThumbnail();
@@ -212,7 +227,7 @@ describe('ApproveTransactions — with screenshot', () => {
   });
 
   test('close button dismisses the lightbox', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await openThumbnail();
@@ -226,7 +241,7 @@ describe('ApproveTransactions — with screenshot', () => {
   });
 
   test('clicking the overlay backdrop closes the lightbox', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await openThumbnail();
@@ -240,7 +255,7 @@ describe('ApproveTransactions — with screenshot', () => {
   });
 
   test('lightbox has a download link for the screenshot', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await openThumbnail();
@@ -252,7 +267,7 @@ describe('ApproveTransactions — with screenshot', () => {
   });
 
   test('lightbox shows transaction ID in header', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [txWithScreenshot] });
+    api.getAllTransactions.mockResolvedValue(mkPage([txWithScreenshot]));
     renderPage();
 
     await openThumbnail();
@@ -266,7 +281,7 @@ describe('ApproveTransactions — with screenshot', () => {
     const jpegTx = makeTx({
       screenshots: [{ data: FAKE_B64, mimeType: 'image/jpeg' }],
     });
-    api.getAllTransactions.mockResolvedValue({ data: [jpegTx] });
+    api.getAllTransactions.mockResolvedValue(mkPage([jpegTx]));
     renderPage();
 
     await waitFor(() =>
@@ -295,8 +310,11 @@ describe('ApproveTransactions — filter tabs', () => {
   });
 
   beforeEach(() => {
-    api.getAllTransactions.mockResolvedValue({
-      data: [pendingTx, approvedTx, rejectedTx],
+    // Server-side filtering: return appropriate subset per status arg
+    api.getAllTransactions.mockImplementation((page, size, status) => {
+      const all = [pendingTx, approvedTx, rejectedTx];
+      const content = status === 'ALL' ? all : all.filter((t) => t.status === status);
+      return Promise.resolve(mkPage(content));
     });
   });
 
@@ -344,7 +362,7 @@ describe('ApproveTransactions — filter tabs', () => {
 
 describe('ApproveTransactions — approve and reject actions', () => {
   test('clicking Approve calls approveTransaction with approved: true', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
     api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'APPROVED' } });
 
     renderPage();
@@ -357,7 +375,7 @@ describe('ApproveTransactions — approve and reject actions', () => {
   });
 
   test('clicking Reject calls approveTransaction with approved: false', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
     api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'REJECTED' } });
 
     renderPage();
@@ -371,8 +389,8 @@ describe('ApproveTransactions — approve and reject actions', () => {
 
   test('refetches transactions after approve', async () => {
     api.getAllTransactions
-      .mockResolvedValueOnce({ data: [makeTx()] })
-      .mockResolvedValueOnce({ data: [] });
+      .mockResolvedValueOnce(mkPage([makeTx()]))
+      .mockResolvedValueOnce(mkPage([]));
     api.approveTransaction.mockResolvedValue({});
 
     renderPage();
@@ -387,7 +405,7 @@ describe('ApproveTransactions — approve and reject actions', () => {
 
 describe('ApproveTransactions — price override', () => {
   test('shows price input for PENDING transactions', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await waitFor(() =>
@@ -397,9 +415,9 @@ describe('ApproveTransactions — price override', () => {
   });
 
   test('does not show price input for non-PENDING transactions', async () => {
-    api.getAllTransactions.mockResolvedValue({
-      data: [makeTx({ id: 2, status: 'APPROVED', approvedByUsername: 'admin', approvedAt: '2026-04-01T11:00:00' })],
-    });
+    api.getAllTransactions.mockResolvedValue(
+      mkPage([makeTx({ id: 2, status: 'APPROVED', approvedByUsername: 'admin', approvedAt: '2026-04-01T11:00:00' })])
+    );
     renderPage();
 
     await waitFor(() => screen.getByRole('button', { name: /^all$/i }));
@@ -410,7 +428,7 @@ describe('ApproveTransactions — price override', () => {
   });
 
   test('approve with changed price passes newPrice in payload', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
     api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'APPROVED' } });
 
     renderPage();
@@ -426,7 +444,7 @@ describe('ApproveTransactions — price override', () => {
   });
 
   test('approve without price change does not pass newPrice', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx({ price: undefined })] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx({ price: undefined })]));
     api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'APPROVED' } });
 
     renderPage();
@@ -439,7 +457,7 @@ describe('ApproveTransactions — price override', () => {
   });
 
   test('price input is pre-filled with pricePerUnit when set', async () => {
-    api.getAllTransactions.mockResolvedValue({ data: [makeTx({ pricePerUnit: 3500 })] });
+    api.getAllTransactions.mockResolvedValue(mkPage([makeTx({ pricePerUnit: 3500 })]));
     renderPage();
 
     await waitFor(() =>
@@ -453,12 +471,12 @@ describe('ApproveTransactions — price override', () => {
 
 describe('ApproveTransactions — multiple transactions', () => {
   test('renders screenshot for tx with one, and "No screenshot" for tx without', async () => {
-    api.getAllTransactions.mockResolvedValue({
-      data: [
+    api.getAllTransactions.mockResolvedValue(
+      mkPage([
         makeTx({ id: 1, status: 'PENDING', screenshots: [{ data: FAKE_B64, mimeType: 'image/png' }] }),
         makeTx({ id: 2, status: 'PENDING', notes: 'Second dispatch note here', screenshots: null }),
-      ],
-    });
+      ])
+    );
     renderPage();
 
     // tx #1 has a screenshot — thumbnail button visible
