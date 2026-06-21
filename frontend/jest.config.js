@@ -10,4 +10,14 @@ module.exports = {
   setupFilesAfterEnv: ['@testing-library/jest-dom'],
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
   moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json'],
+  reporters: [
+    'default',
+    ['jest-junit', {
+      outputDirectory: '<rootDir>/test-results',
+      outputName: 'junit.xml',
+      suiteName: 'PharmaTrack Frontend Tests',
+      classNameTemplate: '{classname}',
+      titleTemplate: '{title}',
+    }],
+  ],
 };

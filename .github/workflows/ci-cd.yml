@@ -21,6 +21,10 @@ jobs:
   backend-test:
     name: Backend — Test & Build
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
     defaults:
       run:
         working-directory: backend
@@ -39,6 +43,15 @@ jobs:
         run: mvn verify -P test -q
         env:
           SPRING_PROFILES_ACTIVE: test
+
+      - name: Publish backend test results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Backend Test Results
+          path: backend/target/surefire-reports/TEST-*.xml
+          reporter: java-junit
+          fail-on-error: false
 
       - name: Upload test reports
         if: always()
@@ -64,6 +77,10 @@ jobs:
   frontend-test:
     name: Frontend — Test & Build
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
     defaults:
       run:
         working-directory: frontend
@@ -81,6 +98,15 @@ jobs:
 
       - name: Run Jest unit tests
         run: npm run test:unit -- --coverage --coverageReporters=text-summary
+
+      - name: Publish frontend test results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Frontend Test Results
+          path: frontend/test-results/junit.xml
+          reporter: jest-junit
+          fail-on-error: false
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v6
