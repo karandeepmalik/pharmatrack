@@ -110,4 +110,8 @@ export const getReportDaily = (date) =>
 export const getReportSalesGraph = (period, from, to) =>
   api.get('/reports/sales-graph', { params: { period, from, to } });
 
+// ── Telemetry ──────────────────────────────────────────────────────────
+export const postTelemetryEvent = (eventName, page, properties = {}) =>
+  api.post('/telemetry', { eventName, page, properties });
+
 export default api;

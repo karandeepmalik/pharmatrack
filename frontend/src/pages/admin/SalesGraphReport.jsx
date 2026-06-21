@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as api from '../../api/api';
+import { trackEvent } from '../../telemetry';
 
 const PERIODS = [
     { value: 'daily', label: 'Daily', daysBack: 29 },
@@ -11,6 +12,20 @@ const METRICS = [
     { value: 'quantity', label: 'Quantity' },
     { value: 'value', label: 'Value (Rs)' },
 ];
+
+// Colour palette — index matches the spec's position in the ordered spec list
+const SPEC_COLORS = [
+    '#3b82f6', // blue       — Vial 10 ml
+    '#10b981', // emerald    — Vial 5 ml
+    '#f59e0b', // amber      — Tablet 50 mg
+    '#ef4444', // red        — Tablet 25 mg
+    '#8b5cf6', // purple     — Tablet 12 mg
+    '#06b6d4', // cyan
+    '#f97316', // orange
+    '#ec4899', // pink
+];
+
+const PAGE = '/admin/reports';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -41,7 +56,7 @@ function fmtY(v) {
     return String(v);
 }
 
-function BarChart({ dataPoints, metric }) {
+function BarChart({ dataPoints, metric, specColorMap }) {
     const [tooltip, setTooltip] = useState(null);
 
     const values = dataPoints.map(d => metric === 'quantity' ? d.quantity : Number(d.value));
@@ -97,29 +112,54 @@ function BarChart({ dataPoints, metric }) {
                 {metric === 'quantity' ? 'Units Sold' : 'Value (Rs)'}
             </text>
 
-            {/* Bars + X labels */}
+            {/* Stacked bars + X labels */}
             {dataPoints.map((d, i) => {
-                const val = metric === 'quantity' ? d.quantity : Number(d.value);
-                const barH = yMax > 0 ? (val / yMax) * CH : 0;
                 const x = PAD.left + i * slotW + barGap;
-                const y = PAD.top + CH - barH;
                 const lx = PAD.left + (i + 0.5) * slotW;
                 const ly = PAD.top + CH + 13;
                 const isHovered = tooltip?.i === i;
 
+                // Build stacked segments bottom → top
+                let cumH = 0;
+                const segments = (d.specs || []).map((spec) => {
+                    const val = metric === 'quantity' ? spec.quantity : Number(spec.value);
+                    if (val <= 0) return null;
+                    const segH = yMax > 0 ? (val / yMax) * CH : 0;
+                    const segY = PAD.top + CH - cumH - segH;
+                    cumH += segH;
+                    const color = specColorMap[spec.specName] ?? '#9ca3af';
+                    return (
+                        <rect
+                            key={spec.specName}
+                            x={x} y={segY}
+                            width={barW}
+                            height={Math.max(segH, 0)}
+                            fill={isHovered ? shadeColor(color, -20) : color}
+                            rx={barW > 8 ? 2 : 0}
+                        />
+                    );
+                }).filter(Boolean);
+
+                // Fallback: single grey bar if no spec data
+                if (segments.length === 0) {
+                    const val = metric === 'quantity' ? d.quantity : Number(d.value);
+                    const barH = yMax > 0 ? (val / yMax) * CH : 0;
+                    segments.push(
+                        <rect key="_total" x={x} y={PAD.top + CH - barH}
+                            width={barW} height={Math.max(barH, 0)}
+                            fill={isHovered ? '#1d4ed8' : '#3b82f6'}
+                            rx={barW > 8 ? 2 : 0} />
+                    );
+                }
+
                 return (
                     <g
                         key={i}
-                        onMouseEnter={() => setTooltip({ i, lx, y, d })}
+                        onMouseEnter={() => setTooltip({ i, lx, barTopY: PAD.top + CH - cumH, d })}
                         onMouseLeave={() => setTooltip(null)}
                         style={{ cursor: 'default' }}
                     >
-                        <rect
-                            x={x} y={y}
-                            width={barW} height={Math.max(barH, 0)}
-                            fill={isHovered ? '#1d4ed8' : '#3b82f6'}
-                            rx={barW > 6 ? 3 : 1}
-                        />
+                        {segments}
                         {rotateLabels ? (
                             <text x={lx} y={ly + 4} textAnchor="end" fontSize={10} fill="#6b7280"
                                 transform={`rotate(-45, ${lx}, ${ly})`}>
@@ -137,27 +177,49 @@ function BarChart({ dataPoints, metric }) {
             {/* Tooltip */}
             {tooltip && (() => {
                 const d = tooltip.d;
-                const tx = Math.min(Math.max(tooltip.lx - 65, PAD.left), W - 145);
-                const ty = Math.max(tooltip.y - 68, PAD.top);
+                const activeSpecs = (d.specs || []).filter(s =>
+                    (metric === 'quantity' ? s.quantity : s.value) > 0);
+                const tipH = 28 + activeSpecs.length * 16 + 12;
+                const tx = Math.min(Math.max(tooltip.lx - 75, PAD.left), W - 160);
+                const ty = Math.max(tooltip.barTopY - tipH - 8, PAD.top);
                 return (
                     <g pointerEvents="none">
-                        <rect x={tx} y={ty} width={140} height={56}
+                        <rect x={tx} y={ty} width={155} height={tipH}
                             fill="white" stroke="#d1d5db" rx={5}
                             filter="url(#sg-shadow)" />
                         <text x={tx + 10} y={ty + 17} fontSize={12} fontWeight="600" fill="#111827">
                             {d.label}
                         </text>
-                        <text x={tx + 10} y={ty + 33} fontSize={11} fill="#374151">
-                            Qty: {d.quantity.toLocaleString()}
-                        </text>
-                        <text x={tx + 10} y={ty + 49} fontSize={11} fill="#374151">
-                            Rs {Number(d.value).toLocaleString()}
-                        </text>
+                        {activeSpecs.map((spec, si) => {
+                            const val = metric === 'quantity' ? spec.quantity : Number(spec.value);
+                            const color = specColorMap[spec.specName] ?? '#9ca3af';
+                            return (
+                                <g key={spec.specName}>
+                                    <rect x={tx + 10} y={ty + 26 + si * 16} width={8} height={8}
+                                        fill={color} rx={1} />
+                                    <text x={tx + 22} y={ty + 34 + si * 16} fontSize={10} fill="#374151">
+                                        {spec.specName.replace('Tablet ', 'Tab ').replace(' (10 Tablets)', '')}: {
+                                            metric === 'quantity'
+                                                ? val.toLocaleString()
+                                                : 'Rs ' + val.toLocaleString()
+                                        }
+                                    </text>
+                                </g>
+                            );
+                        })}
                     </g>
                 );
             })()}
         </svg>
     );
+}
+
+function shadeColor(hex, pct) {
+    const num = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, Math.max(0, (num >> 16) + pct));
+    const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + pct));
+    const b = Math.min(255, Math.max(0, (num & 0xff) + pct));
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
 export default function SalesGraphReport() {
@@ -181,10 +243,35 @@ export default function SalesGraphReport() {
         setError('');
         setData(null);
         api.getReportSalesGraph(period, from, to)
-            .then(res => setData(res.data))
-            .catch(() => setError('Failed to load sales data. Please try again.'))
+            .then(res => {
+                setData(res.data);
+                trackEvent('sales_graph_loaded', PAGE, {
+                    period,
+                    dataPoints: res.data.dataPoints?.length ?? 0,
+                });
+            })
+            .catch(() => {
+                setError('Failed to load sales data. Please try again.');
+                trackEvent('sales_graph_error', PAGE, { period });
+            })
             .finally(() => setLoading(false));
     }, [period, from, to]);
+
+    const handlePeriodChange = useCallback((newPeriod) => {
+        setPeriod(newPeriod);
+        trackEvent('period_changed', PAGE, { from: period, to: newPeriod });
+    }, [period]);
+
+    const handleMetricChange = useCallback((newMetric) => {
+        setMetric(newMetric);
+        trackEvent('metric_toggled', PAGE, { metric: newMetric });
+    }, []);
+
+    // Build consistent colour map from the first data point's ordered spec list
+    const allSpecNames = data?.dataPoints?.[0]?.specs?.map(s => s.specName) ?? [];
+    const specColorMap = Object.fromEntries(
+        allSpecNames.map((name, i) => [name, SPEC_COLORS[i % SPEC_COLORS.length]])
+    );
 
     const totalQty = data?.dataPoints?.reduce((s, d) => s + d.quantity, 0) ?? 0;
     const totalVal = data?.dataPoints?.reduce((s, d) => s + Number(d.value), 0) ?? 0;
@@ -201,7 +288,7 @@ export default function SalesGraphReport() {
                             key={p.value}
                             type="button"
                             className={`btn btn-sm ${period === p.value ? 'btn-primary' : 'btn-secondary'}`}
-                            onClick={() => setPeriod(p.value)}
+                            onClick={() => handlePeriodChange(p.value)}
                         >
                             {p.label}
                         </button>
@@ -214,7 +301,7 @@ export default function SalesGraphReport() {
                             key={m.value}
                             type="button"
                             className={`btn btn-sm ${metric === m.value ? 'btn-primary' : 'btn-secondary'}`}
-                            onClick={() => setMetric(m.value)}
+                            onClick={() => handleMetricChange(m.value)}
                         >
                             {m.label}
                         </button>
@@ -286,7 +373,38 @@ export default function SalesGraphReport() {
                     borderRadius: '10px',
                     padding: '16px 8px 8px',
                 }}>
-                    <BarChart dataPoints={data.dataPoints} metric={metric} />
+                    <BarChart
+                        dataPoints={data.dataPoints}
+                        metric={metric}
+                        specColorMap={specColorMap}
+                    />
+
+                    {/* Spec colour legend */}
+                    {allSpecNames.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '12px 20px',
+                            justifyContent: 'center',
+                            padding: '12px 16px 4px',
+                            borderTop: '1px solid #f3f4f6',
+                            marginTop: '8px',
+                        }}
+                            aria-label="Chart legend"
+                        >
+                            {allSpecNames.map((name, i) => (
+                                <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{
+                                        width: 12, height: 12,
+                                        borderRadius: 2,
+                                        background: SPEC_COLORS[i % SPEC_COLORS.length],
+                                        flexShrink: 0,
+                                    }} />
+                                    <span style={{ fontSize: '12px', color: '#374151' }}>{name}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

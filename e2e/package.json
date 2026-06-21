@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "E2E authentication tests for PharmaTrack",
   "scripts": {
-    "test": "node auth.test.js"
+    "test": "node auth.test.js",
+    "test:load": "node load.test.js"
   },
   "engines": { "node": ">=18" }
 }

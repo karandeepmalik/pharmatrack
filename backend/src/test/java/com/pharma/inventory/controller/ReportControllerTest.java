@@ -3,6 +3,7 @@ package com.pharma.inventory.controller;
 import com.pharma.inventory.config.AppConfig;
 import com.pharma.inventory.config.SecurityConfig;
 import com.pharma.inventory.dto.ReportResponse;
+import com.pharma.inventory.dto.SalesGraphResponse;
 import com.pharma.inventory.repository.UserRepository;
 import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.service.ReportService;
@@ -19,7 +20,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.mockito.ArgumentMatchers;
 
 import java.time.LocalDate;
+import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -169,6 +172,64 @@ class ReportControllerTest {
         @Test
         void unauthenticatedIsUnauthorized() throws Exception {
             mockMvc.perform(get("/api/reports/daily"))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    @Nested @DisplayName("GET /api/reports/sales-graph")
+    class SalesGraph {
+
+        private SalesGraphResponse sampleSalesGraph() {
+            List<SalesGraphResponse.SpecBreakdown> specs = List.of(
+                    new SalesGraphResponse.SpecBreakdown("Vial 10 ml", 5, 20000L),
+                    new SalesGraphResponse.SpecBreakdown("Vial 5 ml",  3, 9000L)
+            );
+            return new SalesGraphResponse("daily", List.of(
+                    new SalesGraphResponse.DataPoint("15 Jun", 8, 29000L, specs)
+            ));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanGetSalesGraphWithDefaults() throws Exception {
+            when(reportService.salesGraph(any(), any(), any())).thenReturn(sampleSalesGraph());
+            mockMvc.perform(get("/api/reports/sales-graph"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.period").value("daily"))
+                    .andExpect(jsonPath("$.dataPoints").isArray());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void responseIncludesSpecBreakdownArray() throws Exception {
+            when(reportService.salesGraph(any(), any(), any())).thenReturn(sampleSalesGraph());
+            mockMvc.perform(get("/api/reports/sales-graph")
+                            .param("period", "daily")
+                            .param("from", "2026-06-01")
+                            .param("to",   "2026-06-30"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.dataPoints[0].specs").isArray())
+                    .andExpect(jsonPath("$.dataPoints[0].specs[0].specName").value("Vial 10 ml"))
+                    .andExpect(jsonPath("$.dataPoints[0].specs[0].quantity").value(5))
+                    .andExpect(jsonPath("$.dataPoints[0].specs[1].specName").value("Vial 5 ml"));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void totalQuantityAndValueSerialised() throws Exception {
+            when(reportService.salesGraph(any(), any(), any())).thenReturn(sampleSalesGraph());
+            mockMvc.perform(get("/api/reports/sales-graph"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.dataPoints[0].quantity").value(8))
+                    .andExpect(jsonPath("$.dataPoints[0].value").value(29000));
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userIsForbidden() throws Exception {
+            mockMvc.perform(get("/api/reports/sales-graph"))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedIsUnauthorized() throws Exception {
+            mockMvc.perform(get("/api/reports/sales-graph"))
                     .andExpect(status().isUnauthorized());
         }
     }
