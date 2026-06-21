@@ -18,6 +18,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -273,85 +277,125 @@ class TransactionServiceTest {
         }
     }
 
-    // ── getAll() ──────────────────────────────────────────────────────
+    // ── getAllPaged() ─────────────────────────────────────────────────
 
-    @Nested @DisplayName("getAll()")
-    class GetAll {
+    @Nested @DisplayName("getAllPaged()")
+    class GetAllPaged {
 
-        @Test @DisplayName("returns empty list when no transactions exist")
-        void getAll_noTransactions_returnsEmpty() {
-            when(transactionRepository.findAllWithDetails())
-                    .thenReturn(List.of());
-            assertThat(transactionService.getAll()).isEmpty();
+        @Test @DisplayName("returns empty page when no transactions exist")
+        void getAllPaged_noTransactions_returnsEmpty() {
+            when(transactionRepository.findAllIds(any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            Page<TransactionResponse> result = transactionService.getAllPaged("ALL", 0, 20);
+            assertThat(result.getContent()).isEmpty();
+            assertThat(result.getTotalElements()).isZero();
+        }
+
+        @Test @DisplayName("routes to findIdsByStatus when status is not ALL")
+        void getAllPaged_withStatus_routesToFilteredQuery() {
+            when(transactionRepository.findIdsByStatus(
+                    eq(Transaction.TransactionStatus.PENDING), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getAllPaged("PENDING", 0, 20);
+            verify(transactionRepository).findIdsByStatus(
+                    eq(Transaction.TransactionStatus.PENDING), any(Pageable.class));
+            verify(transactionRepository, never()).findAllIds(any());
         }
 
         @Test @DisplayName("maps all transactions via mapper")
-        void getAll_multipleTransactions_mapsAll() {
+        void getAllPaged_multipleTransactions_mapsAll() {
             Transaction t1 = savedTx(buildReq("Note one here for dispatch"));
             Transaction t2 = savedTx(buildReq("Note two for the clinic today"));
             t2.setId(2L);
             TransactionResponse r1 = stubResponse(t1);
             TransactionResponse r2 = stubResponse(t2);
 
-            when(transactionRepository.findAllWithDetails())
+            when(transactionRepository.findAllIds(any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(1L, 2L), PageRequest.of(0, 20), 2));
+            when(transactionRepository.findByIdsWithDetails(List.of(1L, 2L)))
                     .thenReturn(List.of(t1, t2));
             when(transactionMapper.toResponse(t1)).thenReturn(r1);
             when(transactionMapper.toResponse(t2)).thenReturn(r2);
 
-            List<TransactionResponse> result = transactionService.getAll();
-            assertThat(result).hasSize(2).containsExactly(r1, r2);
+            Page<TransactionResponse> result = transactionService.getAllPaged("ALL", 0, 20);
+            assertThat(result.getContent()).hasSize(2).containsExactly(r1, r2);
+            assertThat(result.getTotalElements()).isEqualTo(2);
         }
 
         @Test @DisplayName("returns screenshots in response when present")
-        void getAll_txWithScreenshots_includesScreenshotsInResponse() {
+        void getAllPaged_txWithScreenshots_includesScreenshotsInResponse() {
             String b64 = Base64.getEncoder().encodeToString("img".getBytes());
             Transaction tx = savedTx(buildReq("Dispatch with payment proof"));
             TransactionResponse resp = stubResponse(tx);
             resp.setScreenshots(List.of(new ScreenshotDto(b64, "image/png")));
 
-            when(transactionRepository.findAllWithDetails())
+            when(transactionRepository.findAllIds(any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(1L), PageRequest.of(0, 20), 1));
+            when(transactionRepository.findByIdsWithDetails(List.of(1L)))
                     .thenReturn(List.of(tx));
             when(transactionMapper.toResponse(tx)).thenReturn(resp);
 
-            List<TransactionResponse> result = transactionService.getAll();
-            assertThat(result.get(0).getScreenshots()).hasSize(1);
-            assertThat(result.get(0).getScreenshots().get(0).getData()).isEqualTo(b64);
-            assertThat(result.get(0).getScreenshots().get(0).getMimeType()).isEqualTo("image/png");
+            Page<TransactionResponse> result = transactionService.getAllPaged("ALL", 0, 20);
+            assertThat(result.getContent().get(0).getScreenshots()).hasSize(1);
+            assertThat(result.getContent().get(0).getScreenshots().get(0).getData()).isEqualTo(b64);
+            assertThat(result.getContent().get(0).getScreenshots().get(0).getMimeType()).isEqualTo("image/png");
+        }
+
+        @Test @DisplayName("totalElements reflects full count across all pages")
+        void getAllPaged_secondPage_totalElementsMatchesFullCount() {
+            Transaction tx = savedTx(buildReq("Dispatch page two here"));
+            tx.setId(21L);
+            TransactionResponse resp = stubResponse(tx);
+
+            when(transactionRepository.findAllIds(any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(21L), PageRequest.of(1, 20), 21));
+            when(transactionRepository.findByIdsWithDetails(List.of(21L)))
+                    .thenReturn(List.of(tx));
+            when(transactionMapper.toResponse(tx)).thenReturn(resp);
+
+            Page<TransactionResponse> result = transactionService.getAllPaged("ALL", 1, 20);
+            assertThat(result.getTotalElements()).isEqualTo(21);
+            assertThat(result.getNumber()).isEqualTo(1);
         }
     }
 
-    // ── getByUser() ───────────────────────────────────────────────────
+    // ── getByUserPaged() ──────────────────────────────────────────────
 
-    @Nested @DisplayName("getByUser()")
-    class GetByUser {
+    @Nested @DisplayName("getByUserPaged()")
+    class GetByUserPaged {
 
-        @Test @DisplayName("returns empty list when user has no transactions")
-        void getByUser_noTransactions_returnsEmpty() {
+        @Test @DisplayName("returns empty page when user has no transactions")
+        void getByUserPaged_noTransactions_returnsEmpty() {
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
-            when(transactionRepository.findByUserWithDetails(regularUser))
-                    .thenReturn(List.of());
-            assertThat(transactionService.getByUser("john.doe")).isEmpty();
+            when(transactionRepository.findIdsByUser(eq(regularUser), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            Page<TransactionResponse> result = transactionService.getByUserPaged("john.doe", 0, 20);
+            assertThat(result.getContent()).isEmpty();
         }
 
         @Test @DisplayName("throws ResourceNotFoundException when user not found")
-        void getByUser_unknownUser_throwsResourceNotFound() {
+        void getByUserPaged_unknownUser_throwsResourceNotFound() {
             when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
-            assertThatThrownBy(() -> transactionService.getByUser("nobody"))
+            assertThatThrownBy(() -> transactionService.getByUserPaged("nobody", 0, 20))
                     .isInstanceOf(ResourceNotFoundException.class)
                     .hasMessageContaining("User").hasMessageContaining("nobody");
         }
 
         @Test @DisplayName("returns empty screenshots list when no screenshot uploaded")
-        void getByUser_noScreenshot_emptyScreenshotsInResponse() {
+        void getByUserPaged_noScreenshot_emptyScreenshotsInResponse() {
             Transaction tx = savedTx(buildReq("Standard dispatch order five"));
+            tx.setId(1L);
             TransactionResponse resp = stubResponse(tx);
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
-            when(transactionRepository.findByUserWithDetails(regularUser))
+            when(transactionRepository.findIdsByUser(eq(regularUser), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(1L), PageRequest.of(0, 20), 1));
+            when(transactionRepository.findByIdsWithDetails(List.of(1L)))
                     .thenReturn(List.of(tx));
             when(transactionMapper.toResponse(tx)).thenReturn(resp);
 
-            assertThat(transactionService.getByUser("john.doe").get(0).getScreenshots()).isEmpty();
+            Page<TransactionResponse> result = transactionService.getByUserPaged("john.doe", 0, 20);
+            assertThat(result.getContent().get(0).getScreenshots()).isEmpty();
         }
     }
 

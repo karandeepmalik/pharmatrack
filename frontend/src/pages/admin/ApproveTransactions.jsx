@@ -1,12 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import { TRANSACTION_STATUSES } from '../../constants';
 
-/**
- * Gallery lightbox viewer for multiple payment screenshots.
- * Extracted as a named component within this file for clarity.
- */
 function PaymentScreenshotViewer({ screenshots, transactionId }) {
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -21,7 +17,6 @@ function PaymentScreenshotViewer({ screenshots, transactionId }) {
 
   return (
     <>
-      {/* Thumbnail strip */}
       <div className="screenshot-thumbs">
         {screenshots.map((ss, idx) => {
           const uri = `data:${ss.mimeType || 'image/png'};base64,${ss.data}`;
@@ -103,37 +98,73 @@ function PaymentScreenshotViewer({ screenshots, transactionId }) {
   );
 }
 
-/**
- * Admin page for reviewing, approving and rejecting inventory adjustment requests.
- *
- * Fixes applied vs original:
- *  - handleApprove / handleReject merged into handleDecision (DRY)
- *  - errorMessage cleared on successful action
- *  - fetchTransactions wrapped in useCallback (stable reference)
- *  - filter constants imported from constants.js (no magic values)
- */
+const PAGE_SIZE = 20;
+
 export default function ApproveTransactions() {
   const [transactions, setTransactions] = useState([]);
+  const [hasMore, setHasMore]           = useState(false);
   const [filter, setFilter]             = useState('PENDING');
   const [loading, setLoading]           = useState(true);
+  const [loadingMore, setLoadingMore]   = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
   const [priceOverrides, setPriceOverrides] = useState({});
 
-  const fetchTransactions = useCallback(() => {
-    setLoading(true);
-    api.getAllTransactions()
-      .then((r) => setTransactions(r.data))
+  const sentinelRef  = useRef(null);
+  const pageRef      = useRef(0);       // last successfully loaded page number
+  const filterRef    = useRef('PENDING');
+  const loadingRef   = useRef(false);   // guard against concurrent requests
+
+  const loadPage = useCallback((pg, status) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    if (pg === 0) {
+      setLoading(true);
+      setTransactions([]);
+      setHasMore(false);
+    } else {
+      setLoadingMore(true);
+    }
+    setErrorMessage('');
+
+    api.getAllTransactions(pg, PAGE_SIZE, status)
+      .then((r) => {
+        const { content = [], last = true } = r.data ?? {};
+        setTransactions((prev) => pg === 0 ? content : [...prev, ...content]);
+        setHasMore(!last);
+        pageRef.current = pg;
+      })
       .catch(() => setErrorMessage('Failed to load transactions'))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        loadingRef.current = false;
+        setLoading(false);
+        setLoadingMore(false);
+      });
   }, []);
 
-  useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
+  // Reload from page 0 whenever the status filter changes
+  useEffect(() => {
+    filterRef.current = filter;
+    pageRef.current   = 0;
+    loadPage(0, filter);
+  }, [filter, loadPage]);
 
-  /** Single handler for both approve and reject — eliminates DRY violation. */
+  // Infinite-scroll sentinel — fires when the bottom div enters the viewport
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !loadingRef.current) {
+        loadPage(pageRef.current + 1, filterRef.current);
+      }
+    }, { threshold: 0 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadPage]);
+
   const handleDecision = async (id, approved) => {
     setActionLoading(id);
-    setErrorMessage(''); // clear stale error before new attempt
+    setErrorMessage('');
     try {
       const payload = { approved };
       if (approved) {
@@ -143,17 +174,15 @@ export default function ApproveTransactions() {
         }
       }
       await api.approveTransaction(id, payload);
-      fetchTransactions();
+      // Reset and reload from page 0
+      pageRef.current = 0;
+      loadPage(0, filterRef.current);
     } catch {
       setErrorMessage(`Failed to ${approved ? 'approve' : 'reject'} transaction`);
     } finally {
       setActionLoading(null);
     }
   };
-
-  const filtered = filter === 'ALL'
-    ? transactions
-    : transactions.filter((t) => t.status === filter);
 
   if (loading) return <div className="loading">Loading transactions…</div>;
 
@@ -178,13 +207,13 @@ export default function ApproveTransactions() {
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {transactions.length === 0 && !hasMore ? (
         <p className="empty-message">
           No {filter === 'ALL' ? '' : filter.toLowerCase()} transactions found.
         </p>
       ) : (
         <div className="transactions-list">
-          {filtered.map((tx) => (
+          {transactions.map((tx) => (
             <div key={tx.id} className={`transaction-card status-${tx.status.toLowerCase()}`}>
               <div className="tx-header">
                 <span className="tx-id">#{tx.id}</span>
@@ -251,6 +280,19 @@ export default function ApproveTransactions() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Infinite-scroll sentinel: observer attaches here */}
+      {hasMore && (
+        <div ref={sentinelRef} className="scroll-sentinel">
+          {loadingMore && <div className="loading">Loading more…</div>}
+        </div>
+      )}
+
+      {!hasMore && !loading && transactions.length > 0 && (
+        <p className="all-loaded-msg" aria-live="polite">
+          All {transactions.length} transactions loaded.
+        </p>
       )}
     </div>
   );

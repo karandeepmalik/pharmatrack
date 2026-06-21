@@ -1,6 +1,8 @@
 package com.pharma.inventory.repository;
 import com.pharma.inventory.entity.Transaction;
 import com.pharma.inventory.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -39,6 +41,35 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "WHERE t.submittedBy = :user " +
            "ORDER BY t.submittedAt DESC")
     List<Transaction> findByUserWithDetails(@Param("user") User user);
+
+    /**
+     * Two-query pagination strategy for transactions (avoids HibernateException
+     * "firstResult/maxResults specified with collection fetch" when JOIN FETCH + Pageable
+     * are combined directly).
+     *
+     * Step 1: fetch a page of IDs via lightweight scalar queries.
+     * Step 2: fetch the full entity graph for those IDs (findByIdsWithDetails).
+     */
+    @Query(value = "SELECT DISTINCT t.id FROM Transaction t ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(DISTINCT t) FROM Transaction t")
+    Page<Long> findAllIds(Pageable pageable);
+
+    @Query(value = "SELECT DISTINCT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(DISTINCT t) FROM Transaction t WHERE t.status = :status")
+    Page<Long> findIdsByStatus(@Param("status") Transaction.TransactionStatus status, Pageable pageable);
+
+    @Query(value = "SELECT DISTINCT t.id FROM Transaction t WHERE t.submittedBy = :user ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(DISTINCT t) FROM Transaction t WHERE t.submittedBy = :user")
+    Page<Long> findIdsByUser(@Param("user") User user, Pageable pageable);
+
+    @Query("SELECT DISTINCT t FROM Transaction t " +
+           "JOIN FETCH t.submittedBy " +
+           "JOIN FETCH t.medicine m " +
+           "JOIN FETCH m.pharmaCompany " +
+           "LEFT JOIN FETCH t.approvedBy " +
+           "WHERE t.id IN :ids " +
+           "ORDER BY t.submittedAt DESC")
+    List<Transaction> findByIdsWithDetails(@Param("ids") List<Long> ids);
 
     /** Approved transactions whose dispatch date (submittedAt) falls on a given day — used by daily report. */
     @Query("SELECT t FROM Transaction t JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +

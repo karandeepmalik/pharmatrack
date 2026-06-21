@@ -19,6 +19,9 @@ import com.pharma.inventory.repository.MedicineRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import com.pharma.inventory.repository.TransactionScreenshotRepository;
 import com.pharma.inventory.repository.UserRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -94,16 +97,36 @@ public class TransactionService {
     }
 
     @Transactional(readOnly = true)
-    public List<TransactionResponse> getAll() {
-        return transactionRepository.findAllWithDetails()
-                .stream().map(transactionMapper::toResponse).toList();
+    public Page<TransactionResponse> getAllPaged(String status, int page, int size) {
+        PageRequest pageable = PageRequest.of(page, size);
+        Page<Long> idPage;
+        if (status == null || "ALL".equalsIgnoreCase(status)) {
+            idPage = transactionRepository.findAllIds(pageable);
+        } else {
+            TransactionStatus txStatus = TransactionStatus.valueOf(status.toUpperCase());
+            idPage = transactionRepository.findIdsByStatus(txStatus, pageable);
+        }
+        List<Long> ids = idPage.getContent();
+        if (ids.isEmpty()) {
+            return new PageImpl<>(List.of(), pageable, idPage.getTotalElements());
+        }
+        List<Transaction> txList = transactionRepository.findByIdsWithDetails(ids);
+        List<TransactionResponse> content = txList.stream().map(transactionMapper::toResponse).toList();
+        return new PageImpl<>(content, pageable, idPage.getTotalElements());
     }
 
     @Transactional(readOnly = true)
-    public List<TransactionResponse> getByUser(String username) {
+    public Page<TransactionResponse> getByUserPaged(String username, int page, int size) {
         User user = findUserByUsername(username);
-        return transactionRepository.findByUserWithDetails(user)
-                .stream().map(transactionMapper::toResponse).toList();
+        PageRequest pageable = PageRequest.of(page, size);
+        Page<Long> idPage = transactionRepository.findIdsByUser(user, pageable);
+        List<Long> ids = idPage.getContent();
+        if (ids.isEmpty()) {
+            return new PageImpl<>(List.of(), pageable, idPage.getTotalElements());
+        }
+        List<Transaction> txList = transactionRepository.findByIdsWithDetails(ids);
+        List<TransactionResponse> content = txList.stream().map(transactionMapper::toResponse).toList();
+        return new PageImpl<>(content, pageable, idPage.getTotalElements());
     }
 
     @Transactional(readOnly = true)

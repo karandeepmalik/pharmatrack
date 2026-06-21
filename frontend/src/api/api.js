@@ -63,8 +63,8 @@ export const submitTransaction = ({ medicineId, quantity, notes, screenshotFiles
   });
 };
 
-export const getMyTransactions  = ()           => api.get('/transactions/my');
-export const getAllTransactions  = ()           => api.get('/transactions');
+export const getMyTransactions  = (page = 0, size = 20)              => api.get('/transactions/my',  { params: { page, size } });
+export const getAllTransactions  = (page = 0, size = 20, status = 'ALL') => api.get('/transactions',     { params: { page, size, status } });
 export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/approve`, data);
 
 /**

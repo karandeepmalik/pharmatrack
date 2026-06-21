@@ -19,6 +19,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import org.springframework.mock.web.MockMultipartFile;
 
+import org.springframework.data.domain.Page;
+
 import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
@@ -44,7 +46,7 @@ class GlobalExceptionHandlerTest {
         @Test @WithMockUser(roles = "ADMIN")
         @DisplayName("ResourceNotFoundException → 404 with envelope")
         void resourceNotFound_returns404() throws Exception {
-            when(transactionService.getAll())
+            when(transactionService.getAllPaged(anyString(), anyInt(), anyInt()))
                     .thenThrow(new ResourceNotFoundException("Transaction", 99L));
 
             mockMvc.perform(get("/api/transactions"))
@@ -131,7 +133,7 @@ class GlobalExceptionHandlerTest {
         @Test @WithMockUser(roles = "ADMIN")
         @DisplayName("always includes status, error, message, timestamp, path")
         void errorEnvelope_hasAllFields() throws Exception {
-            when(transactionService.getAll())
+            when(transactionService.getAllPaged(anyString(), anyInt(), anyInt()))
                     .thenThrow(new ResourceNotFoundException("Transaction", 1L));
 
             mockMvc.perform(get("/api/transactions"))

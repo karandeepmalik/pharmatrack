@@ -7,6 +7,16 @@ import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
 
+// IntersectionObserver not available in JSDOM; stub so the sentinel hook doesn't throw
+beforeAll(() => {
+  global.IntersectionObserver = class {
+    constructor() {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
+
 const makeTx = (overrides = {}) => ({
   id: 1,
   status: 'APPROVED',
@@ -19,6 +29,11 @@ const makeTx = (overrides = {}) => ({
   submittedAt: '2026-05-01T10:00:00',
   screenshots: [],
   ...overrides,
+});
+
+// Wrap a list into the paginated response shape the component expects
+const mkPage = (items, { last = true } = {}) => ({
+  data: { content: items, last, totalElements: items.length },
 });
 
 const renderPage = () =>
@@ -44,7 +59,7 @@ describe('MyTransactions — loading', () => {
 
 describe('MyTransactions — page structure', () => {
   test('renders page heading after load', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [] });
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /medicine dispatch history/i })).toBeInTheDocument()
@@ -52,7 +67,7 @@ describe('MyTransactions — page structure', () => {
   });
 
   test('renders Back link to user dashboard', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [] });
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByRole('link', { name: /← back/i })).toHaveAttribute('href', '/user/dashboard')
@@ -60,7 +75,7 @@ describe('MyTransactions — page structure', () => {
   });
 
   test('renders ALL, PENDING, APPROVED, REJECTED filter tabs', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [] });
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() => screen.getByRole('group'));
     expect(screen.getByRole('button', { name: /^all$/i })).toBeInTheDocument();
@@ -81,7 +96,7 @@ describe('MyTransactions — error state', () => {
     );
   });
 
-  test('shows empty list (not crash) when API returns non-array data', async () => {
+  test('shows empty list (not crash) when API returns null data', async () => {
     api.getMyTransactions.mockResolvedValue({ data: null });
     renderPage();
     await waitFor(() =>
@@ -94,7 +109,7 @@ describe('MyTransactions — error state', () => {
 
 describe('MyTransactions — empty state', () => {
   test('shows empty message when no transactions exist', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [] });
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/no transactions found/i)).toBeInTheDocument()
@@ -106,7 +121,7 @@ describe('MyTransactions — empty state', () => {
 
 describe('MyTransactions — crash guard for malformed data', () => {
   test('renders without crashing when tx.status is null', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ status: null })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: null })]));
     renderPage();
     // Should render the card using fallback status 'UNKNOWN', not throw
     await waitFor(() =>
@@ -115,7 +130,7 @@ describe('MyTransactions — crash guard for malformed data', () => {
   });
 
   test('renders without crashing when tx.medicineName is null', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ medicineName: null })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ medicineName: null })]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/unknown/i)).toBeInTheDocument()
@@ -123,7 +138,7 @@ describe('MyTransactions — crash guard for malformed data', () => {
   });
 
   test('renders without crashing when tx.submittedAt is null', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ submittedAt: null })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ submittedAt: null })]));
     renderPage();
     await waitFor(() =>
       // Should show em-dash placeholder instead of throwing on new Date(null)
@@ -132,9 +147,9 @@ describe('MyTransactions — crash guard for malformed data', () => {
   });
 
   test('renders without crashing when tx.specification and concentrationMgPerMl are null', async () => {
-    api.getMyTransactions.mockResolvedValue({
-      data: [makeTx({ specification: null, concentrationMgPerMl: null })],
-    });
+    api.getMyTransactions.mockResolvedValue(
+      mkPage([makeTx({ specification: null, concentrationMgPerMl: null })])
+    );
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument()
@@ -144,7 +159,7 @@ describe('MyTransactions — crash guard for malformed data', () => {
   test('renders without crashing when screenshots field is absent', async () => {
     const tx = makeTx();
     delete tx.screenshots;
-    api.getMyTransactions.mockResolvedValue({ data: [tx] });
+    api.getMyTransactions.mockResolvedValue(mkPage([tx]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument()
@@ -156,7 +171,7 @@ describe('MyTransactions — crash guard for malformed data', () => {
 
 describe('MyTransactions — transaction display', () => {
   test('shows medicine name in transaction card', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx()] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument()
@@ -164,14 +179,14 @@ describe('MyTransactions — transaction display', () => {
   });
 
   test('shows transaction quantity', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ quantity: 5 })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ quantity: 5 })]));
     renderPage();
     await waitFor(() => screen.getByText(/shield fx vial/i));
     expect(screen.getByText(/quantity/i)).toBeInTheDocument();
   });
 
   test('shows APPROVED badge for approved transaction', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ status: 'APPROVED' })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'APPROVED' })]));
     renderPage();
     await waitFor(() =>
       expect(screen.getAllByText('APPROVED').length).toBeGreaterThanOrEqual(2)
@@ -179,7 +194,7 @@ describe('MyTransactions — transaction display', () => {
   });
 
   test('shows PENDING badge for pending transaction', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ status: 'PENDING' })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'PENDING' })]));
     renderPage();
     await waitFor(() =>
       expect(screen.getAllByText('PENDING').length).toBeGreaterThanOrEqual(2)
@@ -187,7 +202,7 @@ describe('MyTransactions — transaction display', () => {
   });
 
   test('shows REJECTED badge for rejected transaction', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ status: 'REJECTED' })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'REJECTED' })]));
     renderPage();
     await waitFor(() =>
       expect(screen.getAllByText('REJECTED').length).toBeGreaterThanOrEqual(2)
@@ -195,7 +210,7 @@ describe('MyTransactions — transaction display', () => {
   });
 
   test('shows mg/ml spec for VIAL medicine', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ medicineType: 'VIAL', concentrationMgPerMl: 20 })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ medicineType: 'VIAL', concentrationMgPerMl: 20 })]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/20 mg\/ml/i)).toBeInTheDocument()
@@ -203,9 +218,9 @@ describe('MyTransactions — transaction display', () => {
   });
 
   test('shows mg spec for TABLET medicine', async () => {
-    api.getMyTransactions.mockResolvedValue({
-      data: [makeTx({ medicineType: 'TABLET', specification: 25, concentrationMgPerMl: null })],
-    });
+    api.getMyTransactions.mockResolvedValue(
+      mkPage([makeTx({ medicineType: 'TABLET', specification: 25, concentrationMgPerMl: null })])
+    );
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/25 mg/i)).toBeInTheDocument()
@@ -213,9 +228,9 @@ describe('MyTransactions — transaction display', () => {
   });
 
   test('shows screenshot attached indicator when screenshots list is non-empty', async () => {
-    api.getMyTransactions.mockResolvedValue({
-      data: [makeTx({ screenshots: [{ data: 'base64', contentType: 'image/png' }] })],
-    });
+    api.getMyTransactions.mockResolvedValue(
+      mkPage([makeTx({ screenshots: [{ data: 'base64', contentType: 'image/png' }] })])
+    );
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/attached ✓/i)).toBeInTheDocument()
@@ -223,7 +238,7 @@ describe('MyTransactions — transaction display', () => {
   });
 
   test('does not show screenshot indicator when screenshots list is empty', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [makeTx({ screenshots: [] })] });
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ screenshots: [] })]));
     renderPage();
     await waitFor(() => screen.getByText(/shield fx vial/i));
     expect(screen.queryByText(/payment screenshot/i)).not.toBeInTheDocument();
@@ -238,7 +253,8 @@ describe('MyTransactions — filter tabs', () => {
   const rejected = makeTx({ id: 3, status: 'REJECTED',  notes: 'Rejected note text here' });
 
   beforeEach(() => {
-    api.getMyTransactions.mockResolvedValue({ data: [pending, approved, rejected] });
+    // Client-side filter: load all transactions at once, filter in UI
+    api.getMyTransactions.mockResolvedValue(mkPage([pending, approved, rejected]));
   });
 
   test('ALL tab shows all three transactions by default', async () => {
@@ -290,7 +306,7 @@ describe('MyTransactions — filter tabs', () => {
   });
 
   test('shows empty message when filtered result has no matches', async () => {
-    api.getMyTransactions.mockResolvedValue({ data: [approved] });
+    api.getMyTransactions.mockResolvedValue(mkPage([approved]));
     renderPage();
     await waitFor(() => screen.getByRole('button', { name: /^pending$/i }));
     await userEvent.click(screen.getByRole('button', { name: /^pending$/i }));

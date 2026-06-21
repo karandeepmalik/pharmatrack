@@ -1,6 +1,7 @@
 package com.pharma.inventory.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pharma.inventory.dto.PagedResponse;
 import com.pharma.inventory.dto.ScreenshotDto;
 import com.pharma.inventory.dto.TransactionResponse;
 import com.pharma.inventory.config.AppConfig;
@@ -23,13 +24,15 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
 
 import static org.hamcrest.Matchers.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -243,35 +246,63 @@ class TransactionControllerTest {
     // ── GET /api/transactions (admin) ──────────────────────────────────
 
     @Nested
-    @DisplayName("GET /api/transactions — admin list with screenshots")
+    @DisplayName("GET /api/transactions — admin paginated list with screenshots")
     class AdminGetAll {
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("returns list including screenshots array")
+        @DisplayName("returns paginated content including screenshots array")
         void getAll_includesScreenshots() throws Exception {
             String b64 = Base64.getEncoder().encodeToString("img-bytes".getBytes());
             sampleResponse.setScreenshots(List.of(new ScreenshotDto(b64, "image/png")));
 
-            when(transactionService.getAll()).thenReturn(List.of(sampleResponse));
+            Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(transactionService.getAllPaged(anyString(), anyInt(), anyInt())).thenReturn(page);
 
             mockMvc.perform(get("/api/transactions"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].screenshots[0].data").value(b64))
-                    .andExpect(jsonPath("$[0].screenshots[0].mimeType").value("image/png"));
+                    .andExpect(jsonPath("$.content[0].screenshots[0].data").value(b64))
+                    .andExpect(jsonPath("$.content[0].screenshots[0].mimeType").value("image/png"));
         }
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("returns empty screenshots list when none uploaded")
-        void getAll_noScreenshot_emptyArray() throws Exception {
+        @DisplayName("returns empty content when none uploaded")
+        void getAll_noScreenshot_emptyContent() throws Exception {
             sampleResponse.setScreenshots(List.of());
 
-            when(transactionService.getAll()).thenReturn(List.of(sampleResponse));
+            Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(transactionService.getAllPaged(anyString(), anyInt(), anyInt())).thenReturn(page);
 
             mockMvc.perform(get("/api/transactions"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].screenshots").isEmpty());
+                    .andExpect(jsonPath("$.content[0].screenshots").isEmpty());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("accepts page and size query params")
+        void getAll_pageParams_passedToService() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of());
+            when(transactionService.getAllPaged(anyString(), anyInt(), anyInt())).thenReturn(page);
+
+            mockMvc.perform(get("/api/transactions").param("page", "1").param("size", "10"))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).getAllPaged(anyString(), eq(1), eq(10));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("accepts status filter query param")
+        void getAll_statusFilter_passedToService() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of());
+            when(transactionService.getAllPaged(anyString(), anyInt(), anyInt())).thenReturn(page);
+
+            mockMvc.perform(get("/api/transactions").param("status", "PENDING"))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).getAllPaged(eq("PENDING"), anyInt(), anyInt());
         }
 
         @Test
@@ -286,22 +317,36 @@ class TransactionControllerTest {
     // ── GET /api/transactions/my (user) ───────────────────────────────
 
     @Nested
-    @DisplayName("GET /api/transactions/my — user history with screenshots")
+    @DisplayName("GET /api/transactions/my — user paginated history with screenshots")
     class UserGetMy {
 
         @Test
         @WithMockUser(username = "john.doe", roles = "USER")
-        @DisplayName("returns user's transactions including screenshots array")
+        @DisplayName("returns user's paginated transactions including screenshots array")
         void getMy_includesScreenshots() throws Exception {
             String b64 = Base64.getEncoder().encodeToString("my-img".getBytes());
             sampleResponse.setScreenshots(List.of(new ScreenshotDto(b64, "image/jpeg")));
 
-            when(transactionService.getByUser("john.doe")).thenReturn(List.of(sampleResponse));
+            Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(transactionService.getByUserPaged(eq("john.doe"), anyInt(), anyInt())).thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/my"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].screenshots[0].data").value(b64))
-                    .andExpect(jsonPath("$[0].screenshots[0].mimeType").value("image/jpeg"));
+                    .andExpect(jsonPath("$.content[0].screenshots[0].data").value(b64))
+                    .andExpect(jsonPath("$.content[0].screenshots[0].mimeType").value("image/jpeg"));
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("accepts page and size query params")
+        void getMy_pageParams_passedToService() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of());
+            when(transactionService.getByUserPaged(anyString(), anyInt(), anyInt())).thenReturn(page);
+
+            mockMvc.perform(get("/api/transactions/my").param("page", "2").param("size", "5"))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).getByUserPaged(anyString(), eq(2), eq(5));
         }
     }
 
