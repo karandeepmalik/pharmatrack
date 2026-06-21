@@ -26,10 +26,10 @@ jobs:
         working-directory: backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "17"
           distribution: temurin
@@ -42,7 +42,7 @@ jobs:
 
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: backend-test-reports
           path: backend/target/surefire-reports/
@@ -52,7 +52,7 @@ jobs:
         run: mvn package -DskipTests -q
 
       - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: backend-jar
           path: backend/target/*.jar
@@ -69,10 +69,10 @@ jobs:
         working-directory: frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24"
 
@@ -83,7 +83,7 @@ jobs:
         run: npm run test:unit -- --coverage --coverageReporters=text-summary
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-coverage
           path: frontend/coverage/
@@ -96,7 +96,7 @@ jobs:
           REACT_APP_API_URL: https://pharmatrack-backend-558147403401.asia-south1.run.app/api
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-build
           path: frontend/build/
@@ -115,22 +115,22 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.WIF_SA }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
 
       - name: Build & push backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           push: true
@@ -141,7 +141,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build & push frontend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           push: true
@@ -169,23 +169,23 @@ jobs:
       url: https://pharmatrack-frontend-558147403401.asia-south1.run.app
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.WIF_SA }}
 
       - name: Deploy backend to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
+        uses: google-github-actions/deploy-cloudrun@v3
         with:
           service: pharmatrack-backend
           region: ${{ env.REGION }}
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
 
       - name: Deploy frontend to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
+        uses: google-github-actions/deploy-cloudrun@v3
         with:
           service: pharmatrack-frontend
           region: ${{ env.REGION }}
@@ -198,7 +198,7 @@ jobs:
 
       - name: Send deployment success email
         if: success()
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v5
         with:
           server_address: smtp.gmail.com
           server_port: 587
@@ -223,7 +223,7 @@ jobs:
 
       - name: Send deployment failure email
         if: failure()
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v5
         with:
           server_address: smtp.gmail.com
           server_port: 587
