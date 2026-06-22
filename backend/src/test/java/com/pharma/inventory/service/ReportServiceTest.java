@@ -515,40 +515,29 @@ class ReportServiceTest {
     @Nested @DisplayName("inventoryValuation — historical date")
     class InventoryValuationHistorical {
 
-        // Helpers for post-date adjustments (need to be undone in backward reconstruction)
-        private InventoryAdjustment makePostDateAdj(User u, Medicine m, Inventory.InventoryType type,
-                                                     String adjType, int qty, LocalDateTime at) {
+        private InventoryAdjustment makeAdj(User u, Medicine m, Inventory.InventoryType type,
+                                             String adjType, int qty, LocalDateTime at,
+                                             boolean inTransit, boolean wasInTransit, int transitDays) {
             return InventoryAdjustment.builder()
                     .id(100L).user(u).medicine(m).quantity(qty)
-                    .adjustmentType(adjType).note("post-date").inTransit(false).wasInTransit(false)
-                    .transitDays(2).internalMovement(false)
-                    .inventoryType(type).adjustedAt(at)
-                    .build();
-        }
-
-        private InventoryAdjustment makePreDateInTransitAdj(User u, Medicine m, Inventory.InventoryType type,
-                                                              int qty, LocalDateTime at, int transitDays,
-                                                              boolean stillActiveInDb) {
-            return InventoryAdjustment.builder()
-                    .id(101L).user(u).medicine(m).quantity(qty)
-                    .adjustmentType("ADD").note("transit").inTransit(stillActiveInDb).wasInTransit(true)
+                    .adjustmentType(adjType).note("test").inTransit(inTransit).wasInTransit(wasInTransit)
                     .transitDays(transitDays).internalMovement(false)
                     .inventoryType(type).adjustedAt(at)
                     .build();
         }
 
-        private InventoryAdjustment makePreDateRegularAdj(User u, Medicine m, Inventory.InventoryType type,
-                                                           String adjType, int qty, LocalDateTime at) {
-            return InventoryAdjustment.builder()
-                    .id(102L).user(u).medicine(m).quantity(qty)
-                    .adjustmentType(adjType).note("pre-date").inTransit(false).wasInTransit(false)
-                    .transitDays(2).internalMovement(false)
-                    .inventoryType(type).adjustedAt(at)
-                    .build();
+        private InventoryAdjustment makeRegularAdj(User u, Medicine m, String adjType, int qty, LocalDateTime at) {
+            return makeAdj(u, m, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, adjType, qty, at, false, false, 2);
+        }
+
+        private InventoryAdjustment makeInTransitAdj(User u, Medicine m, int qty, LocalDateTime at,
+                                                      int transitDays, boolean stillActiveInDb) {
+            return makeAdj(u, m, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", qty, at,
+                    stillActiveInDb, true, transitDays);
         }
 
         private Transaction makeApprovedTx(Long id, User u, Medicine m, int qty,
-                                           Inventory.InventoryType type, LocalDateTime approvedAt) {
+                                            Inventory.InventoryType type, LocalDateTime approvedAt) {
             Transaction tx = Transaction.builder()
                     .id(id).submittedBy(u).medicine(m).quantity(qty)
                     .status(Transaction.TransactionStatus.APPROVED).notes("test")
@@ -558,20 +547,16 @@ class ReportServiceTest {
             return tx;
         }
 
-        /** Stubs the three repository methods needed for backward reconstruction with no post-date changes. */
-        private void stubNoPostDateChanges(LocalDate date) {
-            when(inventoryAdjustmentRepository.findAllFrom(date.plusDays(1).atStartOfDay())).thenReturn(List.of());
-            when(transactionRepository.findApprovedFrom(any(), any())).thenReturn(List.of());
+        private void stubEmpty(LocalDate date) {
             when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay())).thenReturn(List.of());
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
         }
 
         @Test
         @DisplayName("historical report contains MEDICINE STOCK VALUATION header")
         void historicalReportContainsMedicineStockValuationHeader() {
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            stubNoPostDateChanges(date);
+            stubEmpty(date);
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -583,9 +568,7 @@ class ReportServiceTest {
         @DisplayName("historical report shows As of: date line")
         void historicalReportShowsAsOfDateLine() {
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            stubNoPostDateChanges(date);
+            stubEmpty(date);
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -593,13 +576,24 @@ class ReportServiceTest {
         }
 
         @Test
-        @DisplayName("historical report shows current inventory when no post-date changes occurred")
-        void historicalReportShowsCurrentInventoryWhenNothingChangedAfterDate() {
-            // john has 10 vials currently, and nothing changed after the report date
+        @DisplayName("historical report shows zero stock when no adjustments exist before target date")
+        void historicalReportShowsZeroWhenNoPreDateAdjustments() {
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            stubNoPostDateChanges(date);
+            stubEmpty(date);
+
+            ReportResponse r = reportService.inventoryValuation(date);
+
+            assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 0");
+        }
+
+        @Test
+        @DisplayName("historical report accumulates pre-date ADD adjustments into stock")
+        void historicalReportAccumulatesPreDateAddAdjustments() {
+            LocalDate date = LocalDate.of(2026, 5, 1);
+            LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, "ADD", 10, preDateAt)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -608,18 +602,15 @@ class ReportServiceTest {
         }
 
         @Test
-        @DisplayName("historical report subtracts post-date ADD adjustments (backward reconstruction)")
-        void historicalReportSubtractsPostDateAddAdjustments() {
-            // john has 10 now; received 3 via ADD adjustment after the report date → had 7 on the date
+        @DisplayName("historical report subtracts pre-date approved transactions (dispatches) from stock")
+        void historicalReportSubtractsPreDateTransactions() {
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryAdjustmentRepository.findAllFrom(date.plusDays(1).atStartOfDay()))
-                    .thenReturn(List.of(makePostDateAdj(john, vial,
-                            Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 3,
-                            LocalDateTime.of(2026, 5, 2, 9, 0))));
-            when(transactionRepository.findApprovedFrom(any(), any())).thenReturn(List.of());
-            when(inventoryAdjustmentRepository.findAllUpTo(any())).thenReturn(List.of());
+            LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, "ADD", 10, preDateAt)));
+            when(transactionRepository.findApprovedUpTo(any(), any()))
+                    .thenReturn(List.of(makeApprovedTx(1L, john, vial, 3,
+                            Inventory.InventoryType.REGULAR_MEDICINE_STOCK, preDateAt.plusHours(1))));
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -628,38 +619,28 @@ class ReportServiceTest {
         }
 
         @Test
-        @DisplayName("historical report adds back post-date approved transactions (backward reconstruction)")
-        void historicalReportAddsBackPostDateTransactions() {
-            // john has 7 now; dispensed 3 after the report date → had 10 on the date
+        @DisplayName("historical report subtracts pre-date REMOVE adjustments from stock")
+        void historicalReportSubtractsPreDateRemoveAdjustments() {
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 7, null)));
-            when(inventoryAdjustmentRepository.findAllFrom(date.plusDays(1).atStartOfDay())).thenReturn(List.of());
-            when(transactionRepository.findApprovedFrom(any(), any()))
-                    .thenReturn(List.of(makeApprovedTx(1L, john, vial, 3,
-                            Inventory.InventoryType.REGULAR_MEDICINE_STOCK,
-                            LocalDateTime.of(2026, 5, 2, 12, 0))));
-            when(inventoryAdjustmentRepository.findAllUpTo(any())).thenReturn(List.of());
+            LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, "ADD", 10, preDateAt),
+                            makeRegularAdj(john, vial, "REMOVE", 4, preDateAt.plusHours(1))
+                    ));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
-            assertThat(r.getContent()).contains("john.doe: 10");
-            assertThat(r.getContent()).contains("Valuation: 10 units x Rs 4,000 = Rs 40,000");
+            assertThat(r.getContent()).contains("john.doe: 6");
+            assertThat(r.getContent()).contains("Valuation: 6 units x Rs 4,000 = Rs 24,000");
         }
 
         @Test
-        @DisplayName("historical report is zero when all stock arrived after target date")
-        void historicalReportIsZeroWhenAllStockArrivedAfterTargetDate() {
-            // john has 10 now, all via an ADD adjustment after the report date → had 0 on the date
+        @DisplayName("historical report shows zero when no pre-date adjustments exist (all stock arrived later)")
+        void historicalReportIsZeroWhenNoPreDateAdjustments() {
             LocalDate date = LocalDate.of(2025, 1, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryAdjustmentRepository.findAllFrom(date.plusDays(1).atStartOfDay()))
-                    .thenReturn(List.of(makePostDateAdj(john, vial,
-                            Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 10,
-                            LocalDateTime.of(2025, 1, 2, 9, 0))));
-            when(transactionRepository.findApprovedFrom(any(), any())).thenReturn(List.of());
-            when(inventoryAdjustmentRepository.findAllUpTo(any())).thenReturn(List.of());
+            stubEmpty(date);
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -667,22 +648,20 @@ class ReportServiceTest {
         }
 
         @Test
-        @DisplayName("historical report excludes ADMIN_MEDICINE_STOCK post-date adjustments from REGULAR totals")
-        void historicalReportExcludesAdminPostDateAdjustments() {
-            // john has 10 regular vials; post-date admin ADD of 5 should NOT reduce the regular count
+        @DisplayName("historical report excludes ADMIN_MEDICINE_STOCK adjustments from REGULAR totals")
+        void historicalReportExcludesAdminAdjustments() {
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryAdjustmentRepository.findAllFrom(date.plusDays(1).atStartOfDay()))
-                    .thenReturn(List.of(makePostDateAdj(john, vial,
-                            Inventory.InventoryType.ADMIN_MEDICINE_STOCK, "ADD", 5,
-                            LocalDateTime.of(2026, 5, 2, 9, 0))));
-            when(transactionRepository.findApprovedFrom(any(), any())).thenReturn(List.of());
-            when(inventoryAdjustmentRepository.findAllUpTo(any())).thenReturn(List.of());
+            LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, "ADD", 10, preDateAt),
+                            makeAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK,
+                                    "ADD", 5, preDateAt, false, false, 2)
+                    ));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
-            // Regular count unaffected: john still shows 10
             assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 40,000");
         }
 
@@ -691,11 +670,13 @@ class ReportServiceTest {
         void historicalReportGrandTotalIsCorrect() {
             // john: 5 vials (price 4000) = 20000; jane: 2 tablets 25mg (price 4000) = 8000; total = 28000
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+            LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(
-                            makeInv(1L, john, vial, 5, null),
-                            makeInv(2L, jane, tablet, 2, null)));
-            stubNoPostDateChanges(date);
+                            makeRegularAdj(john, vial, "ADD", 5, preDateAt),
+                            makeRegularAdj(jane, tablet, "ADD", 2, preDateAt)
+                    ));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -724,14 +705,9 @@ class ReportServiceTest {
             LocalDate reportDate = LocalDate.of(2026, 6, 5);
             LocalDateTime june3 = LocalDateTime.of(2026, 6, 3, 10, 0);
 
-            // john currently has 8 (all in transit on June 5, none dispensed after)
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 8, null)));
-            when(inventoryAdjustmentRepository.findAllFrom(reportDate.plusDays(1).atStartOfDay())).thenReturn(List.of());
-            when(transactionRepository.findApprovedFrom(any(), any())).thenReturn(List.of());
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
-                    .thenReturn(List.of(makePreDateInTransitAdj(john, vial,
-                            Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june3, 5, false)));
+                    .thenReturn(List.of(makeInTransitAdj(john, vial, 8, june3, 5, false)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(reportDate);
 
@@ -745,13 +721,9 @@ class ReportServiceTest {
             LocalDate reportDate = LocalDate.of(2026, 6, 5);
             LocalDateTime june1 = LocalDateTime.of(2026, 6, 1, 10, 0);
 
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 8, null)));
-            when(inventoryAdjustmentRepository.findAllFrom(reportDate.plusDays(1).atStartOfDay())).thenReturn(List.of());
-            when(transactionRepository.findApprovedFrom(any(), any())).thenReturn(List.of());
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
-                    .thenReturn(List.of(makePreDateInTransitAdj(john, vial,
-                            Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june1, 2, false)));
+                    .thenReturn(List.of(makeInTransitAdj(john, vial, 8, june1, 2, false)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(reportDate);
 
@@ -765,13 +737,9 @@ class ReportServiceTest {
             LocalDate reportDate = LocalDate.of(2026, 6, 5);
             LocalDateTime june4 = LocalDateTime.of(2026, 6, 4, 10, 0);
 
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryAdjustmentRepository.findAllFrom(reportDate.plusDays(1).atStartOfDay())).thenReturn(List.of());
-            when(transactionRepository.findApprovedFrom(any(), any())).thenReturn(List.of());
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
-                    .thenReturn(List.of(makePreDateRegularAdj(john, vial,
-                            Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "ADD", 10, june4)));
+                    .thenReturn(List.of(makeRegularAdj(john, vial, "ADD", 10, june4)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(reportDate);
 
@@ -785,11 +753,6 @@ class ReportServiceTest {
             LocalDate reportDate = LocalDate.of(2026, 6, 5);
             LocalDateTime june3 = LocalDateTime.of(2026, 6, 3, 10, 0);
 
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 6, null)));
-            when(inventoryAdjustmentRepository.findAllFrom(reportDate.plusDays(1).atStartOfDay())).thenReturn(List.of());
-            when(transactionRepository.findApprovedFrom(any(), any())).thenReturn(List.of());
-
             InventoryAdjustment legacyAdj = InventoryAdjustment.builder()
                     .id(200L).user(john).medicine(vial).quantity(6)
                     .adjustmentType("ADD").note("legacy").inTransit(true).wasInTransit(false)
@@ -798,6 +761,7 @@ class ReportServiceTest {
                     .adjustedAt(june3).build();
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(legacyAdj));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(reportDate);
 
@@ -808,9 +772,10 @@ class ReportServiceTest {
         @DisplayName("historical: valuation line is last content line of each spec section")
         void historicalValuationLineIsLastLineOfSpecSection() {
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            stubNoPostDateChanges(date);
+            LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, "ADD", 10, preDateAt)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -823,42 +788,19 @@ class ReportServiceTest {
         @DisplayName("historical: multiple specs each have their own valuation line")
         void historicalMultipleSpecsHaveValuationLine() {
             LocalDate date = LocalDate.of(2026, 5, 1);
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+            LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(
-                            makeInv(1L, john, vial, 5, null),
-                            makeInv(2L, jane, tablet, 2, null)));
-            stubNoPostDateChanges(date);
+                            makeRegularAdj(john, vial, "ADD", 5, preDateAt),
+                            makeRegularAdj(jane, tablet, "ADD", 2, preDateAt)
+                    ));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
             String content = r.getContent();
 
             assertThat(content).contains("Valuation: 5 units x Rs 4,000 = Rs 20,000");
             assertThat(content).contains("Valuation: 2 units x Rs 4,000 = Rs 8,000");
-        }
-
-        @Test
-        @DisplayName("historical: user with zero current qty but post-date transaction appears with historical balance")
-        void historicalShowsUserWhoFullyDispensedAfterTargetDate() {
-            // john currently has 0 vials; dispensed 10 after the report date → had 10 on the date
-            LocalDate date = LocalDate.of(2026, 5, 1);
-            Inventory zeroInv = new Inventory();
-            zeroInv.setId(99L); zeroInv.setUser(john); zeroInv.setMedicine(vial);
-            zeroInv.setQuantity(0); zeroInv.setInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            zeroInv.setLastUpdated(java.time.LocalDateTime.now());
-
-            when(inventoryRepository.findAllRegularInventory(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(zeroInv));
-            when(inventoryAdjustmentRepository.findAllFrom(date.plusDays(1).atStartOfDay())).thenReturn(List.of());
-            when(transactionRepository.findApprovedFrom(any(), any()))
-                    .thenReturn(List.of(makeApprovedTx(1L, john, vial, 10,
-                            Inventory.InventoryType.REGULAR_MEDICINE_STOCK,
-                            LocalDateTime.of(2026, 5, 2, 12, 0))));
-            when(inventoryAdjustmentRepository.findAllUpTo(any())).thenReturn(List.of());
-
-            ReportResponse r = reportService.inventoryValuation(date);
-
-            assertThat(r.getContent()).contains("john.doe: 10");
-            assertThat(r.getContent()).contains("Valuation: 10 units x Rs 4,000 = Rs 40,000");
         }
     }
 
@@ -996,12 +938,31 @@ class ReportServiceTest {
     @Nested @DisplayName("dailyReport")
     class DailyReport {
 
+        private static final LocalDateTime PAST = LocalDateTime.of(2026, 1, 1, 9, 0);
+
         private void stubEmpty() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            when(inventoryAdjustmentRepository.findAllUpTo(any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+        }
+
+        private InventoryAdjustment makeRegularAdj(User u, Medicine m, Inventory.InventoryType type, int qty, LocalDateTime at) {
+            return InventoryAdjustment.builder()
+                    .id(200L).user(u).medicine(m).quantity(qty)
+                    .adjustmentType("ADD").note("stock").inTransit(false).wasInTransit(false)
+                    .transitDays(2).internalMovement(false)
+                    .inventoryType(type).adjustedAt(at)
+                    .build();
+        }
+
+        private InventoryAdjustment makeTransitAdj(User u, Medicine m, Inventory.InventoryType type,
+                                                    int qty, LocalDateTime at, int transitDays) {
+            return InventoryAdjustment.builder()
+                    .id(201L).user(u).medicine(m).quantity(qty)
+                    .adjustmentType("ADD").note("shipment").inTransit(true).wasInTransit(true)
+                    .transitDays(transitDays).internalMovement(false)
+                    .inventoryType(type).adjustedAt(at)
+                    .build();
         }
 
         @Test
@@ -1041,10 +1002,9 @@ class ReportServiceTest {
 
         @Test
         void pharmaNameIsUsedAsHeadingFromInventoryData() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1056,10 +1016,11 @@ class ReportServiceTest {
 
         @Test
         void pharmaNameAppearsUnderEachInventorySection() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeAdminStockInv(2L, john, vial, 5, null)));
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST),
+                            makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 5, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1078,12 +1039,11 @@ class ReportServiceTest {
 
         @Test
         void vialAppearsBeforeTabletInFixedOrder() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(
-                            makeInv(1L, john, vial, 10, null),
-                            makeInv(2L, john, tablet, 5, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+                            makeRegularAdj(john, vial,   Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST),
+                            makeRegularAdj(john, tablet, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5,  PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1095,12 +1055,11 @@ class ReportServiceTest {
 
         @Test
         void tenMlVialAppearsBeforeFiveMlVial() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(
-                            makeInv(1L, john, vial,  10, null),
-                            makeInv(2L, john, vial5, 5,  null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+                            makeRegularAdj(john, vial,  Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST),
+                            makeRegularAdj(john, vial5, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5,  PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1113,10 +1072,9 @@ class ReportServiceTest {
 
         @Test
         void showsUserQuantityUnderSpec() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 30, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 30, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1128,10 +1086,9 @@ class ReportServiceTest {
         @Test
         void specsWithZeroInventoryAreNotShown() {
             // Only vial 10 ml has stock — other specs must be absent from the report
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1256,12 +1213,11 @@ class ReportServiceTest {
 
         @Test
         void multipleUsersForSameSpecShowSeparateLines() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(
-                            makeInv(1L, john, vial, 30, null),
-                            makeInv(2L, jane, vial, 20, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 30, PAST),
+                            makeRegularAdj(jane, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 20, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1286,10 +1242,9 @@ class ReportServiceTest {
         @Test
         void adminInventoryShowsCorrectQuantity() {
             // ADMIN_STOCK inventory belongs to non-admin users in the new model
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeAdminStockInv(1L, john, vial, 15, null)));
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 15, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1305,10 +1260,9 @@ class ReportServiceTest {
         @Test
         void adminInventorySkipsSpecsWithNoAdminStock() {
             // Feature 2: admin inventory section skips specs with no data (no (none)/TOTAL: 0)
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1325,10 +1279,9 @@ class ReportServiceTest {
         @Test
         void adminInventoryShowsOnlySpecsWithData() {
             // Only vial 10 ml has admin stock — other specs should not appear
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeAdminStockInv(1L, john, vial, 8, null)));
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 8, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1346,10 +1299,11 @@ class ReportServiceTest {
 
         @Test
         void adminInventoryDoesNotIncludeRegularInventory() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeInv(1L, john, vial, 30, null)));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of(makeAdminStockInv(2L, john, vial, 5, null)));
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 30, PAST),
+                            makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 5, PAST)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1431,10 +1385,6 @@ class ReportServiceTest {
             Transaction may7tx = makeTx(1L, john, vial, 3, Transaction.TransactionStatus.APPROVED, "old", may7);
 
             // Simulate the repo correctly excluding may7tx (it's outside the May 8 range)
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(
                     eq(Transaction.TransactionStatus.APPROVED),
                     eq(LocalDateTime.of(2026, 5, 8, 0, 0)),
@@ -1450,44 +1400,42 @@ class ReportServiceTest {
 
     // ── In-Transit Display ────────────────────────────────────────────────────
 
-    private InventoryAdjustment makeInTransitAdj(User u, Medicine m,
-                                                  Inventory.InventoryType type,
-                                                  int qty, LocalDateTime at) {
-        return makeInTransitAdj(u, m, type, qty, at, 2);
-    }
-
-    private InventoryAdjustment makeInTransitAdj(User u, Medicine m,
-                                                  Inventory.InventoryType type,
-                                                  int qty, LocalDateTime at, int transitDays) {
-        return InventoryAdjustment.builder()
-                .id(99L).user(u).medicine(m).quantity(qty)
-                .adjustmentType("ADD").note("shipment").inTransit(true).wasInTransit(true)
-                .transitDays(transitDays)
-                .internalMovement(false).inventoryType(type).adjustedAt(at)
-                .build();
-    }
-
     @Nested @DisplayName("In-Transit — dailyReport")
     class InTransitDailyReport {
 
         private void stubEmptyTransactions() {
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+        }
+
+        private InventoryAdjustment makeRegularAdj(User u, Medicine m, Inventory.InventoryType type, int qty, LocalDateTime at) {
+            return InventoryAdjustment.builder()
+                    .id(200L).user(u).medicine(m).quantity(qty)
+                    .adjustmentType("ADD").note("stock").inTransit(false).wasInTransit(false)
+                    .transitDays(2).internalMovement(false)
+                    .inventoryType(type).adjustedAt(at)
+                    .build();
+        }
+
+        private InventoryAdjustment makeTransitAdj(User u, Medicine m, Inventory.InventoryType type,
+                                                    int qty, LocalDateTime at, int transitDays) {
+            return InventoryAdjustment.builder()
+                    .id(201L).user(u).medicine(m).quantity(qty)
+                    .adjustmentType("ADD").note("shipment").inTransit(true).wasInTransit(true)
+                    .transitDays(transitDays).internalMovement(false)
+                    .inventoryType(type).adjustedAt(at)
+                    .build();
         }
 
         @Test
         void inTransitStockShowsSettledPlusTransitFormat() {
-            // john has 15 total (10 settled + 5 in-transit)
-            Inventory inv = makeInv(1L, john, vial, 15, null);
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(inv));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            // john has 15 total: 10 settled (regular ADD) + 5 in-transit (transit ADD)
+            LocalDateTime now = LocalDateTime.now().minusHours(1);
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, now.minusDays(1)),
+                            makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, now, 2)));
             stubEmptyTransactions();
-
-            InventoryAdjustment adj = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(1));
-            when(inventoryAdjustmentRepository.findAllActiveInTransit())
-                    .thenReturn(List.of(adj));
 
             ReportResponse r = reportService.dailyReport(null);
 
@@ -1496,22 +1444,17 @@ class ReportServiceTest {
 
         @Test
         void inTransitTotalStillIncludesTransitAmount() {
-            Inventory invJohn = makeInv(1L, john, vial, 15, null);
-            Inventory invJane = makeInv(2L, jane, vial, 8, null);
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(invJohn, invJane));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            // john: 10 settled + 5 in-transit = 15 total; jane: 8 settled
+            LocalDateTime now = LocalDateTime.now();
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, now.minusDays(2)),
+                            makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5,  now.minusHours(1), 2),
+                            makeRegularAdj(jane, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8,  now.minusDays(2))));
             stubEmptyTransactions();
-
-            InventoryAdjustment adj = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(1));
-            when(inventoryAdjustmentRepository.findAllActiveInTransit())
-                    .thenReturn(List.of(adj));
 
             ReportResponse r = reportService.dailyReport(null);
 
-            // john: 10 + 5 (in transit), jane: 8, TOTAL: 23
             assertThat(r.getContent()).contains("john.doe: 10 + 5 (in transit)");
             assertThat(r.getContent()).contains("jane.smith: 8");
             assertThat(r.getContent()).contains("TOTAL: 23");
@@ -1519,18 +1462,14 @@ class ReportServiceTest {
 
         @Test
         void expiredInTransitNotShownAsTransit() {
-            // adjustment is 3 days old with transitDays=2 — Java filter excludes it
-            Inventory inv = makeInv(1L, john, vial, 15, null);
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(inv));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            // transit ADD 3 days ago with transitDays=2 → expired; settled regular ADD of 10
+            LocalDateTime threeAgo = LocalDateTime.now().minusDays(3);
+            LocalDateTime yesterday = LocalDateTime.now().minusDays(1);
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, yesterday),
+                            makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, threeAgo, 2)));
             stubEmptyTransactions();
-            InventoryAdjustment expiredAdj = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5,
-                    LocalDateTime.now().minusDays(3), 2); // 3 days old, only 2 days transit
-            when(inventoryAdjustmentRepository.findAllActiveInTransit())
-                    .thenReturn(List.of(expiredAdj)); // repo returns it; Java will filter it out
 
             ReportResponse r = reportService.dailyReport(null);
 
@@ -1540,14 +1479,9 @@ class ReportServiceTest {
 
         @Test
         void noInTransitAdjustmentsShowsNormalFormat() {
-            Inventory inv = makeInv(1L, john, tablet, 10, null);
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(inv));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, tablet, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, LocalDateTime.now().minusDays(1))));
             stubEmptyTransactions();
-            when(inventoryAdjustmentRepository.findAllActiveInTransit())
-                    .thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
 
@@ -1557,17 +1491,13 @@ class ReportServiceTest {
 
         @Test
         void inTransitShownForAdminStockSection() {
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            Inventory adminInv = makeAdminStockInv(1L, john, vial, 20, null);
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of(adminInv));
+            // john admin: 12 settled + 8 in-transit = 20 total
+            LocalDateTime now = LocalDateTime.now().minusHours(2);
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 12, now.minusDays(1)),
+                            makeTransitAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 8, now, 2)));
             stubEmptyTransactions();
-
-            InventoryAdjustment adj = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 8, LocalDateTime.now().minusHours(2));
-            when(inventoryAdjustmentRepository.findAllActiveInTransit())
-                    .thenReturn(List.of(adj));
 
             ReportResponse r = reportService.dailyReport(null);
 
@@ -1579,19 +1509,14 @@ class ReportServiceTest {
 
         @Test
         void multipleInTransitAdjustmentsSummedForSameUserMedicine() {
-            Inventory inv = makeInv(1L, john, vial, 18, null); // 10 settled + 8 total transit
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(inv));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
+            // john: 10 settled + 3 transit + 5 transit = 18 total, 8 in transit
+            LocalDateTime now = LocalDateTime.now();
+            when(inventoryAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, now.minusDays(2)),
+                            makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 3, now.minusHours(1), 2),
+                            makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, now.minusHours(2), 2)));
             stubEmptyTransactions();
-
-            InventoryAdjustment adj1 = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 3, LocalDateTime.now().minusHours(1));
-            InventoryAdjustment adj2 = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5, LocalDateTime.now().minusHours(2));
-            when(inventoryAdjustmentRepository.findAllActiveInTransit())
-                    .thenReturn(List.of(adj1, adj2));
 
             ReportResponse r = reportService.dailyReport(null);
 
@@ -1599,26 +1524,16 @@ class ReportServiceTest {
         }
 
         @Test
-        @DisplayName("adjustment made AFTER report date is never shown as in-transit on that date")
+        @DisplayName("adjustment made AFTER report date is excluded from both stock and in-transit")
         void adjustmentAfterReportDateNotShownAsInTransit() {
-            // Report for June 5; in-transit adjustment was made June 6 10:00 AM.
-            // Even though the DB still has inTransit=true (scheduler hasn't run or transit hasn't
-            // expired yet), it must NOT appear on the June 5 daily report.
+            // Report for June 5; june6 adj is NOT in findAllUpTo(june6-midnight).
+            // john's settled stock comes from a pre-date regular ADD.
             LocalDate reportDate = LocalDate.of(2026, 6, 5);
-            LocalDateTime june6Morning = LocalDateTime.of(2026, 6, 6, 10, 0);
-
-            Inventory inv = makeInv(1L, john, vial, 15, null);
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(inv));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            stubEmptyTransactions();
-
-            // Adjustment adjustedAt=June 6 — after the report date of June 5
-            InventoryAdjustment futureAdj = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june6Morning, 3);
-            when(inventoryAdjustmentRepository.findAllActiveInTransit())
-                    .thenReturn(List.of(futureAdj));
+            LocalDateTime june4 = LocalDateTime.of(2026, 6, 4, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 15, june4)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(reportDate);
 
@@ -1629,21 +1544,16 @@ class ReportServiceTest {
         @Test
         @DisplayName("adjustment made ON the report date IS shown as in-transit")
         void adjustmentOnReportDateIsShownAsInTransit() {
-            // Report for June 6; adjustment was made June 6 at 09:00 AM — must appear.
+            // Report for June 6; regular 7 (june5) + transit 8 (june6 09:00) = 15 total, 8 in transit
             LocalDate reportDate = LocalDate.of(2026, 6, 6);
+            LocalDateTime june5 = LocalDateTime.of(2026, 6, 5, 9, 0);
             LocalDateTime june6Morning = LocalDateTime.of(2026, 6, 6, 9, 0);
-
-            Inventory inv = makeInv(1L, john, vial, 15, null); // 7 settled + 8 in-transit
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(inv));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            stubEmptyTransactions();
-
-            InventoryAdjustment adj = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june6Morning, 3);
-            when(inventoryAdjustmentRepository.findAllActiveInTransit())
-                    .thenReturn(List.of(adj));
+            when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 7, june5),
+                            makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june6Morning, 3)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(reportDate);
 
@@ -1653,21 +1563,14 @@ class ReportServiceTest {
         @Test
         @DisplayName("adjustment at midnight of NEXT day is excluded (boundary: adjustedAt == end)")
         void adjustmentAtMidnightOfNextDayExcludedFromReport() {
-            // Report for June 5; adjustment adjustedAt = 2026-06-06T00:00:00 (midnight, exact boundary).
-            // With !isAfter this was incorrectly INCLUDED; with isBefore it is correctly EXCLUDED.
+            // Report for June 5; adj at june6 midnight is NOT before june6 midnight → excluded.
+            // john's stock comes from a pre-date regular ADD of 15.
             LocalDate reportDate = LocalDate.of(2026, 6, 5);
-            LocalDateTime june6Midnight = LocalDateTime.of(2026, 6, 6, 0, 0);
-
-            Inventory inv = makeInv(1L, john, vial, 15, null);
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(inv));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            stubEmptyTransactions();
-
-            InventoryAdjustment adj = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june6Midnight, 3);
-            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of(adj));
+            LocalDateTime june5_9am = LocalDateTime.of(2026, 6, 5, 9, 0);
+            when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 15, june5_9am)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(reportDate);
 
@@ -1678,20 +1581,16 @@ class ReportServiceTest {
         @Test
         @DisplayName("adjustment at last moment of report date IS shown as in-transit")
         void adjustmentAtLastMomentOfReportDateShownAsInTransit() {
-            // Report for June 5; adjustment made June 5 at 23:59:59 — must appear.
+            // Report for June 5; regular 7 (june5 09:00) + transit 8 (june5 23:59:59) = 15, 8 in transit
             LocalDate reportDate = LocalDate.of(2026, 6, 5);
-            LocalDateTime june5End = LocalDateTime.of(2026, 6, 5, 23, 59, 59);
-
-            Inventory inv = makeInv(1L, john, vial, 15, null);  // 7 settled + 8 in-transit
-            when(inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(inv));
-            when(inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .thenReturn(List.of());
-            stubEmptyTransactions();
-
-            InventoryAdjustment adj = makeInTransitAdj(john, vial,
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june5End, 3);
-            when(inventoryAdjustmentRepository.findAllActiveInTransit()).thenReturn(List.of(adj));
+            LocalDateTime june5_9am  = LocalDateTime.of(2026, 6, 5, 9, 0);
+            LocalDateTime june5End   = LocalDateTime.of(2026, 6, 5, 23, 59, 59);
+            when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 7, june5_9am),
+                            makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june5End, 3)));
+            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(reportDate);
 
@@ -1701,6 +1600,15 @@ class ReportServiceTest {
 
     @Nested @DisplayName("In-Transit — inventoryByUser")
     class InTransitInventoryByUser {
+
+        private InventoryAdjustment makeInTransitAdj(User u, Medicine m,
+                                                     Inventory.InventoryType type, int qty, LocalDateTime at) {
+            return InventoryAdjustment.builder()
+                    .user(u).medicine(m).inventoryType(type).quantity(qty).adjustedAt(at)
+                    .adjustmentType("ADD").note("transit").inTransit(true).wasInTransit(true)
+                    .transitDays(2).internalMovement(false)
+                    .build();
+        }
 
         @Test
         void inTransitShownInInventoryByUserReport() {

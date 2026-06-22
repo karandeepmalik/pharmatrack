@@ -252,28 +252,17 @@ public class ReportService {
     }
 
     /**
-     * Backward reconstruction: starts from the current live inventory and undoes all changes
-     * (adjustments and approved transactions) that occurred after the target date.
-     *
-     * This is more accurate than forward reconstruction because it captures stock that was
-     * seeded directly into the inventory table without a corresponding InventoryAdjustment record.
+     * Forward reconstruction: computes stock as of the target date by accumulating all
+     * ADD adjustments, subtracting REMOVE adjustments, and subtracting approved transactions,
+     * all up to and including the target date. Stock naturally varies per date.
      */
     @Transactional(readOnly = true)
     private ReportResponse inventoryValuationHistorical(LocalDate date) {
         LocalDateTime endExclusive = date.plusDays(1).atStartOfDay();
 
-        // Current live REGULAR inventory — starting point for backward reconstruction.
-        // Includes zero-quantity rows so users who fully dispensed after the target date still appear.
-        List<Inventory> currentInventory = inventoryRepository.findAllRegularInventory(
-                Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-
-        // Changes made AFTER the target date that need to be undone
-        List<InventoryAdjustment> adjAfter = inventoryAdjustmentRepository.findAllFrom(endExclusive);
-        List<Transaction> txAfter = transactionRepository.findApprovedFrom(
-                Transaction.TransactionStatus.APPROVED, endExclusive);
-
-        // Adjustments on or before the target date — used only for the in-transit map
         List<InventoryAdjustment> adjUpTo = inventoryAdjustmentRepository.findAllUpTo(endExclusive);
+        List<Transaction> txUpTo = transactionRepository.findApprovedUpTo(
+                Transaction.TransactionStatus.APPROVED, endExclusive);
 
         record MedUserKey(Long userId, Long medicineId) {}
         record MedUserMeta(User user, Medicine medicine) {}
@@ -281,35 +270,27 @@ public class ReportService {
         Map<MedUserKey, Integer> qtyMap = new LinkedHashMap<>();
         Map<MedUserKey, MedUserMeta> metaMap = new LinkedHashMap<>();
 
-        // Seed from current live inventory
-        for (Inventory inv : currentInventory) {
-            MedUserKey k = new MedUserKey(inv.getUser().getId(), inv.getMedicine().getId());
-            qtyMap.put(k, Math.max(0, inv.getQuantity()));
-            metaMap.put(k, new MedUserMeta(inv.getUser(), inv.getMedicine()));
-        }
-
-        // Undo REGULAR adjustments that happened after the target date
-        for (InventoryAdjustment adj : adjAfter) {
+        // Apply REGULAR adjustments up to target date: ADD increases stock, REMOVE decreases it
+        for (InventoryAdjustment adj : adjUpTo) {
             Inventory.InventoryType t = adj.getInventoryType();
             if (t != null && t != Inventory.InventoryType.REGULAR_MEDICINE_STOCK) continue;
             MedUserKey k = new MedUserKey(adj.getUser().getId(), adj.getMedicine().getId());
-            int delta = "ADD".equals(adj.getAdjustmentType()) ? -adj.getQuantity() : adj.getQuantity();
+            int delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : -adj.getQuantity();
             qtyMap.merge(k, delta, Integer::sum);
             metaMap.putIfAbsent(k, new MedUserMeta(adj.getUser(), adj.getMedicine()));
         }
 
-        // Undo REGULAR transactions approved after the target date (add back dispensed quantity)
-        for (Transaction tx : txAfter) {
+        // Subtract REGULAR approved transactions (dispatches) up to target date
+        for (Transaction tx : txUpTo) {
             Inventory.InventoryType t = tx.getInventoryType() != null
                     ? tx.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
             if (t != Inventory.InventoryType.REGULAR_MEDICINE_STOCK) continue;
             MedUserKey k = new MedUserKey(tx.getSubmittedBy().getId(), tx.getMedicine().getId());
-            qtyMap.merge(k, tx.getQuantity(), Integer::sum);
+            qtyMap.merge(k, -tx.getQuantity(), Integer::sum);
             metaMap.putIfAbsent(k, new MedUserMeta(tx.getSubmittedBy(), tx.getMedicine()));
         }
 
-        // In-transit map for the target date.
-        // Uses wasInTransit so historical accuracy is preserved even after the scheduler clears inTransit.
+        // In-transit map: ADD adjustments still within their transit window on the target date
         Map<String, Integer> inTransitMap = new java.util.HashMap<>();
         for (InventoryAdjustment adj : adjUpTo) {
             if ("ADD".equals(adj.getAdjustmentType()) && (adj.isWasInTransit() || adj.isInTransit())
@@ -485,8 +466,8 @@ public class ReportService {
      * Generates the daily report for the given date (or today if null).
      *
      * Structure:
-     *   INVENTORY section        — REGULAR inventory per spec per user
-     *   ADMIN MEDICINE STOCK section  — ADMIN_STOCK inventory per spec per user
+     *   INVENTORY section        — REGULAR inventory per spec per user (forward reconstruction)
+     *   ADMIN MEDICINE STOCK section  — ADMIN_STOCK inventory per spec per user (forward reconstruction)
      *   DAILY TRANSACTION SUMMARY — approved transactions on that date
      */
     @Transactional(readOnly = true)
@@ -495,13 +476,65 @@ public class ReportService {
         LocalDateTime start = reportDate.atStartOfDay();
         LocalDateTime end   = reportDate.plusDays(1).atStartOfDay();
 
-        List<Inventory> regularRecords  = inventoryRepository.findAllNonZeroRegularByInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-        List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
+        // Forward reconstruction: all adjustments and approved transactions up to end of report date
+        List<InventoryAdjustment> adjUpTo = inventoryAdjustmentRepository.findAllUpTo(end);
+        List<Transaction> txApprovedUpTo = transactionRepository.findApprovedUpTo(
+                Transaction.TransactionStatus.APPROVED, end);
+
+        // Daily summary sections (transactions and adjustments ON the report date)
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end);
         List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findByDateRange(start, end);
-        // Use end-of-reportDate as asOf so adjustments made after the report date are excluded
-        Map<String, Integer> inTransitMap = buildInTransitMap(end);
+
+        // Build stock maps keyed by "userId|medicineId"
+        Map<String, Integer> regularQty = new LinkedHashMap<>();
+        Map<String, Integer> adminQty   = new LinkedHashMap<>();
+        Map<String, User>     userByKey = new LinkedHashMap<>();
+        Map<String, Medicine> medByKey  = new LinkedHashMap<>();
+
+        for (InventoryAdjustment adj : adjUpTo) {
+            Inventory.InventoryType t = adj.getInventoryType() != null
+                    ? adj.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
+            String key = adj.getUser().getId() + "|" + adj.getMedicine().getId();
+            int delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : -adj.getQuantity();
+            if (t == Inventory.InventoryType.REGULAR_MEDICINE_STOCK) {
+                regularQty.merge(key, delta, Integer::sum);
+            } else if (t == Inventory.InventoryType.ADMIN_MEDICINE_STOCK) {
+                adminQty.merge(key, delta, Integer::sum);
+            }
+            userByKey.putIfAbsent(key, adj.getUser());
+            medByKey.putIfAbsent(key, adj.getMedicine());
+        }
+
+        for (Transaction tx : txApprovedUpTo) {
+            Inventory.InventoryType t = tx.getInventoryType() != null
+                    ? tx.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
+            String key = tx.getSubmittedBy().getId() + "|" + tx.getMedicine().getId();
+            if (t == Inventory.InventoryType.REGULAR_MEDICINE_STOCK) {
+                regularQty.merge(key, -tx.getQuantity(), Integer::sum);
+            } else if (t == Inventory.InventoryType.ADMIN_MEDICINE_STOCK) {
+                adminQty.merge(key, -tx.getQuantity(), Integer::sum);
+            }
+            userByKey.putIfAbsent(key, tx.getSubmittedBy());
+            medByKey.putIfAbsent(key, tx.getMedicine());
+        }
+
+        List<Inventory> regularRecords   = buildInventoryList(regularQty, userByKey, medByKey,
+                Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+        List<Inventory> adminStockRecords = buildInventoryList(adminQty, userByKey, medByKey,
+                Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
+
+        // In-transit: ADD adjustments still within their transit window on the report date
+        Map<String, Integer> inTransitMap = new java.util.HashMap<>();
+        for (InventoryAdjustment adj : adjUpTo) {
+            if ("ADD".equals(adj.getAdjustmentType()) && (adj.isWasInTransit() || adj.isInTransit())
+                    && adj.getAdjustedAt().plusDays(adj.getTransitDays()).isAfter(end)) {
+                Inventory.InventoryType t = adj.getInventoryType();
+                String typeStr = t != null ? t.name() : "REGULAR_MEDICINE_STOCK";
+                String key = adj.getUser().getId() + "|" + adj.getMedicine().getId() + "|" + typeStr;
+                inTransitMap.merge(key, adj.getQuantity(), Integer::sum);
+            }
+        }
 
         StringBuilder sb = new StringBuilder();
         sb.append("DAILY REPORT - ").append(reportDate.format(DATE_FMT)).append("\n");
@@ -580,6 +613,26 @@ public class ReportService {
     }
 
     // ── Private helpers ───────────────────────────────────────────────
+
+    private List<Inventory> buildInventoryList(Map<String, Integer> qtyMap,
+                                               Map<String, User> userByKey,
+                                               Map<String, Medicine> medByKey,
+                                               Inventory.InventoryType type) {
+        List<Inventory> result = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : qtyMap.entrySet()) {
+            if (e.getValue() <= 0) continue;
+            User user = userByKey.get(e.getKey());
+            Medicine med = medByKey.get(e.getKey());
+            if (user == null || med == null) continue;
+            Inventory inv = new Inventory();
+            inv.setUser(user);
+            inv.setMedicine(med);
+            inv.setQuantity(e.getValue());
+            inv.setInventoryType(type);
+            result.add(inv);
+        }
+        return result;
+    }
 
     /**
      * Appends per-pharma, per-spec, per-user inventory lines.
