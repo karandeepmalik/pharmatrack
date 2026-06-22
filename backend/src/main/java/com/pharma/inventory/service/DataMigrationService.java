@@ -199,11 +199,11 @@ public class DataMigrationService {
                 "  GROUP BY user_id, medicine_id, inventory_type" +
                 ")," +
                 "tx_sums AS (" +
-                "  SELECT submitted_by_id AS user_id, medicine_id," +
+                "  SELECT submitted_by AS user_id, medicine_id," +
                 "         COALESCE(inventory_type, 'REGULAR_MEDICINE_STOCK') AS inventory_type," +
                 "         SUM(quantity) AS tx_qty" +
                 "  FROM transactions WHERE status = 'APPROVED'" +
-                "  GROUP BY submitted_by_id, medicine_id, COALESCE(inventory_type, 'REGULAR_MEDICINE_STOCK')" +
+                "  GROUP BY submitted_by, medicine_id, COALESCE(inventory_type, 'REGULAR_MEDICINE_STOCK')" +
                 ")," +
                 "gaps AS (" +
                 "  SELECT i.user_id, i.medicine_id, i.inventory_type," +
