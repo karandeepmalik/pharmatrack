@@ -109,6 +109,19 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("status") Transaction.TransactionStatus status,
             @Param("endExclusive") LocalDateTime endExclusive);
 
+    /**
+     * All non-rejected transactions submitted before endExclusive.
+     * Mirrors how the Inventory table works: stock is deducted at submission time and
+     * only added back on rejection — so PENDING + APPROVED txs both reduce stock.
+     */
+    @Query("SELECT t FROM Transaction t " +
+           "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
+           "WHERE t.status != :rejected AND t.submittedAt < :endExclusive " +
+           "ORDER BY u.fullName, m.name")
+    List<Transaction> findNonRejectedSubmittedUpTo(
+            @Param("rejected") Transaction.TransactionStatus rejected,
+            @Param("endExclusive") LocalDateTime endExclusive);
+
     /** Approved transactions approved on or after 'from' — used by backward historical reconstruction. */
     @Query("SELECT t FROM Transaction t " +
            "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
