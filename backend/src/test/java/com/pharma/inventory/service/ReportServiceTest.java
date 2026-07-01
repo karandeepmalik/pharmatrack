@@ -549,7 +549,7 @@ class ReportServiceTest {
 
         private void stubEmpty(LocalDate date) {
             when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay())).thenReturn(List.of());
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
         }
 
         @Test
@@ -593,7 +593,7 @@ class ReportServiceTest {
             LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
             when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, "ADD", 10, preDateAt)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -608,7 +608,7 @@ class ReportServiceTest {
             LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
             when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, "ADD", 10, preDateAt)));
-            when(transactionRepository.findApprovedUpTo(any(), any()))
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any()))
                     .thenReturn(List.of(makeApprovedTx(1L, john, vial, 3,
                             Inventory.InventoryType.REGULAR_MEDICINE_STOCK, preDateAt.plusHours(1))));
 
@@ -628,7 +628,7 @@ class ReportServiceTest {
                             makeRegularAdj(john, vial, "ADD", 10, preDateAt),
                             makeRegularAdj(john, vial, "REMOVE", 4, preDateAt.plusHours(1))
                     ));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -658,7 +658,7 @@ class ReportServiceTest {
                             makeAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK,
                                     "ADD", 5, preDateAt, false, false, 2)
                     ));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -676,7 +676,7 @@ class ReportServiceTest {
                             makeRegularAdj(john, vial, "ADD", 5, preDateAt),
                             makeRegularAdj(jane, tablet, "ADD", 2, preDateAt)
                     ));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -707,7 +707,7 @@ class ReportServiceTest {
 
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(makeInTransitAdj(john, vial, 8, june3, 5, false)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(reportDate);
 
@@ -723,7 +723,7 @@ class ReportServiceTest {
 
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(makeInTransitAdj(john, vial, 8, june1, 2, false)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(reportDate);
 
@@ -739,7 +739,7 @@ class ReportServiceTest {
 
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, "ADD", 10, june4)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(reportDate);
 
@@ -761,7 +761,7 @@ class ReportServiceTest {
                     .adjustedAt(june3).build();
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(legacyAdj));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(reportDate);
 
@@ -775,7 +775,7 @@ class ReportServiceTest {
             LocalDateTime preDateAt = LocalDateTime.of(2026, 4, 30, 9, 0);
             when(inventoryAdjustmentRepository.findAllUpTo(date.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, "ADD", 10, preDateAt)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
 
@@ -794,7 +794,7 @@ class ReportServiceTest {
                             makeRegularAdj(john, vial, "ADD", 5, preDateAt),
                             makeRegularAdj(jane, tablet, "ADD", 2, preDateAt)
                     ));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.inventoryValuation(date);
             String content = r.getContent();
@@ -942,7 +942,7 @@ class ReportServiceTest {
 
         private void stubEmpty() {
             when(inventoryAdjustmentRepository.findAllUpTo(any())).thenReturn(List.of());
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
         }
 
@@ -1004,7 +1004,7 @@ class ReportServiceTest {
         void pharmaNameIsUsedAsHeadingFromInventoryData() {
             when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1020,7 +1020,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST),
                             makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 5, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1043,7 +1043,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeRegularAdj(john, vial,   Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST),
                             makeRegularAdj(john, tablet, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5,  PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1059,7 +1059,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeRegularAdj(john, vial,  Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST),
                             makeRegularAdj(john, vial5, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 5,  PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1074,7 +1074,7 @@ class ReportServiceTest {
         void showsUserQuantityUnderSpec() {
             when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 30, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1088,7 +1088,7 @@ class ReportServiceTest {
             // Only vial 10 ml has stock — other specs must be absent from the report
             when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1217,7 +1217,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 30, PAST),
                             makeRegularAdj(jane, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 20, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1244,7 +1244,7 @@ class ReportServiceTest {
             // ADMIN_STOCK inventory belongs to non-admin users in the new model
             when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 15, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1262,7 +1262,7 @@ class ReportServiceTest {
             // Feature 2: admin inventory section skips specs with no data (no (none)/TOTAL: 0)
             when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 10, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1281,7 +1281,7 @@ class ReportServiceTest {
             // Only vial 10 ml has admin stock — other specs should not appear
             when(inventoryAdjustmentRepository.findAllUpTo(any()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 8, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1303,7 +1303,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 30, PAST),
                             makeRegularAdj(john, vial, Inventory.InventoryType.ADMIN_MEDICINE_STOCK, 5, PAST)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(null);
@@ -1404,7 +1404,7 @@ class ReportServiceTest {
     class InTransitDailyReport {
 
         private void stubEmptyTransactions() {
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
         }
 
@@ -1532,7 +1532,7 @@ class ReportServiceTest {
             LocalDateTime june4 = LocalDateTime.of(2026, 6, 4, 9, 0);
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 15, june4)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(reportDate);
@@ -1552,7 +1552,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 7, june5),
                             makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june6Morning, 3)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(reportDate);
@@ -1569,7 +1569,7 @@ class ReportServiceTest {
             LocalDateTime june5_9am = LocalDateTime.of(2026, 6, 5, 9, 0);
             when(inventoryAdjustmentRepository.findAllUpTo(reportDate.plusDays(1).atStartOfDay()))
                     .thenReturn(List.of(makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 15, june5_9am)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(reportDate);
@@ -1589,7 +1589,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(
                             makeRegularAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 7, june5_9am),
                             makeTransitAdj(john, vial, Inventory.InventoryType.REGULAR_MEDICINE_STOCK, 8, june5End, 3)));
-            when(transactionRepository.findApprovedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
             ReportResponse r = reportService.dailyReport(reportDate);

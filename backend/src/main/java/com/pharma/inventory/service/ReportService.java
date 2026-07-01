@@ -261,8 +261,8 @@ public class ReportService {
         LocalDateTime endExclusive = date.plusDays(1).atStartOfDay();
 
         List<InventoryAdjustment> adjUpTo = inventoryAdjustmentRepository.findAllUpTo(endExclusive);
-        List<Transaction> txUpTo = transactionRepository.findApprovedUpTo(
-                Transaction.TransactionStatus.APPROVED, endExclusive);
+        List<Transaction> txUpTo = transactionRepository.findNonRejectedSubmittedUpTo(
+                Transaction.TransactionStatus.REJECTED, endExclusive);
 
         record MedUserKey(Long userId, Long medicineId) {}
         record MedUserMeta(User user, Medicine medicine) {}
@@ -476,10 +476,11 @@ public class ReportService {
         LocalDateTime start = reportDate.atStartOfDay();
         LocalDateTime end   = reportDate.plusDays(1).atStartOfDay();
 
-        // Forward reconstruction: all adjustments and approved transactions up to end of report date
+        // Forward reconstruction: adjustments + all non-rejected txs by submittedAt.
+        // Uses submittedAt (not approvedAt) because the Inventory table deducts stock at submission time.
         List<InventoryAdjustment> adjUpTo = inventoryAdjustmentRepository.findAllUpTo(end);
-        List<Transaction> txApprovedUpTo = transactionRepository.findApprovedUpTo(
-                Transaction.TransactionStatus.APPROVED, end);
+        List<Transaction> txApprovedUpTo = transactionRepository.findNonRejectedSubmittedUpTo(
+                Transaction.TransactionStatus.REJECTED, end);
 
         // Daily summary sections (transactions and adjustments ON the report date)
         List<Transaction> txList = transactionRepository.findApprovedBetween(
