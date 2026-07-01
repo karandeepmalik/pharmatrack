@@ -207,8 +207,9 @@ describe('SalesGraphReport — date validation', () => {
         renderPage();
         await waitFor(() => expect(api.getReportSalesGraph).toHaveBeenCalledTimes(1));
 
-        fireEvent.change(screen.getByLabelText(/^from$/i), { target: { value: '2026-07-01' } });
+        // Change 'to' first so the range is immediately invalid (from>to), avoiding an extra fetch
         fireEvent.change(screen.getByLabelText(/^to$/i),   { target: { value: '2026-06-01' } });
+        fireEvent.change(screen.getByLabelText(/^from$/i), { target: { value: '2026-07-01' } });
 
         // still only called once (from mount)
         await waitFor(() => expect(api.getReportSalesGraph).toHaveBeenCalledTimes(1));
