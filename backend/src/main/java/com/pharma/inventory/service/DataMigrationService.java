@@ -182,13 +182,10 @@ public class DataMigrationService {
      */
     private void backfillMissingInventoryAdjustments() {
         try {
-            Integer existing = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_adjustments WHERE note = 'Initial stock backfill'",
-                Integer.class);
-            if (existing != null && existing > 0) {
-                log.info("DataMigration: inventory backfill already done ({} records), skipping", existing);
-                return;
-            }
+            // Always delete and recompute so restarts self-correct (records are synthetic/derived).
+            int deleted = jdbc.update(
+                "DELETE FROM inventory_adjustments WHERE note = 'Initial stock backfill'");
+            if (deleted > 0) log.info("DataMigration: removed {} stale backfill records for recompute", deleted);
 
             String gapSql =
                 "WITH adj_sums AS (" +
@@ -202,7 +199,7 @@ public class DataMigrationService {
                 "  SELECT submitted_by AS user_id, medicine_id," +
                 "         COALESCE(inventory_type, 'REGULAR_MEDICINE_STOCK') AS inventory_type," +
                 "         SUM(quantity) AS tx_qty" +
-                "  FROM transactions WHERE status = 'APPROVED'" +
+                "  FROM transactions WHERE status != 'REJECTED'" +
                 "  GROUP BY submitted_by, medicine_id, COALESCE(inventory_type, 'REGULAR_MEDICINE_STOCK')" +
                 ")," +
                 "gaps AS (" +
