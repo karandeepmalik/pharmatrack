@@ -227,13 +227,13 @@ describe('MyTransactions — transaction display', () => {
     );
   });
 
-  test('shows screenshot attached indicator when screenshots list is non-empty', async () => {
+  test('shows screenshot viewer when screenshots list is non-empty', async () => {
     api.getMyTransactions.mockResolvedValue(
-      mkPage([makeTx({ screenshots: [{ data: 'base64', contentType: 'image/png' }] })])
+      mkPage([makeTx({ screenshots: [{ data: 'base64', mimeType: 'image/png' }] })])
     );
     renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/attached ✓/i)).toBeInTheDocument()
+      expect(screen.getByText(/payment screenshot:/i)).toBeInTheDocument()
     );
   });
 

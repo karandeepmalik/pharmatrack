@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
+import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
 
 const PAGE_SIZE = 20;
 
@@ -101,7 +102,12 @@ export default function MyTransactions() {
                 <p><strong>Quantity:</strong> {tx.quantity}</p>
                 <p><strong>Note:</strong> {tx.notes}</p>
                 <p><strong>Submitted:</strong> {tx.submittedAt ? new Date(tx.submittedAt).toLocaleString() : '—'}</p>
-                {tx.screenshots?.length > 0 && <p><strong>Payment screenshot:</strong> attached ✓</p>}
+                {tx.screenshots?.length > 0 && (
+                  <div className="tx-screenshot-user">
+                    <p className="screenshot-label"><strong>Payment Screenshot{tx.screenshots.length > 1 ? 's' : ''}:</strong></p>
+                    <PaymentScreenshotViewer screenshots={tx.screenshots} transactionId={tx.id} />
+                  </div>
+                )}
               </div>
             );
           })}

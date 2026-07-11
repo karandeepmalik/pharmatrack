@@ -112,7 +112,11 @@ small{color:#6b7280;font-size:.75rem}
 .lightbox-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:.5rem}
 .lightbox-close{background:none;border:none;font-size:1.25rem;cursor:pointer;padding:.25rem;flex-shrink:0}
 .lightbox-footer{margin-top:1rem;display:flex;gap:.75rem}
-.screenshot-full-img{max-width:100%;border-radius:8px;display:block}
+.lightbox-img-wrap{overflow:auto}
+.lightbox-img-wrap.zoomed{cursor:zoom-out}
+.screenshot-full-img{max-width:100%;border-radius:8px;display:block;cursor:zoom-in}
+.screenshot-full-img--original{max-width:none;width:auto;cursor:zoom-out}
+.tx-screenshot-user{margin-top:.5rem}
 
 /* ── Submit transaction page ─────────────────────────────────────────── */
 .submit-transaction-page{max-width:700px}
