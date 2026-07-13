@@ -13,9 +13,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
-import java.util.List;
-import java.util.Map;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
@@ -198,108 +195,6 @@ class DataMigrationServiceTest {
             // (allwyn, arnab, karan, etc.) that don't exist in the H2 demo seed.
             // The important thing is that onStartup() completes without throwing.
             assertThatNoException().isThrownBy(() -> dataMigrationService.onStartup());
-        }
-    }
-
-    // ── backfillMissingInventoryAdjustments ─────────────────────────────────
-
-    @Nested @DisplayName("backfillMissingInventoryAdjustments behaviour")
-    class Backfill {
-
-        @Test @DisplayName("Inserts a backfill adjustment for an inventory row with no adjustment history")
-        void backfillsGapForUntrackedInventory() {
-            Map<String, Object> bucket = firstInventoryBucketWithNoAdjustments();
-            long userId = ((Number) bucket.get("user_id")).longValue();
-            long medicineId = ((Number) bucket.get("medicine_id")).longValue();
-            int quantity = ((Number) bucket.get("quantity")).intValue();
-
-            dataMigrationService.onStartup();
-
-            Integer backfilled = jdbc.queryForObject(
-                "SELECT quantity FROM inventory_adjustments " +
-                "WHERE user_id = ? AND medicine_id = ? AND note = 'Initial stock backfill'",
-                Integer.class, userId, medicineId);
-            assertThat(backfilled)
-                .as("Gap-filling ADD adjustment should match the untracked inventory quantity")
-                .isEqualTo(quantity);
-        }
-
-        @Test @DisplayName("A bucket's backfill row is never recomputed once it exists, even if later data would change the gap")
-        void backfillRowIsStableAcrossRestartsDespiteDataChanges() {
-            Map<String, Object> bucket = firstInventoryBucketWithNoAdjustments();
-            long userId = ((Number) bucket.get("user_id")).longValue();
-            long medicineId = ((Number) bucket.get("medicine_id")).longValue();
-
-            dataMigrationService.onStartup();
-            Integer firstRun = jdbc.queryForObject(
-                "SELECT quantity FROM inventory_adjustments " +
-                "WHERE user_id = ? AND medicine_id = ? AND note = 'Initial stock backfill'",
-                Integer.class, userId, medicineId);
-
-            // Simulate inventory drifting after the bucket was already backfilled (e.g. a
-            // manual DB correction, or the kind of post-hoc data change that used to make the
-            // old backfill silently rewrite already-generated historical daily reports).
-            jdbc.update("UPDATE inventory SET quantity = quantity + 50 WHERE user_id = ? AND medicine_id = ?",
-                userId, medicineId);
-
-            dataMigrationService.onStartup();
-
-            Integer afterSecondRun = jdbc.queryForObject(
-                "SELECT quantity FROM inventory_adjustments " +
-                "WHERE user_id = ? AND medicine_id = ? AND note = 'Initial stock backfill'",
-                Integer.class, userId, medicineId);
-            long rowCount = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_adjustments " +
-                "WHERE user_id = ? AND medicine_id = ? AND note = 'Initial stock backfill'",
-                Long.class, userId, medicineId);
-
-            assertThat(afterSecondRun)
-                .as("Backfill quantity must not change once the bucket has already been backfilled")
-                .isEqualTo(firstRun);
-            assertThat(rowCount)
-                .as("Backfill must not insert a duplicate row for an already-backfilled bucket")
-                .isEqualTo(1);
-        }
-
-        @Test @DisplayName("A newly-appearing inventory bucket still gets backfilled without disturbing existing backfill rows")
-        void backfillsNewBucketsWithoutTouchingExisting() {
-            dataMigrationService.onStartup(); // backfills whatever gaps exist today
-
-            long existingBackfillCount = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_adjustments WHERE note = 'Initial stock backfill'", Long.class);
-
-            Long userId = jdbc.queryForObject("SELECT id FROM users LIMIT 1", Long.class);
-            List<Long> freeMedicineIds = jdbc.queryForList(
-                "SELECT id FROM medicines WHERE id NOT IN " +
-                "(SELECT medicine_id FROM inventory WHERE user_id = ?) LIMIT 1", Long.class, userId);
-            if (freeMedicineIds.isEmpty()) return; // every medicine already has a bucket for this user
-            Long medicineId = freeMedicineIds.get(0);
-
-            jdbc.update(
-                "INSERT INTO inventory (user_id, medicine_id, quantity, inventory_type, last_note, last_updated) " +
-                "VALUES (?, ?, 7, 'REGULAR_MEDICINE_STOCK', 'test seed', CURRENT_TIMESTAMP)",
-                userId, medicineId);
-
-            dataMigrationService.onStartup();
-
-            Integer newBucketBackfill = jdbc.queryForObject(
-                "SELECT quantity FROM inventory_adjustments " +
-                "WHERE user_id = ? AND medicine_id = ? AND note = 'Initial stock backfill'",
-                Integer.class, userId, medicineId);
-            long backfillCountAfter = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_adjustments WHERE note = 'Initial stock backfill'", Long.class);
-
-            assertThat(newBucketBackfill).isEqualTo(7);
-            assertThat(backfillCountAfter).isEqualTo(existingBackfillCount + 1);
-        }
-
-        private Map<String, Object> firstInventoryBucketWithNoAdjustments() {
-            return jdbc.queryForMap(
-                "SELECT i.user_id, i.medicine_id, i.quantity FROM inventory i " +
-                "WHERE i.quantity > 0 AND NOT EXISTS (" +
-                "  SELECT 1 FROM inventory_adjustments a " +
-                "  WHERE a.user_id = i.user_id AND a.medicine_id = i.medicine_id" +
-                ") LIMIT 1");
         }
     }
 

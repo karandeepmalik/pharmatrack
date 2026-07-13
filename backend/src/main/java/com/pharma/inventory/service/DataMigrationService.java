@@ -7,8 +7,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import java.sql.Timestamp;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -36,7 +34,6 @@ public class DataMigrationService {
         dropLegacyUniqueConstraint();
         createTransactionScreenshotsTable();
         seedInventoryIfEmpty();
-        backfillMissingInventoryAdjustments();
     }
 
     /**
@@ -245,90 +242,6 @@ public class DataMigrationService {
             log.info("DataMigration: seeded {} inventory rows", inserted);
         } catch (Exception e) {
             log.warn("DataMigration: inventory seed failed — {}", e.getMessage());
-        }
-    }
-
-    /**
-     * For each (user, medicine, inventory_type) bucket in the Inventory table that has never
-     * been backfilled before, computes:
-     *   gap = current_qty − (Σ ADD adjustments − Σ REMOVE adjustments, excluding backfill rows)
-     *         + Σ non-rejected transaction qty
-     * A positive gap represents stock that exists in the Inventory table but was never recorded
-     * as a real InventoryAdjustment (e.g. stock seeded directly via DataInitializer or admin DB
-     * ops). Inserts a single backdated ADD adjustment for the gap so forward reconstruction
-     * matches reality.
-     *
-     * Idempotent per bucket, not per run: a bucket that already has an 'Initial stock backfill'
-     * row is excluded from the gap query entirely and is never touched again. The previous
-     * version of this method deleted and recomputed ALL backfill rows on every restart against
-     * whatever current adjustments/transactions existed at that moment — since those rows were
-     * always dated 2020-01-01, any change to "current" data silently rewrote every historical
-     * daily report ever generated (#88). Computing a bucket's genesis gap exactly once and then
-     * leaving it alone forever is what makes past reports stable.
-     */
-    private void backfillMissingInventoryAdjustments() {
-        try {
-            String gapSql =
-                "WITH adj_sums AS (" +
-                "  SELECT user_id, medicine_id, inventory_type," +
-                "         SUM(CASE WHEN adjustment_type = 'ADD' THEN quantity ELSE -quantity END) AS net_qty" +
-                "  FROM inventory_adjustments" +
-                "  WHERE inventory_type IS NOT NULL AND note != 'Initial stock backfill'" +
-                "  GROUP BY user_id, medicine_id, inventory_type" +
-                ")," +
-                "tx_sums AS (" +
-                "  SELECT submitted_by AS user_id, medicine_id," +
-                "         COALESCE(inventory_type, 'REGULAR_MEDICINE_STOCK') AS inventory_type," +
-                "         SUM(quantity) AS tx_qty" +
-                "  FROM transactions WHERE status != 'REJECTED'" +
-                "  GROUP BY submitted_by, medicine_id, COALESCE(inventory_type, 'REGULAR_MEDICINE_STOCK')" +
-                ")," +
-                "already_backfilled AS (" +
-                "  SELECT DISTINCT user_id, medicine_id, inventory_type" +
-                "  FROM inventory_adjustments WHERE note = 'Initial stock backfill'" +
-                ")," +
-                "gaps AS (" +
-                "  SELECT i.user_id, i.medicine_id, i.inventory_type," +
-                "         i.quantity - COALESCE(a.net_qty, 0) + COALESCE(t.tx_qty, 0) AS gap" +
-                "  FROM inventory i" +
-                "  LEFT JOIN adj_sums a ON a.user_id = i.user_id" +
-                "                      AND a.medicine_id = i.medicine_id" +
-                "                      AND a.inventory_type = i.inventory_type" +
-                "  LEFT JOIN tx_sums t ON t.user_id = i.user_id" +
-                "                     AND t.medicine_id = i.medicine_id" +
-                "                     AND t.inventory_type = i.inventory_type" +
-                "  LEFT JOIN already_backfilled b ON b.user_id = i.user_id" +
-                "                     AND b.medicine_id = i.medicine_id" +
-                "                     AND b.inventory_type = i.inventory_type" +
-                "  WHERE i.quantity > 0 AND b.user_id IS NULL" +
-                ")" +
-                "SELECT user_id, medicine_id, inventory_type, gap FROM gaps WHERE gap > 0";
-
-            List<Map<String, Object>> gaps = jdbc.queryForList(gapSql);
-            if (gaps.isEmpty()) {
-                log.info("DataMigration: no un-backfilled inventory adjustment gaps found");
-                return;
-            }
-
-            String insertSql =
-                "INSERT INTO inventory_adjustments " +
-                "(user_id, medicine_id, quantity, adjustment_type, note, internal_movement, " +
-                " in_transit, was_in_transit, transit_days, inventory_type, adjusted_at) " +
-                "VALUES (?, ?, ?, 'ADD', 'Initial stock backfill', false, false, false, 2, ?, ?)";
-
-            Timestamp epoch = Timestamp.valueOf(LocalDateTime.of(2020, 1, 1, 0, 0, 0));
-            int inserted = 0;
-            for (Map<String, Object> row : gaps) {
-                long userId     = ((Number) row.get("user_id")).longValue();
-                long medicineId = ((Number) row.get("medicine_id")).longValue();
-                int  gap        = ((Number) row.get("gap")).intValue();
-                String invType  = (String) row.get("inventory_type");
-                jdbc.update(insertSql, userId, medicineId, gap, invType, epoch);
-                inserted++;
-            }
-            log.info("DataMigration: inserted {} initial stock backfill adjustment record(s) for new buckets", inserted);
-        } catch (Exception e) {
-            log.warn("DataMigration: inventory adjustment backfill failed — {}", e.getMessage(), e);
         }
     }
 
