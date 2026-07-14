@@ -90,11 +90,11 @@ class DataMigrationServiceTest {
         void jpqlEnumQuerySucceedsAfterLegacyRename() {
             Long id = jdbc.queryForObject("SELECT id FROM inventory LIMIT 1", Long.class);
             jdbc.update("UPDATE inventory SET inventory_type = 'REGULAR' WHERE id = ?", id);
-            int sizeBefore = inventoryRepository.findAllNonZeroByInventoryType(InventoryType.REGULAR_MEDICINE_STOCK).size();
+            int sizeBefore = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(InventoryType.REGULAR_MEDICINE_STOCK).size();
 
             dataMigrationService.onStartup();
 
-            int sizeAfter = inventoryRepository.findAllNonZeroByInventoryType(InventoryType.REGULAR_MEDICINE_STOCK).size();
+            int sizeAfter = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(InventoryType.REGULAR_MEDICINE_STOCK).size();
             assertThat(sizeAfter)
                 .as("JPQL enum query should return at least as many rows after migration as before " +
                     "(the renamed row must now be visible)")

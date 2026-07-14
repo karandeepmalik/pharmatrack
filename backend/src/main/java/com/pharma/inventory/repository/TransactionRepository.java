@@ -19,30 +19,6 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
     void nullifyApprovedBy(Long userId);
 
     /**
-     * All transactions with their submitter, medicine, pharma company, and approver
-     * loaded in a single query — eliminates N+1 on those relations.
-     * Screenshots are LAZY + @BatchSize(50) on the entity, so they load in batches
-     * as the mapper accesses them within the same transaction.
-     */
-    @Query("SELECT DISTINCT t FROM Transaction t " +
-           "JOIN FETCH t.submittedBy " +
-           "JOIN FETCH t.medicine m " +
-           "JOIN FETCH m.pharmaCompany " +
-           "LEFT JOIN FETCH t.approvedBy " +
-           "ORDER BY t.submittedAt DESC")
-    List<Transaction> findAllWithDetails();
-
-    /** Same join-fetch strategy filtered to a specific user. */
-    @Query("SELECT DISTINCT t FROM Transaction t " +
-           "JOIN FETCH t.submittedBy " +
-           "JOIN FETCH t.medicine m " +
-           "JOIN FETCH m.pharmaCompany " +
-           "LEFT JOIN FETCH t.approvedBy " +
-           "WHERE t.submittedBy = :user " +
-           "ORDER BY t.submittedAt DESC")
-    List<Transaction> findByUserWithDetails(@Param("user") User user);
-
-    /**
      * Two-query pagination strategy for transactions (avoids HibernateException
      * "firstResult/maxResults specified with collection fetch" when JOIN FETCH + Pageable
      * are combined directly).
@@ -101,14 +77,6 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("end") LocalDateTime end,
             @Param("status") Transaction.TransactionStatus status);
 
-    @Query("SELECT t FROM Transaction t " +
-           "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE t.status = :status AND t.approvedAt IS NOT NULL AND t.approvedAt < :endExclusive " +
-           "ORDER BY u.fullName, m.name")
-    List<Transaction> findApprovedUpTo(
-            @Param("status") Transaction.TransactionStatus status,
-            @Param("endExclusive") LocalDateTime endExclusive);
-
     /**
      * All non-rejected transactions submitted before endExclusive.
      * Mirrors how the Inventory table works: stock is deducted at submission time and
@@ -134,13 +102,4 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("userId") Long userId,
             @Param("rejected") Transaction.TransactionStatus rejected,
             @Param("endExclusive") LocalDateTime endExclusive);
-
-    /** Approved transactions approved on or after 'from' — used by backward historical reconstruction. */
-    @Query("SELECT t FROM Transaction t " +
-           "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE t.status = :status AND t.approvedAt IS NOT NULL AND t.approvedAt >= :from " +
-           "ORDER BY u.fullName, m.name")
-    List<Transaction> findApprovedFrom(
-            @Param("status") Transaction.TransactionStatus status,
-            @Param("from") LocalDateTime from);
 }

@@ -14,7 +14,6 @@ import com.pharma.inventory.exception.InvalidStateTransitionException;
 import com.pharma.inventory.exception.ResourceNotFoundException;
 import com.pharma.inventory.entity.TransactionScreenshot;
 import com.pharma.inventory.mapper.TransactionMapper;
-import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.MedicineRepository;
 import com.pharma.inventory.repository.TransactionRepository;
@@ -258,10 +257,6 @@ public class TransactionService {
         return medicineRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Medicine", id));
     }
-    private Inventory findRegularInventory(Long userId, Long medicineId) {
-        return findInventoryByType(userId, medicineId, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-    }
-
     private Inventory findInventoryByType(Long userId, Long medicineId, Inventory.InventoryType type) {
         return inventoryRepository
                 .findByUserIdAndMedicineIdAndInventoryType(userId, medicineId, type)
