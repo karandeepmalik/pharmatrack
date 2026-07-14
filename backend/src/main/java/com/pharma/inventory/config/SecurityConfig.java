@@ -52,6 +52,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/inventory/**").hasRole("ADMIN")
                 .requestMatchers("/api/transactions/**").hasRole("ADMIN")
                 .requestMatchers("/api/users/**").hasRole("ADMIN")
+                // Actuator: health is public (Cloud Run health checks); everything else
+                // (metrics, prometheus) is operational data and admin-only
+                .requestMatchers("/actuator/**").hasRole("ADMIN")
                 .anyRequest().authenticated())
             .exceptionHandling(e->e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .authenticationProvider(authProvider())

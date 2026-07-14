@@ -8,8 +8,6 @@ import java.util.Optional;
 
 public interface InventoryRepository extends JpaRepository<Inventory,Long> {
 
-    Optional<Inventory> findByUserIdAndMedicineId(Long userId, Long medicineId);
-
     Optional<Inventory> findByUserIdAndMedicineIdAndInventoryType(
             Long userId, Long medicineId, Inventory.InventoryType inventoryType);
 
@@ -20,7 +18,6 @@ public interface InventoryRepository extends JpaRepository<Inventory,Long> {
             @Param("userId") Long userId,
             @Param("type") Inventory.InventoryType type);
 
-    List<Inventory> findByUserId(Long userId);
     void deleteByUserId(Long userId);
 
     /** All non-zero inventory of a given type ordered by medicine then user — used by inventory-by-user report (ADMIN). */
@@ -39,12 +36,6 @@ public interface InventoryRepository extends JpaRepository<Inventory,Long> {
            "ORDER BY m.name, m.specification, u.fullName")
     List<Inventory> findAllNonZeroRegularOrderByMedicineAndUser(@Param("type") Inventory.InventoryType type);
 
-    /** All non-zero inventory of a given type — used by valuation report (ADMIN). */
-    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE i.quantity > 0 AND i.inventoryType = :type " +
-           "ORDER BY m.name, m.specification")
-    List<Inventory> findAllNonZeroForValuation(@Param("type") Inventory.InventoryType type);
-
     /**
      * REGULAR stock for valuation — includes rows where inventoryType IS NULL.
      * Same NULL-inclusion rationale as findAllNonZeroRegularOrderByMedicineAndUser.
@@ -53,27 +44,4 @@ public interface InventoryRepository extends JpaRepository<Inventory,Long> {
            "WHERE i.quantity > 0 AND (i.inventoryType = :type OR i.inventoryType IS NULL) " +
            "ORDER BY m.name, m.specification")
     List<Inventory> findAllNonZeroRegularForValuation(@Param("type") Inventory.InventoryType type);
-
-    /**
-     * ALL REGULAR inventory rows (including zero-quantity) for backward historical reconstruction.
-     * Zero-quantity rows are needed when a user has fully dispensed their stock since the target date.
-     */
-    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE (i.inventoryType = :type OR i.inventoryType IS NULL)")
-    List<Inventory> findAllRegularInventory(@Param("type") Inventory.InventoryType type);
-
-    /** All non-zero inventory of a given type — used by daily report (ADMIN_STOCK section). */
-    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE i.quantity > 0 AND i.inventoryType = :type " +
-           "ORDER BY m.name, m.specification, u.fullName")
-    List<Inventory> findAllNonZeroByInventoryType(@Param("type") Inventory.InventoryType type);
-
-    /**
-     * REGULAR stock for daily report — includes rows where inventoryType IS NULL.
-     * Same NULL-inclusion rationale as findAllNonZeroRegularOrderByMedicineAndUser.
-     */
-    @Query("SELECT i FROM Inventory i JOIN FETCH i.user u JOIN FETCH i.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE i.quantity > 0 AND (i.inventoryType = :type OR i.inventoryType IS NULL) " +
-           "ORDER BY m.name, m.specification, u.fullName")
-    List<Inventory> findAllNonZeroRegularByInventoryType(@Param("type") Inventory.InventoryType type);
 }

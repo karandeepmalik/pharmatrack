@@ -67,24 +67,6 @@ class InventoryRepositoryTest {
 
     // ── derived queries ──────────────────────────────────────────────────────
 
-    @Nested @DisplayName("findByUserIdAndMedicineId")
-    class FindByUserIdAndMedicineId {
-
-        @Test @DisplayName("returns matching record when exactly one row exists for user+medicine")
-        void returnsMatch() {
-            // user2 only has inv3 (medA, REGULAR) — no ADMIN row for medA → safe single result
-            Optional<Inventory> result = repo.findByUserIdAndMedicineId(user2.getId(), medA.getId());
-            assertThat(result).isPresent();
-            assertThat(result.get().getId()).isEqualTo(inv3.getId());
-        }
-
-        @Test @DisplayName("returns empty when no record exists")
-        void returnsEmptyWhenAbsent() {
-            Optional<Inventory> result = repo.findByUserIdAndMedicineId(user1.getId(), -999L);
-            assertThat(result).isEmpty();
-        }
-    }
-
     @Nested @DisplayName("findByUserIdAndMedicineIdAndInventoryType")
     class FindByUserIdAndMedicineIdAndInventoryType {
 
@@ -110,25 +92,6 @@ class InventoryRepositoryTest {
             Optional<Inventory> result = repo.findByUserIdAndMedicineIdAndInventoryType(
                     user2.getId(), medA.getId(), Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
             assertThat(result).isEmpty();
-        }
-    }
-
-    @Nested @DisplayName("findByUserId")
-    class FindByUserId {
-
-        @Test @DisplayName("returns all inventory rows for the user")
-        void returnsAllForUser() {
-            List<Inventory> result = repo.findByUserId(user1.getId());
-            assertThat(result).extracting(Inventory::getId)
-                    .containsExactlyInAnyOrder(inv1.getId(), inv2.getId(), inv4.getId());
-        }
-
-        @Test @DisplayName("returns empty when user has no inventory")
-        void returnsEmptyWhenNone() {
-            User user3 = buildUser("carol", "carol@test.com");
-            em.persist(user3);
-            em.flush();
-            assertThat(repo.findByUserId(user3.getId())).isEmpty();
         }
     }
 
@@ -258,34 +221,6 @@ class InventoryRepositoryTest {
         }
     }
 
-    @Nested @DisplayName("findAllNonZeroForValuation")
-    class FindAllNonZeroForValuation {
-
-        @Test @DisplayName("returns non-zero REGULAR rows for valuation")
-        void returnsNonZeroRegularRows() {
-            List<Inventory> result = repo.findAllNonZeroForValuation(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).extracting(Inventory::getId)
-                    .containsExactlyInAnyOrder(inv1.getId(), inv3.getId());
-        }
-
-        @Test @DisplayName("excludes zero-quantity and ADMIN rows")
-        void excludesZeroAndAdmin() {
-            List<Inventory> result = repo.findAllNonZeroForValuation(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).noneMatch(i -> i.getId().equals(inv2.getId()));
-            assertThat(result).noneMatch(i -> i.getId().equals(inv4.getId()));
-            assertThat(result).noneMatch(i -> i.getId().equals(inv5.getId()));
-        }
-
-        @Test @DisplayName("eagerly loads medicine and pharmaCompany")
-        void eagerlyLoadsMedicineAndCompany() {
-            List<Inventory> result = repo.findAllNonZeroForValuation(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result.get(0).getMedicine().getPharmaCompany().getName()).isEqualTo("TestPharma");
-        }
-    }
-
     @Nested @DisplayName("findAllNonZeroRegularForValuation")
     class FindAllNonZeroRegularForValuation {
 
@@ -303,102 +238,6 @@ class InventoryRepositoryTest {
                     Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
             assertThat(result).noneMatch(
                     i -> i.getInventoryType() == Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
-        }
-    }
-
-    @Nested @DisplayName("findAllRegularInventory")
-    class FindAllRegularInventory {
-
-        @Test @DisplayName("includes zero-quantity REGULAR rows")
-        void includesZeroQtyRows() {
-            List<Inventory> result = repo.findAllRegularInventory(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).extracting(Inventory::getId)
-                    .contains(inv2.getId()); // inv2 has qty=0
-        }
-
-        @Test @DisplayName("excludes ADMIN rows")
-        void excludesAdminRows() {
-            List<Inventory> result = repo.findAllRegularInventory(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).noneMatch(i -> i.getId().equals(inv4.getId()));
-            assertThat(result).noneMatch(i -> i.getId().equals(inv5.getId()));
-        }
-
-        @Test @DisplayName("returns all three REGULAR rows (zero and non-zero)")
-        void returnsAllRegularRows() {
-            List<Inventory> result = repo.findAllRegularInventory(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).extracting(Inventory::getId)
-                    .containsExactlyInAnyOrder(inv1.getId(), inv2.getId(), inv3.getId());
-        }
-
-        @Test @DisplayName("eagerly loads user, medicine, pharmaCompany")
-        void eagerlyLoadsAssociations() {
-            List<Inventory> result = repo.findAllRegularInventory(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).allSatisfy(i -> {
-                assertThat(i.getUser().getUsername()).isNotNull();
-                assertThat(i.getMedicine().getName()).isNotNull();
-                assertThat(i.getMedicine().getPharmaCompany().getName()).isEqualTo("TestPharma");
-            });
-        }
-    }
-
-    @Nested @DisplayName("findAllNonZeroByInventoryType")
-    class FindAllNonZeroByInventoryType {
-
-        @Test @DisplayName("returns non-zero ADMIN rows ordered by medicine then user")
-        void returnsNonZeroAdminRows() {
-            List<Inventory> result = repo.findAllNonZeroByInventoryType(
-                    Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
-            assertThat(result).extracting(Inventory::getId)
-                    .containsExactlyInAnyOrder(inv4.getId(), inv5.getId());
-        }
-
-        @Test @DisplayName("ordered by medicine name: Amoxicillin (inv4) before Brufen (inv5)")
-        void orderedByMedicineName() {
-            List<Inventory> result = repo.findAllNonZeroByInventoryType(
-                    Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
-            assertThat(result).extracting(Inventory::getId)
-                    .containsExactly(inv4.getId(), inv5.getId());
-        }
-
-        @Test @DisplayName("returns empty when no non-zero rows of that type exist")
-        void emptyWhenNone() {
-            // user2 has no ADMIN inventory for medA; but user1 and user2 have ADMIN rows
-            // Test with a fresh user who has no inventory
-            assertThat(repo.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .isNotEmpty(); // sanity check
-
-            // Delete all ADMIN rows, then check empty
-            em.remove(em.find(Inventory.class, inv4.getId()));
-            em.remove(em.find(Inventory.class, inv5.getId()));
-            em.flush();
-
-            assertThat(repo.findAllNonZeroByInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
-                    .isEmpty();
-        }
-    }
-
-    @Nested @DisplayName("findAllNonZeroRegularByInventoryType")
-    class FindAllNonZeroRegularByInventoryType {
-
-        @Test @DisplayName("returns non-zero REGULAR rows including IS-NULL fallback")
-        void returnsNonZeroRegularRows() {
-            List<Inventory> result = repo.findAllNonZeroRegularByInventoryType(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).extracting(Inventory::getId)
-                    .containsExactlyInAnyOrder(inv1.getId(), inv3.getId());
-        }
-
-        @Test @DisplayName("ordered by medicine name then user fullName")
-        void orderedCorrectly() {
-            List<Inventory> result = repo.findAllNonZeroRegularByInventoryType(
-                    Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            // Both medA (Amoxicillin): alice < bob
-            assertThat(result).extracting(Inventory::getId)
-                    .containsExactly(inv1.getId(), inv3.getId());
         }
     }
 

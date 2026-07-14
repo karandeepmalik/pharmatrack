@@ -45,13 +45,6 @@ public interface InventoryAdjustmentRepository extends JpaRepository<InventoryAd
            "ORDER BY m.name, m.specification, u.fullName")
     List<InventoryAdjustment> findAllUpTo(@Param("endExclusive") LocalDateTime endExclusive);
 
-    /** Adjustments made on or after 'from' — used by backward historical reconstruction. */
-    @Query("SELECT a FROM InventoryAdjustment a " +
-           "JOIN FETCH a.user u JOIN FETCH a.medicine m JOIN FETCH m.pharmaCompany " +
-           "WHERE a.adjustedAt >= :from " +
-           "ORDER BY m.name, m.specification, u.fullName")
-    List<InventoryAdjustment> findAllFrom(@Param("from") LocalDateTime from);
-
     @Query("SELECT a FROM InventoryAdjustment a " +
            "JOIN FETCH a.user u JOIN FETCH a.medicine m JOIN FETCH m.pharmaCompany " +
            "LEFT JOIN FETCH a.adjustedBy " +

@@ -30,8 +30,6 @@ api.interceptors.response.use(
 // ── Auth ───────────────────────────────────────────────────────────────
 export const login    = (credentials) => api.post('/auth/login', credentials);
 export const logout   = ()            => api.post('/auth/logout');
-export const register = (data)        => api.post('/auth/register', data);
-export const getMe    = ()            => api.get('/users/me');
 
 // ── Inventory — user ───────────────────────────────────────────────────
 export const getAvailableInventory = () => api.get('/inventory/available');
@@ -85,8 +83,6 @@ export const getUsers            = ()           => api.get('/users');
 export const createUser          = (data)       => api.post('/users', data);
 export const toggleUser          = (id)         => api.post(`/users/${id}/toggle`);
 export const deleteUser          = (id)         => api.delete(`/users/${id}`);
-export const updateUser          = (id, data)   => api.put(`/users/${id}`, data);
-export const changePassword      = (data)       => api.put('/users/me/password', data);
 export const adminChangePassword = (id, data)   => api.put(`/users/${id}/password`, data);
 
 // ── Inventory adjustments (admin) ─────────────────────────────────────

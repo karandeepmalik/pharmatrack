@@ -7,6 +7,7 @@ import com.pharma.inventory.dto.LoginRequest;
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.UserRepository;
 import com.pharma.inventory.security.JwtService;
+import com.pharma.inventory.security.LoginRateLimiter;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -25,12 +26,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AuthController.class)
-@Import({SecurityConfig.class, AppConfig.class})
+@Import({SecurityConfig.class, AppConfig.class, LoginRateLimiter.class})
 @DisplayName("AuthController")
 class AuthControllerTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
+    @Autowired LoginRateLimiter loginRateLimiter;
 
     @MockBean AuthenticationManager authenticationManager;
     @MockBean JwtService jwtService;
@@ -155,6 +157,117 @@ class AuthControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json("x", "y")))
                     .andExpect(status().isUnauthorized());
+        }
+    }
+
+    // ── Login rate limiting ────────────────────────────────────────────────
+    // Each test uses its own dedicated username: LoginRateLimiter is a real singleton bean
+    // shared across the cached Spring context for this test class, so reusing a username
+    // from another test method here would leak lockout state between tests.
+
+    @Nested
+    @DisplayName("Login rate limiting")
+    class LoginRateLimiting {
+
+        @Test
+        @DisplayName("5th consecutive failure for a username still returns 401")
+        void fifthFailureStillReturns401() throws Exception {
+            String username = "ratelimit.fifth";
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+
+            for (int i = 0; i < 5; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(json(username, "wrong")))
+                        .andExpect(status().isUnauthorized());
+            }
+        }
+
+        @Test
+        @DisplayName("6th consecutive failure for the same username returns 429")
+        void sixthFailureReturns429() throws Exception {
+            String username = "ratelimit.sixth";
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+
+            for (int i = 0; i < 5; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(json(username, "wrong")))
+                        .andExpect(status().isUnauthorized());
+            }
+
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json(username, "wrong")))
+                    .andExpect(status().isTooManyRequests());
+
+            // Authentication must not even be attempted once blocked
+            verify(authenticationManager, times(5)).authenticate(any());
+        }
+
+        @Test
+        @DisplayName("lockout is scoped per-username — a different username is unaffected")
+        void lockoutDoesNotAffectOtherUsernames() throws Exception {
+            String blockedUser = "ratelimit.blocked";
+            String otherUser = "ratelimit.other";
+
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+            for (int i = 0; i < 6; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(blockedUser, "wrong")));
+            }
+
+            reset(authenticationManager, userRepository, jwtService);
+            when(authenticationManager.authenticate(any())).thenReturn(
+                    new UsernamePasswordAuthenticationToken(otherUser, null));
+            when(userRepository.findByUsername(otherUser)).thenReturn(Optional.of(activeUser));
+            when(jwtService.generateToken(otherUser)).thenReturn("other.jwt.token");
+            when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
+
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json(otherUser, "secret")))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("a successful login resets the failure count")
+        void successfulLoginResetsCount() throws Exception {
+            String username = "ratelimit.reset";
+
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+            for (int i = 0; i < 4; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(username, "wrong")));
+            }
+
+            reset(authenticationManager, userRepository, jwtService);
+            when(authenticationManager.authenticate(any())).thenReturn(
+                    new UsernamePasswordAuthenticationToken(username, null));
+            when(userRepository.findByUsername(username)).thenReturn(Optional.of(activeUser));
+            when(jwtService.generateToken(username)).thenReturn("reset.jwt.token");
+            when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
+
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json(username, "secret")))
+                    .andExpect(status().isOk());
+
+            // Failures resumed from zero — a further 4 failures (not yet a 6th total) still 401
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+            for (int i = 0; i < 4; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(json(username, "wrong")))
+                        .andExpect(status().isUnauthorized());
+            }
         }
     }
 

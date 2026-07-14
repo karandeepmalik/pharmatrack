@@ -122,4 +122,51 @@ class JwtServiceTest {
             assertThat(jwtService.isValid("notavalidjwtatall", userDetails("john.doe"))).isFalse();
         }
     }
+
+    // ── validateSecret ─────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("validateSecret")
+    class ValidateSecret {
+
+        @Test
+        @DisplayName("accepts a secret that is at least 32 bytes and not the insecure default")
+        void acceptsValidSecret() {
+            JwtService svc = new JwtService();
+            ReflectionTestUtils.setField(svc, "secret", TEST_SECRET);
+            assertThatNoException().isThrownBy(() ->
+                    ReflectionTestUtils.invokeMethod(svc, "validateSecret"));
+        }
+
+        @Test
+        @DisplayName("rejects a null secret")
+        void rejectsNullSecret() {
+            JwtService svc = new JwtService();
+            ReflectionTestUtils.setField(svc, "secret", null);
+            assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(svc, "validateSecret"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("32 bytes");
+        }
+
+        @Test
+        @DisplayName("rejects a secret shorter than 32 bytes")
+        void rejectsShortSecret() {
+            JwtService svc = new JwtService();
+            ReflectionTestUtils.setField(svc, "secret", "too-short");
+            assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(svc, "validateSecret"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("32 bytes");
+        }
+
+        @Test
+        @DisplayName("rejects the literal insecure default placeholder even though it's long enough")
+        void rejectsInsecureDefault() {
+            JwtService svc = new JwtService();
+            ReflectionTestUtils.setField(svc, "secret",
+                    "change-me-in-production-must-be-at-least-256-bits-long");
+            assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(svc, "validateSecret"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("insecure placeholder");
+        }
+    }
 }

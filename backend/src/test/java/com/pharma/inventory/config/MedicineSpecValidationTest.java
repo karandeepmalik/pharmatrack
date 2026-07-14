@@ -232,18 +232,18 @@ class MedicineSpecValidationTest {
     @Nested @DisplayName("Inventory JPQL enum queries")
     class InventoryEnumQueries {
 
-        @Test @DisplayName("findAllNonZeroByInventoryType returns rows for REGULAR_MEDICINE_STOCK")
+        @Test @DisplayName("findAllNonZeroOrderByMedicineAndUser returns rows for REGULAR_MEDICINE_STOCK")
         void regularStockIsReturnedByJpqlEnumQuery() {
-            List<Inventory> rows = inventoryRepository.findAllNonZeroByInventoryType(REGULAR_MEDICINE_STOCK);
+            List<Inventory> rows = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(REGULAR_MEDICINE_STOCK);
             assertThat(rows)
                 .as("JPQL query for REGULAR_MEDICINE_STOCK must return rows — if empty, inventory_type " +
                     "column may contain legacy values ('REGULAR') that the converter cannot match")
                 .isNotEmpty();
         }
 
-        @Test @DisplayName("findAllNonZeroByInventoryType returns rows for ADMIN_MEDICINE_STOCK")
+        @Test @DisplayName("findAllNonZeroOrderByMedicineAndUser returns rows for ADMIN_MEDICINE_STOCK")
         void adminStockIsReturnedByJpqlEnumQuery() {
-            List<Inventory> rows = inventoryRepository.findAllNonZeroByInventoryType(ADMIN_MEDICINE_STOCK);
+            List<Inventory> rows = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(ADMIN_MEDICINE_STOCK);
             assertThat(rows)
                 .as("JPQL query for ADMIN_MEDICINE_STOCK must return rows — if empty, inventory_type " +
                     "column may contain legacy values ('ADMIN_STOCK') that the converter cannot match")
@@ -261,9 +261,9 @@ class MedicineSpecValidationTest {
             }
         }
 
-        @Test @DisplayName("findAllNonZeroForValuation returns regular rows (used by inventory-valuation report)")
+        @Test @DisplayName("findAllNonZeroRegularForValuation returns regular rows (used by inventory-valuation report)")
         void valuationQueryWorksForRegularStock() {
-            List<Inventory> rows = inventoryRepository.findAllNonZeroForValuation(REGULAR_MEDICINE_STOCK);
+            List<Inventory> rows = inventoryRepository.findAllNonZeroRegularForValuation(REGULAR_MEDICINE_STOCK);
             assertThat(rows)
                 .as("Valuation JPQL query for REGULAR_MEDICINE_STOCK must return rows")
                 .isNotEmpty();
@@ -271,13 +271,13 @@ class MedicineSpecValidationTest {
 
         @Test @DisplayName("All returned REGULAR_MEDICINE_STOCK rows have a positive quantity")
         void regularStockRowsHavePositiveQuantity() {
-            inventoryRepository.findAllNonZeroByInventoryType(REGULAR_MEDICINE_STOCK)
+            inventoryRepository.findAllNonZeroOrderByMedicineAndUser(REGULAR_MEDICINE_STOCK)
                 .forEach(i -> assertThat(i.getQuantity()).as("quantity must be positive").isPositive());
         }
 
         @Test @DisplayName("All returned ADMIN_MEDICINE_STOCK rows have a positive quantity")
         void adminStockRowsHavePositiveQuantity() {
-            inventoryRepository.findAllNonZeroByInventoryType(ADMIN_MEDICINE_STOCK)
+            inventoryRepository.findAllNonZeroOrderByMedicineAndUser(ADMIN_MEDICINE_STOCK)
                 .forEach(i -> assertThat(i.getQuantity()).as("quantity must be positive").isPositive());
         }
     }

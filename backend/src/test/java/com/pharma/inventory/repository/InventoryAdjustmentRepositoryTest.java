@@ -222,41 +222,6 @@ class InventoryAdjustmentRepositoryTest {
         }
     }
 
-    // ── findAllFrom ──────────────────────────────────────────────────────────
-
-    @Nested @DisplayName("findAllFrom")
-    class FindAllFrom {
-
-        @Test @DisplayName("returns adjustments with adjustedAt >= from (inclusive)")
-        void returnsFromInclusive() {
-            // from = Jan 2 00:00 → adj2 (Jan 2 10:00) and adj3 (Jan 3 10:00) included
-            List<InventoryAdjustment> result = repo.findAllFrom(
-                    LocalDateTime.of(2024, 1, 2, 0, 0));
-            assertThat(result).extracting(InventoryAdjustment::getId)
-                    .containsExactlyInAnyOrder(adj2.getId(), adj3.getId());
-        }
-
-        @Test @DisplayName("excludes adjustment before from")
-        void excludesBeforeFrom() {
-            List<InventoryAdjustment> result = repo.findAllFrom(
-                    LocalDateTime.of(2024, 1, 2, 0, 0));
-            assertThat(result).noneMatch(a -> a.getId().equals(adj1.getId()));
-        }
-
-        @Test @DisplayName("includes record exactly at from boundary")
-        void includesExactBoundary() {
-            List<InventoryAdjustment> result = repo.findAllFrom(JAN_2); // exactly adj2.adjustedAt
-            assertThat(result).anyMatch(a -> a.getId().equals(adj2.getId()));
-        }
-
-        @Test @DisplayName("returns empty when from is far in the future")
-        void emptyWhenFutureFrom() {
-            List<InventoryAdjustment> result = repo.findAllFrom(
-                    LocalDateTime.of(2099, 1, 1, 0, 0));
-            assertThat(result).isEmpty();
-        }
-    }
-
     // ── findWithDetailsBetween ───────────────────────────────────────────────
 
     @Nested @DisplayName("findWithDetailsBetween")
