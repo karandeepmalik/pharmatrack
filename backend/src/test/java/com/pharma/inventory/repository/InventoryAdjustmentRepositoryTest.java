@@ -143,6 +143,63 @@ class InventoryAdjustmentRepositoryTest {
         }
     }
 
+    // ── findActiveInTransitFor ───────────────────────────────────────────────
+
+    @Nested @DisplayName("findActiveInTransitFor")
+    class FindActiveInTransitFor {
+
+        @BeforeEach
+        void makeAdj2AnAddType() {
+            // Fixture default is adjustmentType="DISPENSED"; this method only matches ADD.
+            adj2.setAdjustmentType("ADD");
+            em.merge(adj2);
+            em.flush();
+        }
+
+        @Test @DisplayName("returns in-transit ADD adjustment matching user/medicine/type")
+        void returnsMatchingInTransitAdd() {
+            List<InventoryAdjustment> result =
+                    repo.findActiveInTransitFor(user1.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            assertThat(result).extracting(InventoryAdjustment::getId).containsExactly(adj2.getId());
+        }
+
+        @Test @DisplayName("excludes records with inTransit=false")
+        void excludesNotInTransit() {
+            List<InventoryAdjustment> result =
+                    repo.findActiveInTransitFor(user1.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            assertThat(result).noneMatch(a -> a.getId().equals(adj1.getId()) || a.getId().equals(adj3.getId()));
+        }
+
+        @Test @DisplayName("excludes records for a different user")
+        void excludesDifferentUser() {
+            List<InventoryAdjustment> result =
+                    repo.findActiveInTransitFor(admin.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            assertThat(result).isEmpty();
+        }
+
+        @Test @DisplayName("excludes non-ADD adjustment types even if inTransit=true")
+        void excludesNonAddType() {
+            adj2.setAdjustmentType("REDUCE");
+            em.merge(adj2);
+            em.flush();
+
+            List<InventoryAdjustment> result =
+                    repo.findActiveInTransitFor(user1.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            assertThat(result).isEmpty();
+        }
+
+        @Test @DisplayName("returns empty when no in-transit adjustments exist for the bucket")
+        void emptyWhenNoneInTransit() {
+            adj2.setInTransit(false);
+            em.merge(adj2);
+            em.flush();
+
+            List<InventoryAdjustment> result =
+                    repo.findActiveInTransitFor(user1.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            assertThat(result).isEmpty();
+        }
+    }
+
     // ── findAllUpTo ──────────────────────────────────────────────────────────
 
     @Nested @DisplayName("findAllUpTo")

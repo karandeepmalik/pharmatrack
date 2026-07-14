@@ -314,3 +314,84 @@ describe('MyTransactions — filter tabs', () => {
     expect(screen.getByText(/no transactions found/i)).toBeInTheDocument();
   });
 });
+
+// ── Delete own pending dispatch ─────────────────────────────────────────────
+
+describe('MyTransactions — delete transaction', () => {
+  let confirmSpy;
+
+  beforeEach(() => {
+    confirmSpy = jest.spyOn(window, 'confirm');
+  });
+
+  afterEach(() => {
+    confirmSpy.mockRestore();
+  });
+
+  test('shows Delete button for a PENDING transaction', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'PENDING' })]));
+    renderPage();
+    await waitFor(() => screen.getByText(/shield fx vial/i));
+    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
+  });
+
+  test('does not show Delete button for an APPROVED transaction', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'APPROVED' })]));
+    renderPage();
+    await waitFor(() => screen.getByText(/shield fx vial/i));
+    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
+  });
+
+  test('does not show Delete button for a REJECTED transaction', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'REJECTED' })]));
+    renderPage();
+    await waitFor(() => screen.getByText(/shield fx vial/i));
+    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
+  });
+
+  test('clicking Delete asks for confirmation and does nothing when declined', async () => {
+    confirmSpy.mockReturnValue(false);
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'PENDING' })]));
+    renderPage();
+    await waitFor(() => screen.getByText(/shield fx vial/i));
+
+    await userEvent.click(screen.getByRole('button', { name: /delete/i }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(api.deleteMyTransaction).not.toHaveBeenCalled();
+    expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument();
+  });
+
+  test('confirming Delete calls the API and removes the transaction from the list', async () => {
+    confirmSpy.mockReturnValue(true);
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'PENDING', id: 5 })]));
+    api.deleteMyTransaction.mockResolvedValue({});
+    renderPage();
+    await waitFor(() => screen.getByText(/shield fx vial/i));
+
+    await userEvent.click(screen.getByRole('button', { name: /delete/i }));
+
+    await waitFor(() => expect(api.deleteMyTransaction).toHaveBeenCalledWith(5));
+    await waitFor(() =>
+      expect(screen.getByText(/no transactions found/i)).toBeInTheDocument()
+    );
+  });
+
+  test('shows an error alert when deletion fails', async () => {
+    confirmSpy.mockReturnValue(true);
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'PENDING' })]));
+    api.deleteMyTransaction.mockRejectedValue({
+      response: { data: { message: 'Cannot delete — already approved' } },
+    });
+    renderPage();
+    await waitFor(() => screen.getByText(/shield fx vial/i));
+
+    await userEvent.click(screen.getByRole('button', { name: /delete/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/cannot delete — already approved/i)
+    );
+    // Record stays in the list since deletion failed
+    expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument();
+  });
+});

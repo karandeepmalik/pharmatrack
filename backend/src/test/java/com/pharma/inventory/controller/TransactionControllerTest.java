@@ -469,6 +469,62 @@ class TransactionControllerTest {
         }
     }
 
+    // ── DELETE /api/transactions/my/{id} ───────────────────────────────
+
+    @Nested
+    @DisplayName("DELETE /api/transactions/my/{id} — user deletes own PENDING dispatch")
+    class DeleteMine {
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("owner deletes their own pending transaction — returns 204")
+        void deleteMine_owner_204() throws Exception {
+            doNothing().when(transactionService).deleteOwnPending(1L, "john.doe");
+
+            mockMvc.perform(delete("/api/transactions/my/1").with(csrf()))
+                    .andExpect(status().isNoContent());
+
+            verify(transactionService).deleteOwnPending(1L, "john.doe");
+        }
+
+        @Test
+        @WithMockUser(username = "jane.doe", roles = "USER")
+        @DisplayName("service rejects deleting another user's transaction — returns 403")
+        void deleteMine_notOwner_403() throws Exception {
+            doThrow(new org.springframework.security.access.AccessDeniedException("not yours"))
+                    .when(transactionService).deleteOwnPending(1L, "jane.doe");
+
+            mockMvc.perform(delete("/api/transactions/my/1").with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("service rejects deleting a non-PENDING transaction — returns 409")
+        void deleteMine_notPending_409() throws Exception {
+            doThrow(new com.pharma.inventory.exception.InvalidStateTransitionException("APPROVED", "delete"))
+                    .when(transactionService).deleteOwnPending(1L, "john.doe");
+
+            mockMvc.perform(delete("/api/transactions/my/1").with(csrf()))
+                    .andExpect(status().isConflict());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("ADMIN role cannot access self-delete endpoint — returns 403")
+        void deleteMine_adminRole_403() throws Exception {
+            mockMvc.perform(delete("/api/transactions/my/1").with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("unauthenticated request returns 401")
+        void deleteMine_noAuth_401() throws Exception {
+            mockMvc.perform(delete("/api/transactions/my/1").with(csrf()))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
     // ── PATCH /api/transactions/{id} ──────────────────────────────────
 
     @Nested

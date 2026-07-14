@@ -111,6 +111,15 @@ public class TransactionController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/my/{id}")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<Void> deleteMine(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        transactionService.deleteOwnPending(id, userDetails.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<TransactionResponse> updateNotes(

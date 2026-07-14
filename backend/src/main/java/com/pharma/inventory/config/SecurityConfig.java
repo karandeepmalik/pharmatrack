@@ -44,6 +44,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,  "/api/inventory/available").hasRole("USER")
                 .requestMatchers(HttpMethod.GET,  "/api/transactions/my").hasRole("USER")
                 .requestMatchers(HttpMethod.POST, "/api/transactions").hasRole("USER")
+                .requestMatchers(HttpMethod.DELETE, "/api/transactions/my/**").hasRole("USER")
                 // Self-service endpoints accessible by any authenticated user
                 .requestMatchers(HttpMethod.GET,  "/api/users/me").authenticated()
                 .requestMatchers(HttpMethod.PUT,  "/api/users/me/password").authenticated()

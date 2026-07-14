@@ -347,6 +347,23 @@ class MedicineStockServiceTest {
     @DisplayName("getAvailableForUser")
     class GetAvailableForUser {
 
+        @BeforeEach
+        void noInTransitByDefault() {
+            // Default: nothing in transit. Individual tests override this to exercise the
+            // settled-quantity exclusion.
+            lenient().when(inventoryAdjustmentRepository.findActiveInTransitFor(any(), any(), any()))
+                    .thenReturn(List.of());
+        }
+
+        private InventoryAdjustment activeInTransitAdj(int qty) {
+            return InventoryAdjustment.builder()
+                    .id(99L).user(user).medicine(medicine).quantity(qty)
+                    .adjustmentType("ADD").inTransit(true).wasInTransit(true).transitDays(2)
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .adjustedAt(LocalDateTime.now().minusHours(1))
+                    .build();
+        }
+
         @Test
         @DisplayName("returns combined regular and admin stock")
         void returnsBothStockTypes() {
@@ -409,6 +426,40 @@ class MedicineStockServiceTest {
 
             assertThat(result.get(0).getUsername()).isEqualTo("john.doe");
             assertThat(result.get(0).getMedicineName()).isEqualTo("Shield FX Vial 10 ml");
+        }
+
+        @Test
+        @DisplayName("excludes active in-transit quantity from shown quantity (bug: max shown exceeded real stock)")
+        void excludesInTransitQuantity() {
+            Inventory regular = Inventory.builder().id(1L).user(user).medicine(medicine)
+                    .quantity(11).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
+
+            when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(regular));
+            when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+            when(inventoryAdjustmentRepository.findActiveInTransitFor(2L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(activeInTransitAdj(3)));
+
+            List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
+
+            assertThat(result.get(0).getQuantity()).isEqualTo(8); // 11 raw - 3 in transit
+        }
+
+        @Test
+        @DisplayName("shows full raw quantity when nothing is in transit")
+        void showsFullQuantityWhenNoneInTransit() {
+            Inventory regular = Inventory.builder().id(1L).user(user).medicine(medicine)
+                    .quantity(10).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
+
+            when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(regular));
+            when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(List.of());
+
+            List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
+
+            assertThat(result.get(0).getQuantity()).isEqualTo(10);
         }
     }
 

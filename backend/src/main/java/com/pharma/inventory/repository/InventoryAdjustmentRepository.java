@@ -1,4 +1,5 @@
 package com.pharma.inventory.repository;
+import com.pharma.inventory.entity.Inventory;
 import com.pharma.inventory.entity.InventoryAdjustment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -26,6 +27,18 @@ public interface InventoryAdjustmentRepository extends JpaRepository<InventoryAd
            "JOIN FETCH a.user JOIN FETCH a.medicine " +
            "WHERE a.inTransit = true")
     List<InventoryAdjustment> findAllActiveInTransit();
+
+    /**
+     * Active in-transit ADD adjustments for one specific user/medicine/type bucket — used to
+     * compute settled (actually dispatchable) stock by excluding not-yet-arrived quantity.
+     */
+    @Query("SELECT a FROM InventoryAdjustment a " +
+           "WHERE a.user.id = :userId AND a.medicine.id = :medicineId AND a.inventoryType = :type " +
+           "AND a.inTransit = true AND a.adjustmentType = 'ADD'")
+    List<InventoryAdjustment> findActiveInTransitFor(
+            @Param("userId") Long userId,
+            @Param("medicineId") Long medicineId,
+            @Param("type") Inventory.InventoryType type);
 
     @Query("SELECT a FROM InventoryAdjustment a " +
            "JOIN FETCH a.user u JOIN FETCH a.medicine m JOIN FETCH m.pharmaCompany " +
