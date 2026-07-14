@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -40,6 +41,7 @@ class TransactionServiceTest {
     @Mock UserRepository        userRepository;
     @Mock MedicineRepository    medicineRepository;
     @Mock InventoryRepository   inventoryRepository;
+    @Mock InventoryAdjustmentRepository inventoryAdjustmentRepository;
     @Mock TransactionMapper     transactionMapper;
 
     @InjectMocks TransactionService transactionService;
@@ -71,6 +73,20 @@ class TransactionServiceTest {
         inventory = new Inventory();
         inventory.setId(1L); inventory.setUser(regularUser);
         inventory.setMedicine(medicine); inventory.setQuantity(50);
+
+        // Default: no stock in transit. Individual tests override this to exercise the
+        // settled-quantity exclusion.
+        lenient().when(inventoryAdjustmentRepository.findActiveInTransitFor(any(), any(), any()))
+                .thenReturn(List.of());
+    }
+
+    private InventoryAdjustment activeInTransitAdj(int qty) {
+        return InventoryAdjustment.builder()
+                .id(99L).user(regularUser).medicine(medicine).quantity(qty)
+                .adjustmentType("ADD").inTransit(true).wasInTransit(true).transitDays(2)
+                .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                .adjustedAt(LocalDateTime.now().minusHours(1))
+                .build();
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
@@ -274,6 +290,46 @@ class TransactionServiceTest {
             when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
 
             assertThatNoException().isThrownBy(() -> transactionService.submit(req, "john.doe"));
+        }
+
+        @Test @DisplayName("throws InsufficientInventoryException when requested exceeds settled stock, even though raw quantity is enough")
+        void submit_exceedsSettledStock_throwsInsufficientInventoryDespiteRawQuantity() {
+            inventory.setQuantity(11); // raw includes 3 units still in transit — only 8 settled
+            TransactionRequest req = buildReq("Clinic dispatch today please");
+            req.setQuantity(11);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(inventory));
+            when(inventoryAdjustmentRepository.findActiveInTransitFor(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(activeInTransitAdj(3)));
+
+            assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
+                    .isInstanceOf(InsufficientInventoryException.class)
+                    .hasMessageContaining("8").hasMessageContaining("11");
+            verify(inventoryRepository, never()).save(any());
+        }
+
+        @Test @DisplayName("succeeds when requested equals settled (raw minus in-transit) quantity")
+        void submit_exactlySettledStock_succeeds() {
+            inventory.setQuantity(11); // raw 11, 3 in transit, 8 settled
+            TransactionRequest req = buildReq("Clinic dispatch of settled stock");
+            req.setQuantity(8);
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(inventory));
+            when(inventoryAdjustmentRepository.findActiveInTransitFor(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(activeInTransitAdj(3)));
+            when(inventoryRepository.save(any())).thenReturn(inventory);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            assertThatNoException().isThrownBy(() -> transactionService.submit(req, "john.doe"));
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 3)); // 11 - 8
         }
     }
 
@@ -580,6 +636,96 @@ class TransactionServiceTest {
             assertThatThrownBy(() -> transactionService.deleteTransaction(99L))
                     .isInstanceOf(ResourceNotFoundException.class)
                     .hasMessageContaining("Transaction").hasMessageContaining("99");
+        }
+    }
+
+    // ── deleteOwnPending() ────────────────────────────────────────────
+
+    @Nested @DisplayName("deleteOwnPending()")
+    class DeleteOwnPending {
+
+        private Transaction pendingTx;
+
+        @BeforeEach
+        void setup() {
+            pendingTx = Transaction.builder()
+                    .id(1L).submittedBy(regularUser).medicine(medicine)
+                    .quantity(10).status(TransactionStatus.PENDING)
+                    .notes("Clinic dispatch confirmed")
+                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
+                    .build();
+            pendingTx.setSubmittedAt(LocalDateTime.now());
+        }
+
+        @Test @DisplayName("owner deletes their own PENDING transaction and inventory is restored")
+        void delete_ownPendingTx_restoresInventoryAndDeletes() {
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(inventory));
+            when(inventoryRepository.save(any())).thenReturn(inventory);
+
+            transactionService.deleteOwnPending(1L, "john.doe");
+
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 60)); // 50+10
+            verify(transactionRepository).delete(pendingTx);
+        }
+
+        @Test @DisplayName("throws AccessDeniedException when the transaction belongs to another user")
+        void delete_notOwner_throwsAccessDenied() {
+            User otherUser = new User();
+            otherUser.setId(99L); otherUser.setUsername("jane.doe");
+
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
+            when(userRepository.findByUsername("jane.doe")).thenReturn(Optional.of(otherUser));
+
+            assertThatThrownBy(() -> transactionService.deleteOwnPending(1L, "jane.doe"))
+                    .isInstanceOf(AccessDeniedException.class);
+            verify(transactionRepository, never()).delete(any());
+            verify(inventoryRepository, never()).save(any());
+        }
+
+        @Test @DisplayName("throws InvalidStateTransitionException when transaction is APPROVED")
+        void delete_approvedTx_throwsInvalidStateTransition() {
+            pendingTx.setStatus(TransactionStatus.APPROVED);
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+
+            assertThatThrownBy(() -> transactionService.deleteOwnPending(1L, "john.doe"))
+                    .isInstanceOf(InvalidStateTransitionException.class)
+                    .hasMessageContaining("APPROVED");
+            verify(transactionRepository, never()).delete(any());
+        }
+
+        @Test @DisplayName("throws InvalidStateTransitionException when transaction is REJECTED")
+        void delete_rejectedTx_throwsInvalidStateTransition() {
+            pendingTx.setStatus(TransactionStatus.REJECTED);
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+
+            assertThatThrownBy(() -> transactionService.deleteOwnPending(1L, "john.doe"))
+                    .isInstanceOf(InvalidStateTransitionException.class)
+                    .hasMessageContaining("REJECTED");
+            verify(transactionRepository, never()).delete(any());
+        }
+
+        @Test @DisplayName("throws ResourceNotFoundException when transaction not found")
+        void delete_notFound_throwsResourceNotFound() {
+            when(transactionRepository.findById(99L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> transactionService.deleteOwnPending(99L, "john.doe"))
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("Transaction").hasMessageContaining("99");
+        }
+
+        @Test @DisplayName("throws ResourceNotFoundException when acting user not found")
+        void delete_userNotFound_throwsResourceNotFound() {
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx));
+            when(userRepository.findByUsername("ghost")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> transactionService.deleteOwnPending(1L, "ghost"))
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("User").hasMessageContaining("ghost");
         }
     }
 

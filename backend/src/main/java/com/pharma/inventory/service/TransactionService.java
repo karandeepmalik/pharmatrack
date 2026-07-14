@@ -9,11 +9,13 @@ import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Transaction;
 import com.pharma.inventory.entity.Transaction.TransactionStatus;
 import com.pharma.inventory.entity.User;
+import com.pharma.inventory.entity.InventoryAdjustment;
 import com.pharma.inventory.exception.InsufficientInventoryException;
 import com.pharma.inventory.exception.InvalidStateTransitionException;
 import com.pharma.inventory.exception.ResourceNotFoundException;
 import com.pharma.inventory.entity.TransactionScreenshot;
 import com.pharma.inventory.mapper.TransactionMapper;
+import com.pharma.inventory.repository.InventoryAdjustmentRepository;
 import com.pharma.inventory.repository.InventoryRepository;
 import com.pharma.inventory.repository.MedicineRepository;
 import com.pharma.inventory.repository.TransactionRepository;
@@ -22,6 +24,7 @@ import com.pharma.inventory.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,11 +36,14 @@ import java.util.List;
 @Service
 public class TransactionService {
 
+    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
+
     private final TransactionRepository transactionRepository;
     private final TransactionScreenshotRepository screenshotRepository;
     private final UserRepository userRepository;
     private final MedicineRepository medicineRepository;
     private final InventoryRepository inventoryRepository;
+    private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private final TransactionMapper transactionMapper;
 
     public TransactionService(TransactionRepository transactionRepository,
@@ -45,12 +51,14 @@ public class TransactionService {
                               UserRepository userRepository,
                               MedicineRepository medicineRepository,
                               InventoryRepository inventoryRepository,
+                              InventoryAdjustmentRepository inventoryAdjustmentRepository,
                               TransactionMapper transactionMapper) {
         this.transactionRepository = transactionRepository;
         this.screenshotRepository = screenshotRepository;
         this.userRepository = userRepository;
         this.medicineRepository = medicineRepository;
         this.inventoryRepository = inventoryRepository;
+        this.inventoryAdjustmentRepository = inventoryAdjustmentRepository;
         this.transactionMapper = transactionMapper;
     }
 
@@ -64,8 +72,13 @@ public class TransactionService {
         Inventory.InventoryType invType = resolveInventoryType(req.getInventoryType());
         Inventory inventory = findInventoryByType(user.getId(), medicine.getId(), invType);
 
-        if (inventory.getQuantity() < req.getQuantity()) {
-            throw new InsufficientInventoryException(inventory.getQuantity(), req.getQuantity());
+        // Validate against settled stock only — raw inventory.quantity can include not-yet-arrived
+        // in-transit ADD adjustments, which must not be dispatchable until they actually arrive.
+        List<InventoryAdjustment> activeInTransit = inventoryAdjustmentRepository
+                .findActiveInTransitFor(user.getId(), medicine.getId(), invType);
+        int settledQty = InTransitStock.settled(inventory.getQuantity(), activeInTransit, LocalDateTime.now(IST));
+        if (settledQty < req.getQuantity()) {
+            throw new InsufficientInventoryException(settledQty, req.getQuantity());
         }
         inventory.setQuantity(inventory.getQuantity() - req.getQuantity());
         inventoryRepository.save(inventory);
@@ -189,6 +202,33 @@ public class TransactionService {
             inv.setQuantity(inv.getQuantity() + tx.getQuantity());
             inventoryRepository.save(inv);
         }
+        transactionRepository.delete(tx);
+    }
+
+    /**
+     * Lets a user delete their own dispatch record while it's still PENDING (i.e. before an
+     * admin has acted on it). Restores the inventory that was deducted at submission time.
+     */
+    @Transactional
+    public void deleteOwnPending(Long id, String username) {
+        Transaction tx = transactionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction", id));
+
+        User user = findUserByUsername(username);
+        if (!tx.getSubmittedBy().getId().equals(user.getId())) {
+            throw new AccessDeniedException("You can only delete your own dispatch records");
+        }
+        if (tx.getStatus() != TransactionStatus.PENDING) {
+            throw new InvalidStateTransitionException(tx.getStatus().name(), "delete");
+        }
+
+        Inventory.InventoryType rollbackType = tx.getInventoryType() != null
+                ? tx.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
+        Inventory inv = findInventoryByType(
+                tx.getSubmittedBy().getId(), tx.getMedicine().getId(), rollbackType);
+        inv.setQuantity(inv.getQuantity() + tx.getQuantity());
+        inventoryRepository.save(inv);
+
         transactionRepository.delete(tx);
     }
 

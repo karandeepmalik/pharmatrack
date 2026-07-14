@@ -1159,7 +1159,7 @@ async function run() {
     if (!singleShotTxId) return;
     const r = await apiGet(`${API}/transactions/my`, userToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
-    const tx = r.data.find(t => t.id === singleShotTxId);
+    const tx = r.data.content.find(t => t.id === singleShotTxId);
     assert(tx, `Transaction #${singleShotTxId} not found in user transactions`);
     assert(Array.isArray(tx.screenshots), 'screenshots field should be an array');
     assert(tx.screenshots.length === 1, `Expected 1 screenshot, got ${tx.screenshots.length}`);
@@ -1185,7 +1185,7 @@ async function run() {
     if (!multiShotTxId) return;
     const r = await apiGet(`${API}/transactions/my`, userToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
-    const tx = r.data.find(t => t.id === multiShotTxId);
+    const tx = r.data.content.find(t => t.id === multiShotTxId);
     assert(tx, `Transaction #${multiShotTxId} not found in user transactions`);
     assert(Array.isArray(tx.screenshots), 'screenshots field should be an array');
     assert(tx.screenshots.length === 2, `Expected 2 screenshots, got ${tx.screenshots.length}`);
@@ -1196,7 +1196,7 @@ async function run() {
     if (!multiShotTxId) return;
     const r = await apiGet(`${API}/transactions`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
-    const tx = r.data.find(t => t.id === multiShotTxId);
+    const tx = r.data.content.find(t => t.id === multiShotTxId);
     assert(tx, `Transaction #${multiShotTxId} not found in admin transaction list`);
     assert(Array.isArray(tx.screenshots) && tx.screenshots.length === 2,
       `Expected 2 screenshots in admin view, got ${tx.screenshots?.length}`);
@@ -1220,6 +1220,138 @@ async function run() {
       const r = await apiPost(`${API}/transactions/${txId}/approve`, { approved: false }, adminToken);
       assert(r.status === 200, `Teardown reject failed for tx #${txId}: ${r.status}`);
     }
+  });
+
+  // ── Self-Delete Own Pending Dispatch ───────────────────────────────────
+  console.log('\n-- Self-Delete Own Pending Dispatch');
+
+  let selfDeleteTxId;
+  await test('User can submit a transaction to delete later', async () => {
+    if (!txMedicineId) return;
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(txMedicineId),
+      quantity: '1',
+      notes: 'E2E self-delete test dispatch',
+      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('D')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    selfDeleteTxId = r.data.id;
+  });
+
+  await test('Owner can delete their own PENDING dispatch record', async () => {
+    if (!selfDeleteTxId) return;
+    const r = await apiDelete(`${API}/transactions/my/${selfDeleteTxId}`, userToken);
+    assert(r.status === 204, `Expected 204, got ${r.status}`);
+  });
+
+  await test('Deleted dispatch record no longer appears in user history', async () => {
+    if (!selfDeleteTxId) return;
+    const r = await apiGet(`${API}/transactions/my`, userToken);
+    const found = r.data.content.find(t => t.id === selfDeleteTxId);
+    assert(!found, `Expected transaction ${selfDeleteTxId} to be gone from history`);
+  });
+
+  await test('Deleting an already-deleted transaction returns 404', async () => {
+    if (!selfDeleteTxId) return;
+    const r = await apiDelete(`${API}/transactions/my/${selfDeleteTxId}`, userToken);
+    assert(r.status === 404, `Expected 404, got ${r.status}`);
+  });
+
+  let otherUserTxId;
+  await test('[SETUP] User submits another transaction for ownership/state tests', async () => {
+    if (!txMedicineId) return;
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(txMedicineId),
+      quantity: '1',
+      notes: 'E2E ownership check dispatch',
+      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('E')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    otherUserTxId = r.data.id;
+  });
+
+  await test('Admin cannot use the self-delete endpoint, even for a valid PENDING transaction (403)', async () => {
+    if (!otherUserTxId) return;
+    const r = await apiDelete(`${API}/transactions/my/${otherUserTxId}`, adminToken);
+    assert(r.status === 403, `Expected 403, got ${r.status}`);
+  });
+
+  await test('Unauthenticated request to self-delete endpoint returns 401', async () => {
+    if (!otherUserTxId) return;
+    const r = await apiDelete(`${API}/transactions/my/${otherUserTxId}`);
+    assert(r.status === 401, `Expected 401, got ${r.status}`);
+  });
+
+  await test('Deleting a non-PENDING transaction via self-delete returns 409', async () => {
+    if (!otherUserTxId) return;
+    const approveR = await apiPost(`${API}/transactions/${otherUserTxId}/approve`, { approved: true }, adminToken);
+    assert(approveR.status === 200, `Approve failed: ${approveR.status}`);
+    const r = await apiDelete(`${API}/transactions/my/${otherUserTxId}`, userToken);
+    assert(r.status === 409, `Expected 409, got ${r.status}`);
+  });
+
+  await test('[TEARDOWN] Admin deletes the approved ownership-test transaction', async () => {
+    if (!otherUserTxId) return;
+    const r = await apiDelete(`${API}/transactions/${otherUserTxId}`, adminToken);
+    assert(r.status === 204, `Expected 204, got ${r.status}`);
+  });
+
+  // ── In-Transit Stock Excluded From Dispatchable "Available" Quantity ──
+  // Regression test for the bug where /inventory/available showed a "max" that
+  // included not-yet-arrived in-transit stock, letting a user believe (and even
+  // attempt) they could dispatch more than was physically on hand.
+  console.log('\n-- In-Transit Stock Exclusion (available inventory)');
+
+  let beforeAvailableQty;
+  await test('[SETUP] Record available quantity before adding in-transit stock', async () => {
+    const r = await apiGet(`${API}/inventory/available`, userToken);
+    const item = r.data.find(i => i.medicineId === adjustMedicineId && i.inventoryType === 'REGULAR_MEDICINE_STOCK');
+    beforeAvailableQty = item ? item.quantity : 0;
+  });
+
+  await test('Admin adds in-transit stock (should not inflate dispatchable quantity)', async () => {
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 3,
+      note: 'E2E in-transit exclusion test shipment',
+      inTransit: true,
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('Available quantity for user is unchanged by in-transit stock', async () => {
+    const r = await apiGet(`${API}/inventory/available`, userToken);
+    const item = r.data.find(i => i.medicineId === adjustMedicineId && i.inventoryType === 'REGULAR_MEDICINE_STOCK');
+    assert(item, 'Expected inventory item to exist');
+    assert(item.quantity === beforeAvailableQty,
+      `Expected available quantity to stay at ${beforeAvailableQty} (in-transit stock excluded), got ${item.quantity}`);
+  });
+
+  await test('Submitting a dispatch for more than the settled (non-in-transit) quantity is rejected with 409', async () => {
+    const requestQty = beforeAvailableQty + 1; // exceeds settled, but within raw (settled+3)
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: String(requestQty),
+      notes: 'E2E test — should be rejected, exceeds settled stock',
+      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('F')],
+    }, userToken);
+    assert(r.status === 409, `Expected 409, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[TEARDOWN] Admin removes the in-transit test stock', async () => {
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 3,
+      note: 'E2E teardown — reversing in-transit exclusion test shipment',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
   });
 
   // ── Summary ───────────────────────────────────────────────────────────

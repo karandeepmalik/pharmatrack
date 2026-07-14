@@ -77,6 +77,7 @@ export const getTransactionHistory = (from, to, status = 'ALL') =>
   api.get('/transactions/history', { params: { from, to, status } });
 
 export const deleteTransaction  = (id)      => api.delete(`/transactions/${id}`);
+export const deleteMyTransaction = (id)     => api.delete(`/transactions/my/${id}`);
 export const updateTransaction  = (id, data) => api.patch(`/transactions/${id}`, data);
 
 // ── Users ──────────────────────────────────────────────────────────────

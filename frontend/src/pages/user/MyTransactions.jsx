@@ -12,6 +12,7 @@ export default function MyTransactions() {
   const [loading, setLoading]       = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError]           = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const sentinelRef = useRef(null);
   const pageRef     = useRef(0);
@@ -46,6 +47,20 @@ export default function MyTransactions() {
   }, []);
 
   useEffect(() => { loadPage(0); }, [loadPage]);
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this dispatch record? This cannot be undone.')) return;
+    setError(null);
+    setDeletingId(id);
+    try {
+      await api.deleteMyTransaction(id);
+      setAllTxs((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete dispatch record. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   // Infinite-scroll sentinel
   useEffect(() => {
@@ -97,6 +112,15 @@ export default function MyTransactions() {
                 <div className="tx-header">
                   <span>#{tx.id}</span>
                   <span className={`badge badge-${status.toLowerCase()}`}>{status}</span>
+                  {status === 'PENDING' && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-delete"
+                      disabled={deletingId === tx.id}
+                      onClick={() => handleDelete(tx.id)}>
+                      {deletingId === tx.id ? '…' : 'Delete'}
+                    </button>
+                  )}
                 </div>
                 <p><strong>Medicine:</strong> {tx.medicineName ?? 'Unknown'} ({tx.medicineType ?? 'Unknown'}, {specLabel})</p>
                 <p><strong>Quantity:</strong> {tx.quantity}</p>

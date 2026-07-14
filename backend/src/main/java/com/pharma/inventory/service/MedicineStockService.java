@@ -137,9 +137,22 @@ public class MedicineStockService {
         List<Inventory> adminStock = inventoryRepository
             .findAvailableByUserIdAndType(userId, Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
         List<InventoryResponse> result = new java.util.ArrayList<>();
-        regular.stream().map(this::toResponse).forEach(result::add);
-        adminStock.stream().map(this::toResponse).forEach(result::add);
+        regular.stream().map(this::toDispatchableResponse).forEach(result::add);
+        adminStock.stream().map(this::toDispatchableResponse).forEach(result::add);
         return result;
+    }
+
+    /**
+     * Like toResponse(), but excludes not-yet-arrived in-transit quantity from the shown
+     * quantity — this is what the user-facing dispatch form uses as its "max" so a user can
+     * never be shown (or allowed to submit) more than what's physically on hand.
+     */
+    private InventoryResponse toDispatchableResponse(Inventory i) {
+        InventoryResponse r = toResponse(i);
+        List<InventoryAdjustment> activeInTransit = inventoryAdjustmentRepository
+                .findActiveInTransitFor(i.getUser().getId(), i.getMedicine().getId(), i.getInventoryType());
+        r.setQuantity(InTransitStock.settled(i.getQuantity(), activeInTransit, LocalDateTime.now(IST)));
+        return r;
     }
 
     @Transactional(readOnly=true)
