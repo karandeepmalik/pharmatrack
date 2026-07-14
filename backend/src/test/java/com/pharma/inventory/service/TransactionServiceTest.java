@@ -41,7 +41,7 @@ class TransactionServiceTest {
     @Mock UserRepository        userRepository;
     @Mock MedicineRepository    medicineRepository;
     @Mock InventoryRepository   inventoryRepository;
-    @Mock InventoryAdjustmentRepository inventoryAdjustmentRepository;
+    @Mock CurrentStockCalculator currentStockCalculator;
     @Mock TransactionMapper     transactionMapper;
 
     @InjectMocks TransactionService transactionService;
@@ -74,19 +74,11 @@ class TransactionServiceTest {
         inventory.setId(1L); inventory.setUser(regularUser);
         inventory.setMedicine(medicine); inventory.setQuantity(50);
 
-        // Default: no stock in transit. Individual tests override this to exercise the
-        // settled-quantity exclusion.
-        lenient().when(inventoryAdjustmentRepository.findActiveInTransitFor(any(), any(), any()))
-                .thenReturn(List.of());
-    }
-
-    private InventoryAdjustment activeInTransitAdj(int qty) {
-        return InventoryAdjustment.builder()
-                .id(99L).user(regularUser).medicine(medicine).quantity(qty)
-                .adjustmentType("ADD").inTransit(true).wasInTransit(true).transitDays(2)
-                .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
-                .adjustedAt(LocalDateTime.now().minusHours(1))
-                .build();
+        // Default: settled quantity mirrors whatever the test set inventory.quantity to —
+        // i.e. no drift between the raw ledger and the reconstructed total. Individual tests
+        // override this to exercise cases where they genuinely differ.
+        lenient().when(currentStockCalculator.settledQuantity(any(), any(), any()))
+                .thenAnswer(inv -> inventory.getQuantity());
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
@@ -292,9 +284,11 @@ class TransactionServiceTest {
             assertThatNoException().isThrownBy(() -> transactionService.submit(req, "john.doe"));
         }
 
-        @Test @DisplayName("throws InsufficientInventoryException when requested exceeds settled stock, even though raw quantity is enough")
+        @Test @DisplayName("throws InsufficientInventoryException when requested exceeds the reconstructed settled quantity, even though raw inventory.quantity is enough")
         void submit_exceedsSettledStock_throwsInsufficientInventoryDespiteRawQuantity() {
-            inventory.setQuantity(11); // raw includes 3 units still in transit — only 8 settled
+            // raw ledger says 11 (e.g. drifted from the true adjustment/transaction history, or
+            // includes in-transit stock) — CurrentStockCalculator says only 8 are really settled.
+            inventory.setQuantity(11);
             TransactionRequest req = buildReq("Clinic dispatch today please");
             req.setQuantity(11);
 
@@ -302,8 +296,8 @@ class TransactionServiceTest {
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(Optional.of(inventory));
-            when(inventoryAdjustmentRepository.findActiveInTransitFor(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(activeInTransitAdj(3)));
+            when(currentStockCalculator.settledQuantity(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(8);
 
             assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
                     .isInstanceOf(InsufficientInventoryException.class)
@@ -311,9 +305,9 @@ class TransactionServiceTest {
             verify(inventoryRepository, never()).save(any());
         }
 
-        @Test @DisplayName("succeeds when requested equals settled (raw minus in-transit) quantity")
+        @Test @DisplayName("succeeds when requested equals the reconstructed settled quantity")
         void submit_exactlySettledStock_succeeds() {
-            inventory.setQuantity(11); // raw 11, 3 in transit, 8 settled
+            inventory.setQuantity(11); // raw 11, reconstructed settled 8
             TransactionRequest req = buildReq("Clinic dispatch of settled stock");
             req.setQuantity(8);
             Transaction tx = savedTx(req);
@@ -322,14 +316,14 @@ class TransactionServiceTest {
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(Optional.of(inventory));
-            when(inventoryAdjustmentRepository.findActiveInTransitFor(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(activeInTransitAdj(3)));
+            when(currentStockCalculator.settledQuantity(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(8);
             when(inventoryRepository.save(any())).thenReturn(inventory);
             when(transactionRepository.save(any())).thenReturn(tx);
             when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
 
             assertThatNoException().isThrownBy(() -> transactionService.submit(req, "john.doe"));
-            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 3)); // 11 - 8
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 3)); // raw 11 - 8
         }
     }
 

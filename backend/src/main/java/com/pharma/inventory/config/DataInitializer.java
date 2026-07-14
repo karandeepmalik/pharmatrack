@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import java.time.LocalDateTime;
 import java.util.List;
 @Configuration @RequiredArgsConstructor @Slf4j
 public class DataInitializer {
@@ -80,23 +81,42 @@ public class DataInitializer {
         // ── Seed initial admin inventory (system stock) ───────────────
         User adminUser = users.findByUsername("admin").orElseThrow();
         for (Medicine m : List.of(vial5, vial10, tab12, tab25, tab50)) {
-            inventory.save(Inventory.builder().user(adminUser).medicine(m)
-                .quantity(100).inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
-                .lastNote("Initial stock").build());
+            seedInventoryWithGenesisAdjustment(adminUser, m, 100,
+                Inventory.InventoryType.ADMIN_MEDICINE_STOCK, "Initial stock");
         }
 
         // ── Seed initial user inventory (regular allocations) ─────────
         User john = users.findByUsername("john.doe").orElseThrow();
         User jane = users.findByUsername("jane.smith").orElseThrow();
         for (Medicine m : List.of(vial5, vial10, tab12, tab25, tab50)) {
-            inventory.save(Inventory.builder().user(john).medicine(m)
-                .quantity(20).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
-                .lastNote("Initial allocation").build());
-            inventory.save(Inventory.builder().user(jane).medicine(m)
-                .quantity(15).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
-                .lastNote("Initial allocation").build());
+            seedInventoryWithGenesisAdjustment(john, m, 20,
+                Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "Initial allocation");
+            seedInventoryWithGenesisAdjustment(jane, m, 15,
+                Inventory.InventoryType.REGULAR_MEDICINE_STOCK, "Initial allocation");
         }
 
         log.info("Seeded: 3 users, 1 pharma, 5 medicines, admin stock (100 each), user allocations (john=20, jane=15 each).");
+    }
+
+    /**
+     * Seeds an Inventory row AND a matching genesis InventoryAdjustment.
+     *
+     * Current stock is derived by forward-reconstructing InventoryAdjustment + Transaction
+     * history (see CurrentStockCalculator / ReportService), not by trusting Inventory.quantity
+     * directly. Without a matching adjustment record, seeded stock is invisible to that
+     * reconstruction — it would show 0 available until an admin happened to touch the bucket.
+     * Recording the genesis adjustment here, once, at seed time keeps reconstruction complete
+     * from the start instead of relying on a later backfill (which is exactly the mechanism
+     * that caused production data drift previously — see git history on DataMigrationService).
+     */
+    private void seedInventoryWithGenesisAdjustment(User user, Medicine medicine, int quantity,
+                                                      Inventory.InventoryType type, String note) {
+        inventory.save(Inventory.builder().user(user).medicine(medicine)
+            .quantity(quantity).inventoryType(type).lastNote(note).build());
+        adjustments.save(InventoryAdjustment.builder()
+            .user(user).medicine(medicine).quantity(quantity).adjustmentType("ADD")
+            .note(note).internalMovement(false).inTransit(false).wasInTransit(false)
+            .transitDays(2).inventoryType(type).adjustedAt(LocalDateTime.now())
+            .build());
     }
 }

@@ -122,6 +122,19 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("rejected") Transaction.TransactionStatus rejected,
             @Param("endExclusive") LocalDateTime endExclusive);
 
+    /**
+     * All non-rejected transactions for one user, submitted before endExclusive — the
+     * transaction side of the same forward reconstruction ReportService uses for historical
+     * reports, applied here to compute current dispatchable stock.
+     */
+    @Query("SELECT t FROM Transaction t " +
+           "JOIN FETCH t.medicine " +
+           "WHERE t.submittedBy.id = :userId AND t.status != :rejected AND t.submittedAt < :endExclusive")
+    List<Transaction> findNonRejectedSubmittedUpToForUser(
+            @Param("userId") Long userId,
+            @Param("rejected") Transaction.TransactionStatus rejected,
+            @Param("endExclusive") LocalDateTime endExclusive);
+
     /** Approved transactions approved on or after 'from' — used by backward historical reconstruction. */
     @Query("SELECT t FROM Transaction t " +
            "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +

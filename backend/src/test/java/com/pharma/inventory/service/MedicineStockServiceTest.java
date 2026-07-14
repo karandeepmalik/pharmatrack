@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -29,6 +30,7 @@ class MedicineStockServiceTest {
     @Mock InventoryAdjustmentRepository inventoryAdjustmentRepository;
     @Mock UserRepository userRepository;
     @Mock MedicineRepository medicineRepository;
+    @Mock CurrentStockCalculator currentStockCalculator;
 
     @InjectMocks MedicineStockService medicineStockService;
 
@@ -348,20 +350,11 @@ class MedicineStockServiceTest {
     class GetAvailableForUser {
 
         @BeforeEach
-        void noInTransitByDefault() {
-            // Default: nothing in transit. Individual tests override this to exercise the
-            // settled-quantity exclusion.
-            lenient().when(inventoryAdjustmentRepository.findActiveInTransitFor(any(), any(), any()))
-                    .thenReturn(List.of());
-        }
-
-        private InventoryAdjustment activeInTransitAdj(int qty) {
-            return InventoryAdjustment.builder()
-                    .id(99L).user(user).medicine(medicine).quantity(qty)
-                    .adjustmentType("ADD").inTransit(true).wasInTransit(true).transitDays(2)
-                    .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
-                    .adjustedAt(LocalDateTime.now().minusHours(1))
-                    .build();
+        void noReconstructedDataByDefault() {
+            // Default: CurrentStockCalculator has no data for this user, so every bucket
+            // defaults to 0. Individual tests override this to exercise specific quantities.
+            lenient().when(currentStockCalculator.settledQuantitiesForUser(any()))
+                    .thenReturn(Map.of());
         }
 
         @Test
@@ -429,8 +422,11 @@ class MedicineStockServiceTest {
         }
 
         @Test
-        @DisplayName("excludes active in-transit quantity from shown quantity (bug: max shown exceeded real stock)")
-        void excludesInTransitQuantity() {
+        @DisplayName("shows the CurrentStockCalculator's reconstructed quantity, not the raw Inventory.quantity field")
+        void usesReconstructedQuantityNotRawField() {
+            // Raw ledger says 11 (e.g. drifted from true history, or includes in-transit stock
+            // not yet arrived) — the reconstructed/settled figure is 8. The dispatch form's
+            // "max" must show 8, matching what the daily report would show for the same bucket.
             Inventory regular = Inventory.builder().id(1L).user(user).medicine(medicine)
                     .quantity(11).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
 
@@ -438,17 +434,17 @@ class MedicineStockServiceTest {
                     .thenReturn(List.of(regular));
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
-            when(inventoryAdjustmentRepository.findActiveInTransitFor(2L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(List.of(activeInTransitAdj(3)));
+            when(currentStockCalculator.settledQuantitiesForUser(2L))
+                    .thenReturn(Map.of("1|REGULAR_MEDICINE_STOCK", 8));
 
             List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
 
-            assertThat(result.get(0).getQuantity()).isEqualTo(8); // 11 raw - 3 in transit
+            assertThat(result.get(0).getQuantity()).isEqualTo(8);
         }
 
         @Test
-        @DisplayName("shows full raw quantity when nothing is in transit")
-        void showsFullQuantityWhenNoneInTransit() {
+        @DisplayName("shows 0 when the calculator has no reconstructed data for the bucket, even if raw quantity is positive")
+        void showsZeroWhenNoReconstructedData() {
             Inventory regular = Inventory.builder().id(1L).user(user).medicine(medicine)
                     .quantity(10).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
 
@@ -459,7 +455,7 @@ class MedicineStockServiceTest {
 
             List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
 
-            assertThat(result.get(0).getQuantity()).isEqualTo(10);
+            assertThat(result.get(0).getQuantity()).isEqualTo(0);
         }
     }
 

@@ -9,7 +9,6 @@ import com.pharma.inventory.entity.Medicine;
 import com.pharma.inventory.entity.Transaction;
 import com.pharma.inventory.entity.Transaction.TransactionStatus;
 import com.pharma.inventory.entity.User;
-import com.pharma.inventory.entity.InventoryAdjustment;
 import com.pharma.inventory.exception.InsufficientInventoryException;
 import com.pharma.inventory.exception.InvalidStateTransitionException;
 import com.pharma.inventory.exception.ResourceNotFoundException;
@@ -36,14 +35,12 @@ import java.util.List;
 @Service
 public class TransactionService {
 
-    private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
-
     private final TransactionRepository transactionRepository;
     private final TransactionScreenshotRepository screenshotRepository;
     private final UserRepository userRepository;
     private final MedicineRepository medicineRepository;
     private final InventoryRepository inventoryRepository;
-    private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
+    private final CurrentStockCalculator currentStockCalculator;
     private final TransactionMapper transactionMapper;
 
     public TransactionService(TransactionRepository transactionRepository,
@@ -51,14 +48,14 @@ public class TransactionService {
                               UserRepository userRepository,
                               MedicineRepository medicineRepository,
                               InventoryRepository inventoryRepository,
-                              InventoryAdjustmentRepository inventoryAdjustmentRepository,
+                              CurrentStockCalculator currentStockCalculator,
                               TransactionMapper transactionMapper) {
         this.transactionRepository = transactionRepository;
         this.screenshotRepository = screenshotRepository;
         this.userRepository = userRepository;
         this.medicineRepository = medicineRepository;
         this.inventoryRepository = inventoryRepository;
-        this.inventoryAdjustmentRepository = inventoryAdjustmentRepository;
+        this.currentStockCalculator = currentStockCalculator;
         this.transactionMapper = transactionMapper;
     }
 
@@ -72,11 +69,10 @@ public class TransactionService {
         Inventory.InventoryType invType = resolveInventoryType(req.getInventoryType());
         Inventory inventory = findInventoryByType(user.getId(), medicine.getId(), invType);
 
-        // Validate against settled stock only — raw inventory.quantity can include not-yet-arrived
-        // in-transit ADD adjustments, which must not be dispatchable until they actually arrive.
-        List<InventoryAdjustment> activeInTransit = inventoryAdjustmentRepository
-                .findActiveInTransitFor(user.getId(), medicine.getId(), invType);
-        int settledQty = InTransitStock.settled(inventory.getQuantity(), activeInTransit, LocalDateTime.now(IST));
+        // Validate against forward-reconstructed settled stock (same algorithm ReportService uses
+        // for historical reports) rather than the raw inventory.quantity field, which can drift
+        // from the true adjustment/transaction ledger and include not-yet-arrived in-transit stock.
+        int settledQty = currentStockCalculator.settledQuantity(user.getId(), medicine.getId(), invType);
         if (settledQty < req.getQuantity()) {
             throw new InsufficientInventoryException(settledQty, req.getQuantity());
         }
