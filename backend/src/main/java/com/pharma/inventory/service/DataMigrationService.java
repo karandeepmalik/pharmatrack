@@ -186,6 +186,20 @@ public class DataMigrationService {
                 "WHERE u.username = ? AND m.name = ? " +
                 "ON CONFLICT (user_id, medicine_id, inventory_type) DO NOTHING";
 
+            // Current stock is derived by forward-reconstructing inventory_adjustments +
+            // transactions (see CurrentStockCalculator), not by trusting inventory.quantity
+            // directly — so every seeded row needs a matching genesis adjustment or it's
+            // invisible to that reconstruction (shows 0 available until an admin touches it).
+            String findIdsSql =
+                "SELECT u.id AS user_id, m.id AS medicine_id " +
+                "FROM users u JOIN medicines m ON true " +
+                "WHERE u.username = ? AND m.name = ?";
+            String adjSql =
+                "INSERT INTO inventory_adjustments " +
+                "(user_id, medicine_id, quantity, adjustment_type, note, internal_movement, " +
+                " in_transit, was_in_transit, transit_days, inventory_type, adjusted_at) " +
+                "VALUES (?, ?, ?, 'ADD', 'Initial stock', false, false, false, 2, ?, NOW())";
+
             String REG   = "REGULAR_MEDICINE_STOCK";
             String ADMIN = "ADMIN_MEDICINE_STOCK";
 
@@ -236,10 +250,19 @@ public class DataMigrationService {
             int inserted = 0;
             for (Object[][] group : new Object[][][]{vial10, vial5, tab50, tab25, tab12reg, tab12adm}) {
                 for (Object[] row : group) {
-                    inserted += jdbc.update(sql, row[0], row[1], row[2], row[3]);
+                    int qty = (Integer) row[0];
+                    String type = (String) row[1];
+                    String username = (String) row[2];
+                    String medicineName = (String) row[3];
+                    int n = jdbc.update(sql, qty, type, username, medicineName);
+                    if (n > 0) {
+                        inserted += n;
+                        Map<String, Object> ids = jdbc.queryForMap(findIdsSql, username, medicineName);
+                        jdbc.update(adjSql, ids.get("user_id"), ids.get("medicine_id"), qty, type);
+                    }
                 }
             }
-            log.info("DataMigration: seeded {} inventory rows", inserted);
+            log.info("DataMigration: seeded {} inventory rows with matching genesis adjustments", inserted);
         } catch (Exception e) {
             log.warn("DataMigration: inventory seed failed — {}", e.getMessage());
         }

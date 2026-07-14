@@ -191,9 +191,13 @@ class DataMigrationServiceTest {
             jdbc.execute("DELETE FROM inventory");
             assertThat(inventoryRepository.count()).isZero();
 
-            // In the test environment, seedInventoryIfEmpty references production usernames
-            // (allwyn, arnab, karan, etc.) that don't exist in the H2 demo seed.
-            // The important thing is that onStartup() completes without throwing.
+            // In the test environment, seedInventoryIfEmpty's INSERT uses Postgres-only
+            // "ON CONFLICT ... DO NOTHING" syntax that H2 rejects outright ("bad SQL grammar"),
+            // so it never actually inserts here regardless of username matches — this is a
+            // pre-existing H2/Postgres dialect gap, not something a test can work around.
+            // The important thing is that onStartup() completes without throwing; the matching
+            // genesis-adjustment behavior added alongside this insert is verified manually
+            // against a real Postgres instance (see PR description) rather than via this suite.
             assertThatNoException().isThrownBy(() -> dataMigrationService.onStartup());
         }
     }

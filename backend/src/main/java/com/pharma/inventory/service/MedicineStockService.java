@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 @Service @RequiredArgsConstructor
 public class MedicineStockService {
@@ -18,6 +19,7 @@ public class MedicineStockService {
     private final InventoryAdjustmentRepository inventoryAdjustmentRepository;
     private final UserRepository userRepository;
     private final MedicineRepository medicineRepository;
+    private final CurrentStockCalculator currentStockCalculator;
 
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
@@ -136,22 +138,21 @@ public class MedicineStockService {
             .findAvailableByUserIdAndType(userId, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         List<Inventory> adminStock = inventoryRepository
             .findAvailableByUserIdAndType(userId, Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
+
+        // Same forward-reconstruction ReportService uses for historical reports — so what's
+        // shown as "available" can never disagree with what the daily report shows as on hand.
+        Map<String, Integer> settledByBucket = currentStockCalculator.settledQuantitiesForUser(userId);
+
         List<InventoryResponse> result = new java.util.ArrayList<>();
-        regular.stream().map(this::toDispatchableResponse).forEach(result::add);
-        adminStock.stream().map(this::toDispatchableResponse).forEach(result::add);
+        regular.stream().map(i -> toDispatchableResponse(i, settledByBucket)).forEach(result::add);
+        adminStock.stream().map(i -> toDispatchableResponse(i, settledByBucket)).forEach(result::add);
         return result;
     }
 
-    /**
-     * Like toResponse(), but excludes not-yet-arrived in-transit quantity from the shown
-     * quantity — this is what the user-facing dispatch form uses as its "max" so a user can
-     * never be shown (or allowed to submit) more than what's physically on hand.
-     */
-    private InventoryResponse toDispatchableResponse(Inventory i) {
+    private InventoryResponse toDispatchableResponse(Inventory i, Map<String, Integer> settledByBucket) {
         InventoryResponse r = toResponse(i);
-        List<InventoryAdjustment> activeInTransit = inventoryAdjustmentRepository
-                .findActiveInTransitFor(i.getUser().getId(), i.getMedicine().getId(), i.getInventoryType());
-        r.setQuantity(InTransitStock.settled(i.getQuantity(), activeInTransit, LocalDateTime.now(IST)));
+        String key = i.getMedicine().getId() + "|" + i.getInventoryType().name();
+        r.setQuantity(settledByBucket.getOrDefault(key, 0));
         return r;
     }
 

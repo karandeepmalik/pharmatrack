@@ -506,6 +506,58 @@ class TransactionRepositoryTest {
         }
     }
 
+    // ── findNonRejectedSubmittedUpToForUser ──────────────────────────────────
+
+    @Nested @DisplayName("findNonRejectedSubmittedUpToForUser")
+    class FindNonRejectedSubmittedUpToForUser {
+
+        @Test @DisplayName("returns non-rejected transactions for the user submitted before endExclusive")
+        void returnsNonRejectedForUser() {
+            // user1 has tx1 (PENDING, Jan1) and tx2 (APPROVED, Jan2); end = Jan 4 → both included
+            List<Transaction> result = repo.findNonRejectedSubmittedUpToForUser(
+                    user1.getId(), Transaction.TransactionStatus.REJECTED,
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result).extracting(Transaction::getId)
+                    .containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
+        }
+
+        @Test @DisplayName("excludes transactions from a different user")
+        void excludesOtherUsers() {
+            List<Transaction> result = repo.findNonRejectedSubmittedUpToForUser(
+                    user1.getId(), Transaction.TransactionStatus.REJECTED,
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result).noneMatch(t -> t.getId().equals(tx3.getId()));
+        }
+
+        @Test @DisplayName("excludes transactions at or after endExclusive")
+        void excludesAtOrAfterEnd() {
+            List<Transaction> result = repo.findNonRejectedSubmittedUpToForUser(
+                    user1.getId(), Transaction.TransactionStatus.REJECTED,
+                    LocalDateTime.of(2024, 1, 2, 10, 0)); // exactly tx2.submittedAt
+            assertThat(result).noneMatch(t -> t.getId().equals(tx2.getId()));
+        }
+
+        @Test @DisplayName("excludes REJECTED transactions")
+        void excludesRejected() {
+            tx1.setStatus(Transaction.TransactionStatus.REJECTED);
+            em.merge(tx1);
+            em.flush();
+
+            List<Transaction> result = repo.findNonRejectedSubmittedUpToForUser(
+                    user1.getId(), Transaction.TransactionStatus.REJECTED,
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result).noneMatch(t -> t.getId().equals(tx1.getId()));
+        }
+
+        @Test @DisplayName("eagerly loads medicine association")
+        void eagerlyLoadsMedicine() {
+            List<Transaction> result = repo.findNonRejectedSubmittedUpToForUser(
+                    user1.getId(), Transaction.TransactionStatus.REJECTED,
+                    LocalDateTime.of(2024, 1, 4, 0, 0));
+            assertThat(result.get(0).getMedicine().getName()).isEqualTo("Paracetamol");
+        }
+    }
+
     // ── nullifyApprovedBy (@Modifying) ───────────────────────────────────────
 
     @Nested @DisplayName("nullifyApprovedBy")

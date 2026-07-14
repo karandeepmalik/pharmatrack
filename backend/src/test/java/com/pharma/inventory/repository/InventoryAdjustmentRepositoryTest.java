@@ -143,60 +143,46 @@ class InventoryAdjustmentRepositoryTest {
         }
     }
 
-    // ── findActiveInTransitFor ───────────────────────────────────────────────
+    // ── findAllUpToForUser ───────────────────────────────────────────────────
 
-    @Nested @DisplayName("findActiveInTransitFor")
-    class FindActiveInTransitFor {
+    @Nested @DisplayName("findAllUpToForUser")
+    class FindAllUpToForUser {
 
-        @BeforeEach
-        void makeAdj2AnAddType() {
-            // Fixture default is adjustmentType="DISPENSED"; this method only matches ADD.
-            adj2.setAdjustmentType("ADD");
-            em.merge(adj2);
-            em.flush();
+        @Test @DisplayName("returns adjustments for the given user with adjustedAt < endExclusive")
+        void returnsBeforeEndForUser() {
+            // endExclusive = Jan 3 00:00 → adj1 (Jan 1) and adj2 (Jan 2) included; adj3 (Jan 3 10:00) excluded
+            List<InventoryAdjustment> result = repo.findAllUpToForUser(
+                    user1.getId(), LocalDateTime.of(2024, 1, 3, 0, 0));
+            assertThat(result).extracting(InventoryAdjustment::getId)
+                    .containsExactlyInAnyOrder(adj1.getId(), adj2.getId());
         }
 
-        @Test @DisplayName("returns in-transit ADD adjustment matching user/medicine/type")
-        void returnsMatchingInTransitAdd() {
-            List<InventoryAdjustment> result =
-                    repo.findActiveInTransitFor(user1.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).extracting(InventoryAdjustment::getId).containsExactly(adj2.getId());
+        @Test @DisplayName("excludes record at or after endExclusive")
+        void excludesAtOrAfterEnd() {
+            List<InventoryAdjustment> result = repo.findAllUpToForUser(user1.getId(), JAN_3);
+            assertThat(result).noneMatch(a -> a.getId().equals(adj3.getId()));
         }
 
-        @Test @DisplayName("excludes records with inTransit=false")
-        void excludesNotInTransit() {
-            List<InventoryAdjustment> result =
-                    repo.findActiveInTransitFor(user1.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).noneMatch(a -> a.getId().equals(adj1.getId()) || a.getId().equals(adj3.getId()));
+        @Test @DisplayName("returns all records for the user when end is far in the future")
+        void returnsAllWhenFutureEnd() {
+            List<InventoryAdjustment> result = repo.findAllUpToForUser(
+                    user1.getId(), LocalDateTime.of(2099, 1, 1, 0, 0));
+            assertThat(result).extracting(InventoryAdjustment::getId)
+                    .containsExactlyInAnyOrder(adj1.getId(), adj2.getId(), adj3.getId());
         }
 
-        @Test @DisplayName("excludes records for a different user")
+        @Test @DisplayName("excludes adjustments belonging to a different user")
         void excludesDifferentUser() {
-            List<InventoryAdjustment> result =
-                    repo.findActiveInTransitFor(admin.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            List<InventoryAdjustment> result = repo.findAllUpToForUser(
+                    admin.getId(), LocalDateTime.of(2099, 1, 1, 0, 0));
             assertThat(result).isEmpty();
         }
 
-        @Test @DisplayName("excludes non-ADD adjustment types even if inTransit=true")
-        void excludesNonAddType() {
-            adj2.setAdjustmentType("REDUCE");
-            em.merge(adj2);
-            em.flush();
-
-            List<InventoryAdjustment> result =
-                    repo.findActiveInTransitFor(user1.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).isEmpty();
-        }
-
-        @Test @DisplayName("returns empty when no in-transit adjustments exist for the bucket")
-        void emptyWhenNoneInTransit() {
-            adj2.setInTransit(false);
-            em.merge(adj2);
-            em.flush();
-
-            List<InventoryAdjustment> result =
-                    repo.findActiveInTransitFor(user1.getId(), medicine.getId(), Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-            assertThat(result).isEmpty();
+        @Test @DisplayName("eagerly loads medicine association")
+        void eagerlyLoadsMedicine() {
+            List<InventoryAdjustment> result = repo.findAllUpToForUser(
+                    user1.getId(), LocalDateTime.of(2099, 1, 1, 0, 0));
+            assertThat(result.get(0).getMedicine().getName()).isEqualTo("Paracetamol");
         }
     }
 
