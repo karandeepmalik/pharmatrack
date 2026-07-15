@@ -1,10 +1,11 @@
 package com.pharma.inventory.dto;
 
-import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,8 +23,8 @@ public class TransactionRequest {
     private Long medicineId;
 
     @NotNull(message = "Quantity is required")
-    @Min(value = 1, message = "Quantity must be at least 1")
-    private Integer quantity;
+    @DecimalMin(value = "0.1", message = "Quantity must be at least 0.1")
+    private BigDecimal quantity;
 
     @NotBlank(message = "An adjustment note is required — explain why this dispatch is being made")
     @Size(min = 5, max = 500, message = "Note must be between 5 and 500 characters")
@@ -58,8 +59,8 @@ public class TransactionRequest {
     public Long getMedicineId() { return medicineId; }
     public void setMedicineId(Long medicineId) { this.medicineId = medicineId; }
 
-    public Integer getQuantity() { return quantity; }
-    public void setQuantity(Integer quantity) { this.quantity = quantity; }
+    public BigDecimal getQuantity() { return quantity; }
+    public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
 
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }

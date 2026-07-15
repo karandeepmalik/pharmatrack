@@ -188,8 +188,8 @@ describe('ViewInventoryAdjustments — table content', () => {
     });
 
     test('shows quantity', () => {
-        expect(screen.getByText('8')).toBeInTheDocument();
-        expect(screen.getByText('5')).toBeInTheDocument();
+        expect(screen.getByText('8.0')).toBeInTheDocument();
+        expect(screen.getByText('5.0')).toBeInTheDocument();
     });
 
     test('shows ADD and REDUCE type badges', () => {

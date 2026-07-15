@@ -15,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -75,7 +76,7 @@ class ReportServiceTest {
     private Inventory makeInv(Long id, User u, Medicine m, int qty, String note) {
         Inventory inv = new Inventory();
         inv.setId(id); inv.setUser(u); inv.setMedicine(m);
-        inv.setQuantity(qty); inv.setLastNote(note);
+        inv.setQuantity(BigDecimal.valueOf(qty)); inv.setLastNote(note);
         inv.setLastUpdated(LocalDateTime.now());
         inv.setInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         return inv;
@@ -93,7 +94,7 @@ class ReportServiceTest {
 
     private Transaction makeTx(Long id, User u, Medicine m, int qty, Transaction.TransactionStatus status, String notes, LocalDateTime submittedAt) {
         Transaction tx = Transaction.builder()
-                .id(id).submittedBy(u).medicine(m).quantity(qty)
+                .id(id).submittedBy(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                 .status(status).notes(notes).submittedAt(submittedAt).build();
         if (status == Transaction.TransactionStatus.APPROVED) tx.setApprovedAt(LocalDateTime.now());
         return tx;
@@ -423,7 +424,7 @@ class ReportServiceTest {
 
             // Active in-transit adjustment
             InventoryAdjustment adj = InventoryAdjustment.builder()
-                    .id(99L).user(john).medicine(vial).quantity(8)
+                    .id(99L).user(john).medicine(vial).quantity(BigDecimal.valueOf(8))
                     .adjustmentType("ADD").inTransit(true).wasInTransit(true)
                     .transitDays(3).internalMovement(false)
                     .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
@@ -459,7 +460,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(makeInv(1L, john, vial, 12, null)));
 
             InventoryAdjustment adj = InventoryAdjustment.builder()
-                    .id(99L).user(john).medicine(vial).quantity(8)
+                    .id(99L).user(john).medicine(vial).quantity(BigDecimal.valueOf(8))
                     .adjustmentType("ADD").inTransit(true).wasInTransit(true)
                     .transitDays(3).internalMovement(false)
                     .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
@@ -498,7 +499,7 @@ class ReportServiceTest {
             // silently exclude these rows. findAllNonZeroRegularForValuation adds OR IS NULL.
             Inventory nullTypeInv = new Inventory();
             nullTypeInv.setId(10L); nullTypeInv.setUser(john); nullTypeInv.setMedicine(vial);
-            nullTypeInv.setQuantity(7); nullTypeInv.setInventoryType(null);
+            nullTypeInv.setQuantity(BigDecimal.valueOf(7)); nullTypeInv.setInventoryType(null);
             nullTypeInv.setLastUpdated(java.time.LocalDateTime.now());
 
             when(inventoryRepository.findAllNonZeroRegularForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
@@ -519,7 +520,7 @@ class ReportServiceTest {
                                              String adjType, int qty, LocalDateTime at,
                                              boolean inTransit, boolean wasInTransit, int transitDays) {
             return InventoryAdjustment.builder()
-                    .id(100L).user(u).medicine(m).quantity(qty)
+                    .id(100L).user(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                     .adjustmentType(adjType).note("test").inTransit(inTransit).wasInTransit(wasInTransit)
                     .transitDays(transitDays).internalMovement(false)
                     .inventoryType(type).adjustedAt(at)
@@ -539,7 +540,7 @@ class ReportServiceTest {
         private Transaction makeApprovedTx(Long id, User u, Medicine m, int qty,
                                             Inventory.InventoryType type, LocalDateTime approvedAt) {
             Transaction tx = Transaction.builder()
-                    .id(id).submittedBy(u).medicine(m).quantity(qty)
+                    .id(id).submittedBy(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                     .status(Transaction.TransactionStatus.APPROVED).notes("test")
                     .inventoryType(type)
                     .submittedAt(approvedAt).build();
@@ -754,7 +755,7 @@ class ReportServiceTest {
             LocalDateTime june3 = LocalDateTime.of(2026, 6, 3, 10, 0);
 
             InventoryAdjustment legacyAdj = InventoryAdjustment.builder()
-                    .id(200L).user(john).medicine(vial).quantity(6)
+                    .id(200L).user(john).medicine(vial).quantity(BigDecimal.valueOf(6))
                     .adjustmentType("ADD").note("legacy").inTransit(true).wasInTransit(false)
                     .transitDays(5).internalMovement(false)
                     .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
@@ -887,7 +888,7 @@ class ReportServiceTest {
         @Test
         void adminDispatchExcludedFromSalesReport() {
             Transaction adminTx = Transaction.builder()
-                    .id(1L).submittedBy(john).medicine(vial).quantity(3)
+                    .id(1L).submittedBy(john).medicine(vial).quantity(BigDecimal.valueOf(3))
                     .status(Transaction.TransactionStatus.APPROVED).notes("admin dispatch")
                     .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
                     .submittedAt(LocalDateTime.now()).build();
@@ -907,7 +908,7 @@ class ReportServiceTest {
         @Test
         void allAdminDispatchesMakeReportShowNoSales() {
             Transaction adminTx = Transaction.builder()
-                    .id(1L).submittedBy(john).medicine(vial).quantity(5)
+                    .id(1L).submittedBy(john).medicine(vial).quantity(BigDecimal.valueOf(5))
                     .status(Transaction.TransactionStatus.APPROVED).notes("admin only")
                     .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
                     .submittedAt(LocalDateTime.now()).build();
@@ -948,7 +949,7 @@ class ReportServiceTest {
 
         private InventoryAdjustment makeRegularAdj(User u, Medicine m, Inventory.InventoryType type, int qty, LocalDateTime at) {
             return InventoryAdjustment.builder()
-                    .id(200L).user(u).medicine(m).quantity(qty)
+                    .id(200L).user(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                     .adjustmentType("ADD").note("stock").inTransit(false).wasInTransit(false)
                     .transitDays(2).internalMovement(false)
                     .inventoryType(type).adjustedAt(at)
@@ -958,7 +959,7 @@ class ReportServiceTest {
         private InventoryAdjustment makeTransitAdj(User u, Medicine m, Inventory.InventoryType type,
                                                     int qty, LocalDateTime at, int transitDays) {
             return InventoryAdjustment.builder()
-                    .id(201L).user(u).medicine(m).quantity(qty)
+                    .id(201L).user(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                     .adjustmentType("ADD").note("shipment").inTransit(true).wasInTransit(true)
                     .transitDays(transitDays).internalMovement(false)
                     .inventoryType(type).adjustedAt(at)
@@ -1153,7 +1154,7 @@ class ReportServiceTest {
         void adminTransactionAppearsUnderAdminStockSection() {
             stubEmpty();
             Transaction adminTx = Transaction.builder()
-                    .id(1L).submittedBy(john).medicine(vial).quantity(2)
+                    .id(1L).submittedBy(john).medicine(vial).quantity(BigDecimal.valueOf(2))
                     .status(Transaction.TransactionStatus.APPROVED).notes("emergency")
                     .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
                     .submittedAt(LocalDateTime.now()).build();
@@ -1175,7 +1176,7 @@ class ReportServiceTest {
             Transaction regularTx = makeTx(1L, john, vial, 3,
                     Transaction.TransactionStatus.APPROVED, "clinic");
             Transaction adminTx = Transaction.builder()
-                    .id(2L).submittedBy(jane).medicine(tablet).quantity(1)
+                    .id(2L).submittedBy(jane).medicine(tablet).quantity(BigDecimal.ONE)
                     .status(Transaction.TransactionStatus.APPROVED).notes("admin")
                     .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
                     .submittedAt(LocalDateTime.now()).build();
@@ -1197,7 +1198,7 @@ class ReportServiceTest {
         void regularSubsectionAbsentWhenOnlyAdminTransactionsExist() {
             stubEmpty();
             Transaction adminTx = Transaction.builder()
-                    .id(1L).submittedBy(john).medicine(vial).quantity(4)
+                    .id(1L).submittedBy(john).medicine(vial).quantity(BigDecimal.valueOf(4))
                     .status(Transaction.TransactionStatus.APPROVED).notes("admin only")
                     .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
                     .submittedAt(LocalDateTime.now()).build();
@@ -1410,7 +1411,7 @@ class ReportServiceTest {
 
         private InventoryAdjustment makeRegularAdj(User u, Medicine m, Inventory.InventoryType type, int qty, LocalDateTime at) {
             return InventoryAdjustment.builder()
-                    .id(200L).user(u).medicine(m).quantity(qty)
+                    .id(200L).user(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                     .adjustmentType("ADD").note("stock").inTransit(false).wasInTransit(false)
                     .transitDays(2).internalMovement(false)
                     .inventoryType(type).adjustedAt(at)
@@ -1420,7 +1421,7 @@ class ReportServiceTest {
         private InventoryAdjustment makeTransitAdj(User u, Medicine m, Inventory.InventoryType type,
                                                     int qty, LocalDateTime at, int transitDays) {
             return InventoryAdjustment.builder()
-                    .id(201L).user(u).medicine(m).quantity(qty)
+                    .id(201L).user(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                     .adjustmentType("ADD").note("shipment").inTransit(true).wasInTransit(true)
                     .transitDays(transitDays).internalMovement(false)
                     .inventoryType(type).adjustedAt(at)
@@ -1604,7 +1605,7 @@ class ReportServiceTest {
         private InventoryAdjustment makeInTransitAdj(User u, Medicine m,
                                                      Inventory.InventoryType type, int qty, LocalDateTime at) {
             return InventoryAdjustment.builder()
-                    .user(u).medicine(m).inventoryType(type).quantity(qty).adjustedAt(at)
+                    .user(u).medicine(m).inventoryType(type).quantity(BigDecimal.valueOf(qty)).adjustedAt(at)
                     .adjustmentType("ADD").note("transit").inTransit(true).wasInTransit(true)
                     .transitDays(2).internalMovement(false)
                     .build();
@@ -1658,7 +1659,7 @@ class ReportServiceTest {
 
         private Transaction makeTx(Long id, User u, Medicine m, int qty, LocalDateTime at) {
             Transaction tx = Transaction.builder()
-                    .id(id).submittedBy(u).medicine(m).quantity(qty)
+                    .id(id).submittedBy(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                     .status(Transaction.TransactionStatus.APPROVED).notes("t")
                     .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
                     .submittedAt(at).build();
@@ -1695,18 +1696,18 @@ class ReportServiceTest {
                     "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
 
             var dp = resp.getDataPoints().get(0);
-            assertThat(dp.getQuantity()).isEqualTo(5);
+            assertThat(dp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
             assertThat(dp.getSpecs()).isNotEmpty();
 
             var vial10Spec = dp.getSpecs().stream()
                     .filter(s -> "Vial 10 ml".equals(s.getSpecName())).findFirst();
             assertThat(vial10Spec).isPresent();
-            assertThat(vial10Spec.get().getQuantity()).isEqualTo(3);
+            assertThat(vial10Spec.get().getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(3));
 
             var vial5Spec = dp.getSpecs().stream()
                     .filter(s -> "Vial 5 ml".equals(s.getSpecName())).findFirst();
             assertThat(vial5Spec).isPresent();
-            assertThat(vial5Spec.get().getQuantity()).isEqualTo(2);
+            assertThat(vial5Spec.get().getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(2));
         }
 
         @Test
@@ -1724,9 +1725,10 @@ class ReportServiceTest {
                     "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
 
             var dp = resp.getDataPoints().get(0);
-            int specSum = dp.getSpecs().stream()
-                    .mapToInt(SalesGraphResponse.SpecBreakdown::getQuantity).sum();
-            assertThat(dp.getQuantity()).isEqualTo(specSum).isEqualTo(14);
+            BigDecimal specSum = dp.getSpecs().stream()
+                    .map(SalesGraphResponse.SpecBreakdown::getQuantity)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            assertThat(dp.getQuantity()).isEqualByComparingTo(specSum).isEqualByComparingTo(BigDecimal.valueOf(14));
         }
 
         @Test
@@ -1778,9 +1780,9 @@ class ReportServiceTest {
                     "daily", LocalDate.of(2026, 6, 14), LocalDate.of(2026, 6, 16));
 
             assertThat(resp.getDataPoints()).hasSize(3);
-            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualTo(0);  // 14 Jun
-            assertThat(resp.getDataPoints().get(1).getQuantity()).isEqualTo(5);  // 15 Jun
-            assertThat(resp.getDataPoints().get(2).getQuantity()).isEqualTo(0);  // 16 Jun
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.ZERO);  // 14 Jun
+            assertThat(resp.getDataPoints().get(1).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));  // 15 Jun
+            assertThat(resp.getDataPoints().get(2).getQuantity()).isEqualByComparingTo(BigDecimal.ZERO);  // 16 Jun
         }
 
         @Test
@@ -1799,7 +1801,7 @@ class ReportServiceTest {
                     "weekly", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 21));
 
             assertThat(resp.getDataPoints()).hasSize(1);
-            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualTo(5);
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
         }
 
         @Test
@@ -1817,7 +1819,7 @@ class ReportServiceTest {
                     "monthly", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30));
 
             assertThat(resp.getDataPoints()).hasSize(1);
-            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualTo(10);
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.TEN);
             assertThat(resp.getDataPoints().get(0).getLabel()).isEqualTo("Jun 26");
         }
 

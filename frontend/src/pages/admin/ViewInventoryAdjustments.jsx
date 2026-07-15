@@ -183,7 +183,7 @@ export default function ViewInventoryAdjustments() {
                                                         {adj.medicineName}<br />
                                                         <small>{specLabel(adj.medicineType, adj.specification)}</small>
                                                     </td>
-                                                    <td>{adj.quantity}</td>
+                                                    <td>{Number(adj.quantity).toFixed(1)}</td>
                                                     <td>
                                                         <span className={`status-badge ${adj.adjustmentType === 'ADD' ? 'badge-approved' : 'badge-rejected'}`}>
                                                             {adj.adjustmentType}

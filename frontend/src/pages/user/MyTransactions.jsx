@@ -123,7 +123,7 @@ export default function MyTransactions() {
                   )}
                 </div>
                 <p><strong>Medicine:</strong> {tx.medicineName ?? 'Unknown'} ({tx.medicineType ?? 'Unknown'}, {specLabel})</p>
-                <p><strong>Quantity:</strong> {tx.quantity}</p>
+                <p><strong>Quantity:</strong> {Number(tx.quantity).toFixed(1)}</p>
                 <p><strong>Note:</strong> {tx.notes}</p>
                 <p><strong>Submitted:</strong> {tx.submittedAt ? new Date(tx.submittedAt).toLocaleString() : '—'}</p>
                 {tx.screenshots?.length > 0 && (

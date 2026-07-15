@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.pharma.inventory.dto.SalesGraphResponse;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -69,15 +71,15 @@ public class ReportService {
      * Passing LocalDateTime.now() gives "currently in transit"; passing reportDate+1.atStartOfDay() gives
      * "in transit as of the end of reportDate" for historical daily reports.
      */
-    private Map<String, Integer> buildInTransitMap(LocalDateTime asOf) {
+    private Map<String, BigDecimal> buildInTransitMap(LocalDateTime asOf) {
         List<InventoryAdjustment> active = inventoryAdjustmentRepository.findAllActiveInTransit();
-        Map<String, Integer> map = new java.util.HashMap<>();
+        Map<String, BigDecimal> map = new java.util.HashMap<>();
         for (InventoryAdjustment a : active) {
             if ("ADD".equals(a.getAdjustmentType())
                     && a.getAdjustedAt().isBefore(asOf)
                     && a.getAdjustedAt().plusDays(a.getTransitDays()).isAfter(asOf)) {
                 String key = a.getUser().getId() + "|" + a.getMedicine().getId() + "|" + a.getInventoryType().name();
-                map.merge(key, a.getQuantity(), Integer::sum);
+                map.merge(key, a.getQuantity(), BigDecimal::add);
             }
         }
         return map;
@@ -88,7 +90,7 @@ public class ReportService {
     public ReportResponse inventoryByUser() {
         List<Inventory> regularRecords   = inventoryRepository.findAllNonZeroRegularOrderByMedicineAndUser(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
         List<Inventory> adminStockRecords = inventoryRepository.findAllNonZeroOrderByMedicineAndUser(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
-        Map<String, Integer> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
+        Map<String, BigDecimal> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
 
         // Derive pharma name from whichever list is non-empty
         String pharmaName = regularRecords.stream()
@@ -130,16 +132,17 @@ public class ReportService {
      * Format: "  username: settled + transit (in transit)" or "  username: qty"
      */
     private void appendUserQtyLine(StringBuilder sb, String username, Long userId, Long medicineId,
-                                    Inventory.InventoryType type, int qty,
-                                    Map<String, Integer> inTransitMap) {
+                                    Inventory.InventoryType type, BigDecimal qty,
+                                    Map<String, BigDecimal> inTransitMap) {
         String key = userId + "|" + medicineId + "|"
                 + (type != null ? type.name() : "REGULAR_MEDICINE_STOCK");
-        int transit = inTransitMap.getOrDefault(key, 0);
+        BigDecimal transit = inTransitMap.getOrDefault(key, BigDecimal.ZERO);
         sb.append("  ").append(username).append(": ");
-        if (transit > 0) {
-            sb.append(qty - transit).append(" + ").append(transit).append(" (in transit)");
+        if (transit.compareTo(BigDecimal.ZERO) > 0) {
+            sb.append(qty.subtract(transit).toPlainString()).append(" + ")
+              .append(transit.toPlainString()).append(" (in transit)");
         } else {
-            sb.append(qty);
+            sb.append(qty.toPlainString());
         }
         sb.append("\n");
     }
@@ -149,7 +152,7 @@ public class ReportService {
      * Uses full medicine name as header; skips specs with no data.
      */
     private void appendInventoryByUserSection(StringBuilder sb, List<Inventory> records,
-                                              Map<String, Integer> inTransitMap) {
+                                              Map<String, BigDecimal> inTransitMap) {
         Map<String, List<Inventory>> bySpec = new LinkedHashMap<>();
         for (Inventory inv : records) {
             bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
@@ -167,13 +170,13 @@ public class ReportService {
 
             sb.append(header).append("\n");
             sb.append("-".repeat(35)).append("\n");
-            int total = 0;
+            BigDecimal total = BigDecimal.ZERO;
             for (Inventory inv : entries) {
                 appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
                         inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
-                total += inv.getQuantity();
+                total = total.add(inv.getQuantity());
             }
-            sb.append("  TOTAL: ").append(total).append("\n\n");
+            sb.append("  TOTAL: ").append(total.toPlainString()).append("\n\n");
         }
     }
 
@@ -189,7 +192,7 @@ public class ReportService {
     @Transactional(readOnly = true)
     private ReportResponse inventoryValuationCurrent() {
         List<Inventory> records = inventoryRepository.findAllNonZeroRegularForValuation(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
-        Map<String, Integer> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
+        Map<String, BigDecimal> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
 
         // Group by pharmaId → specKey → individual records (preserves per-user detail)
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
@@ -229,9 +232,9 @@ public class ReportService {
                 List<Inventory> entries = specRecs.getOrDefault(key, Collections.emptyList());
                 if (entries.isEmpty()) continue;
 
-                int totalQty = entries.stream().mapToInt(Inventory::getQuantity).sum();
+                BigDecimal totalQty = entries.stream().map(Inventory::getQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
                 int price = specPrice.getOrDefault(key, 0);
-                long valuation = (long) totalQty * price;
+                long valuation = BigDecimal.valueOf(price).multiply(totalQty).setScale(0, RoundingMode.HALF_UP).longValue();
                 grandTotal += valuation;
 
                 sb.append(spec[2]).append("\n");
@@ -239,7 +242,7 @@ public class ReportService {
                     appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
                             inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
                 }
-                sb.append("  Valuation: ").append(totalQty).append(" units x Rs ")
+                sb.append("  Valuation: ").append(totalQty.toPlainString()).append(" units x Rs ")
                   .append(String.format("%,d", price)).append(" = Rs ")
                   .append(String.format("%,d", valuation)).append("\n\n");
             }
@@ -266,8 +269,9 @@ public class ReportService {
 
         record MedUserKey(Long userId, Long medicineId) {}
         record MedUserMeta(User user, Medicine medicine) {}
+        record UserQty(Long userId, BigDecimal qty) {}
 
-        Map<MedUserKey, Integer> qtyMap = new LinkedHashMap<>();
+        Map<MedUserKey, BigDecimal> qtyMap = new LinkedHashMap<>();
         Map<MedUserKey, MedUserMeta> metaMap = new LinkedHashMap<>();
 
         // Apply REGULAR adjustments up to target date: ADD increases stock, REMOVE decreases it
@@ -275,8 +279,8 @@ public class ReportService {
             Inventory.InventoryType t = adj.getInventoryType();
             if (t != null && t != Inventory.InventoryType.REGULAR_MEDICINE_STOCK) continue;
             MedUserKey k = new MedUserKey(adj.getUser().getId(), adj.getMedicine().getId());
-            int delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : -adj.getQuantity();
-            qtyMap.merge(k, delta, Integer::sum);
+            BigDecimal delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : adj.getQuantity().negate();
+            qtyMap.merge(k, delta, BigDecimal::add);
             metaMap.putIfAbsent(k, new MedUserMeta(adj.getUser(), adj.getMedicine()));
         }
 
@@ -286,32 +290,32 @@ public class ReportService {
                     ? tx.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
             if (t != Inventory.InventoryType.REGULAR_MEDICINE_STOCK) continue;
             MedUserKey k = new MedUserKey(tx.getSubmittedBy().getId(), tx.getMedicine().getId());
-            qtyMap.merge(k, -tx.getQuantity(), Integer::sum);
+            qtyMap.merge(k, tx.getQuantity().negate(), BigDecimal::add);
             metaMap.putIfAbsent(k, new MedUserMeta(tx.getSubmittedBy(), tx.getMedicine()));
         }
 
         // In-transit map: ADD adjustments still within their transit window on the target date
-        Map<String, Integer> inTransitMap = new java.util.HashMap<>();
+        Map<String, BigDecimal> inTransitMap = new java.util.HashMap<>();
         for (InventoryAdjustment adj : adjUpTo) {
             if ("ADD".equals(adj.getAdjustmentType()) && (adj.isWasInTransit() || adj.isInTransit())
                     && adj.getAdjustedAt().plusDays(adj.getTransitDays()).isAfter(endExclusive)) {
                 Inventory.InventoryType t = adj.getInventoryType();
                 String typeStr = t != null ? t.name() : "REGULAR_MEDICINE_STOCK";
                 String key = adj.getUser().getId() + "|" + adj.getMedicine().getId() + "|" + typeStr;
-                inTransitMap.merge(key, adj.getQuantity(), Integer::sum);
+                inTransitMap.merge(key, adj.getQuantity(), BigDecimal::add);
             }
         }
 
         // Group by pharma → specKey
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
-        LinkedHashMap<Long, Map<String, List<long[]>>> pharmaSpecUserQty = new LinkedHashMap<>();
+        LinkedHashMap<Long, Map<String, List<UserQty>>> pharmaSpecUserQty = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, Medicine>> pharmaSpecMedicine = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, Map<Long, String>>> pharmaSpecUsernames = new LinkedHashMap<>();
 
-        for (Map.Entry<MedUserKey, Integer> entry : qtyMap.entrySet()) {
+        for (Map.Entry<MedUserKey, BigDecimal> entry : qtyMap.entrySet()) {
             MedUserKey k = entry.getKey();
-            int qty = entry.getValue();
-            if (qty <= 0) continue;
+            BigDecimal qty = entry.getValue();
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
 
             MedUserMeta meta = metaMap.get(k);
             if (meta == null) continue;
@@ -326,7 +330,7 @@ public class ReportService {
                                .put(k.userId(), meta.user().getUsername());
             pharmaSpecUserQty.computeIfAbsent(pharmaId, x -> new LinkedHashMap<>())
                              .computeIfAbsent(sk, x -> new java.util.ArrayList<>())
-                             .add(new long[]{ k.userId(), qty });
+                             .add(new UserQty(k.userId(), qty));
         }
 
         StringBuilder sb = new StringBuilder();
@@ -343,38 +347,39 @@ public class ReportService {
             sb.append(pharmaName).append("\n");
             sb.append("-".repeat(pharmaName.length())).append("\n");
 
-            Map<String, List<long[]>>      specUserQty  = pharmaSpecUserQty.getOrDefault(pharmaId, Collections.emptyMap());
+            Map<String, List<UserQty>>    specUserQty  = pharmaSpecUserQty.getOrDefault(pharmaId, Collections.emptyMap());
             Map<String, Medicine>          specMed      = pharmaSpecMedicine.getOrDefault(pharmaId, Collections.emptyMap());
             Map<String, Map<Long, String>> specUsernames = pharmaSpecUsernames.getOrDefault(pharmaId, Collections.emptyMap());
 
             for (String[] spec : DAILY_SPEC_ORDER) {
                 String sk = spec[0] + "|" + spec[1];
-                List<long[]> userQtys = specUserQty.getOrDefault(sk, Collections.emptyList());
+                List<UserQty> userQtys = specUserQty.getOrDefault(sk, Collections.emptyList());
                 if (userQtys.isEmpty()) continue;
                 Medicine med = specMed.get(sk);
                 Map<Long, String> usernames = specUsernames.getOrDefault(sk, Collections.emptyMap());
 
                 sb.append(spec[2]).append("\n");
-                int totalQty = 0;
-                for (long[] uq : userQtys) {
-                    long uid = uq[0];
-                    int qty = (int) uq[1];
-                    totalQty += qty;
+                BigDecimal totalQty = BigDecimal.ZERO;
+                for (UserQty uq : userQtys) {
+                    Long uid = uq.userId();
+                    BigDecimal qty = uq.qty();
+                    totalQty = totalQty.add(qty);
                     String uname = usernames.getOrDefault(uid, "unknown");
                     String itKey = uid + "|" + med.getId() + "|REGULAR_MEDICINE_STOCK";
-                    int transit = inTransitMap.getOrDefault(itKey, 0);
+                    BigDecimal transit = inTransitMap.getOrDefault(itKey, BigDecimal.ZERO);
                     sb.append("  ").append(uname).append(": ");
-                    if (transit > 0) {
-                        sb.append(qty - transit).append(" + ").append(transit).append(" (in transit)");
+                    if (transit.compareTo(BigDecimal.ZERO) > 0) {
+                        sb.append(qty.subtract(transit).toPlainString()).append(" + ")
+                          .append(transit.toPlainString()).append(" (in transit)");
                     } else {
-                        sb.append(qty);
+                        sb.append(qty.toPlainString());
                     }
                     sb.append("\n");
                 }
                 int price = med.getPrice();
-                long valuation = (long) totalQty * price;
+                long valuation = BigDecimal.valueOf(price).multiply(totalQty).setScale(0, RoundingMode.HALF_UP).longValue();
                 grandTotal += valuation;
-                sb.append("  Valuation: ").append(totalQty).append(" units x Rs ")
+                sb.append("  Valuation: ").append(totalQty.toPlainString()).append(" units x Rs ")
                   .append(String.format("%,d", price)).append(" = Rs ")
                   .append(String.format("%,d", valuation)).append("\n\n");
             }
@@ -433,7 +438,7 @@ public class ReportService {
             for (Transaction tx : entry.getValue()) {
                 Medicine med = tx.getMedicine();
                 int price = tx.getPricePerUnit() != null ? tx.getPricePerUnit() : med.getPrice();
-                long amount = (long) tx.getQuantity() * price;
+                long amount = BigDecimal.valueOf(price).multiply(tx.getQuantity()).setScale(0, RoundingMode.HALF_UP).longValue();
                 userTotal += amount;
 
                 int specInt = med.getSpecification().intValue();
@@ -445,7 +450,7 @@ public class ReportService {
                 String notes = (tx.getNotes() != null && !tx.getNotes().isBlank())
                         ? tx.getNotes() : "";
 
-                sb.append("  ").append(username).append("  ").append(tx.getQuantity()).append(" x ").append(specLabel);
+                sb.append("  ").append(username).append("  ").append(tx.getQuantity().toPlainString()).append(" x ").append(specLabel);
                 if (!notes.isBlank()) {
                     sb.append("  ").append(notes);
                 }
@@ -488,8 +493,8 @@ public class ReportService {
         List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findByDateRange(start, end);
 
         // Build stock maps keyed by "userId|medicineId"
-        Map<String, Integer> regularQty = new LinkedHashMap<>();
-        Map<String, Integer> adminQty   = new LinkedHashMap<>();
+        Map<String, BigDecimal> regularQty = new LinkedHashMap<>();
+        Map<String, BigDecimal> adminQty   = new LinkedHashMap<>();
         Map<String, User>     userByKey = new LinkedHashMap<>();
         Map<String, Medicine> medByKey  = new LinkedHashMap<>();
 
@@ -497,11 +502,11 @@ public class ReportService {
             Inventory.InventoryType t = adj.getInventoryType() != null
                     ? adj.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
             String key = adj.getUser().getId() + "|" + adj.getMedicine().getId();
-            int delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : -adj.getQuantity();
+            BigDecimal delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : adj.getQuantity().negate();
             if (t == Inventory.InventoryType.REGULAR_MEDICINE_STOCK) {
-                regularQty.merge(key, delta, Integer::sum);
+                regularQty.merge(key, delta, BigDecimal::add);
             } else if (t == Inventory.InventoryType.ADMIN_MEDICINE_STOCK) {
-                adminQty.merge(key, delta, Integer::sum);
+                adminQty.merge(key, delta, BigDecimal::add);
             }
             userByKey.putIfAbsent(key, adj.getUser());
             medByKey.putIfAbsent(key, adj.getMedicine());
@@ -512,9 +517,9 @@ public class ReportService {
                     ? tx.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
             String key = tx.getSubmittedBy().getId() + "|" + tx.getMedicine().getId();
             if (t == Inventory.InventoryType.REGULAR_MEDICINE_STOCK) {
-                regularQty.merge(key, -tx.getQuantity(), Integer::sum);
+                regularQty.merge(key, tx.getQuantity().negate(), BigDecimal::add);
             } else if (t == Inventory.InventoryType.ADMIN_MEDICINE_STOCK) {
-                adminQty.merge(key, -tx.getQuantity(), Integer::sum);
+                adminQty.merge(key, tx.getQuantity().negate(), BigDecimal::add);
             }
             userByKey.putIfAbsent(key, tx.getSubmittedBy());
             medByKey.putIfAbsent(key, tx.getMedicine());
@@ -526,14 +531,14 @@ public class ReportService {
                 Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
 
         // In-transit: ADD adjustments still within their transit window on the report date
-        Map<String, Integer> inTransitMap = new java.util.HashMap<>();
+        Map<String, BigDecimal> inTransitMap = new java.util.HashMap<>();
         for (InventoryAdjustment adj : adjUpTo) {
             if ("ADD".equals(adj.getAdjustmentType()) && (adj.isWasInTransit() || adj.isInTransit())
                     && adj.getAdjustedAt().plusDays(adj.getTransitDays()).isAfter(end)) {
                 Inventory.InventoryType t = adj.getInventoryType();
                 String typeStr = t != null ? t.name() : "REGULAR_MEDICINE_STOCK";
                 String key = adj.getUser().getId() + "|" + adj.getMedicine().getId() + "|" + typeStr;
-                inTransitMap.merge(key, adj.getQuantity(), Integer::sum);
+                inTransitMap.merge(key, adj.getQuantity(), BigDecimal::add);
             }
         }
 
@@ -615,13 +620,13 @@ public class ReportService {
 
     // ── Private helpers ───────────────────────────────────────────────
 
-    private List<Inventory> buildInventoryList(Map<String, Integer> qtyMap,
+    private List<Inventory> buildInventoryList(Map<String, BigDecimal> qtyMap,
                                                Map<String, User> userByKey,
                                                Map<String, Medicine> medByKey,
                                                Inventory.InventoryType type) {
         List<Inventory> result = new ArrayList<>();
-        for (Map.Entry<String, Integer> e : qtyMap.entrySet()) {
-            if (e.getValue() <= 0) continue;
+        for (Map.Entry<String, BigDecimal> e : qtyMap.entrySet()) {
+            if (e.getValue().compareTo(BigDecimal.ZERO) <= 0) continue;
             User user = userByKey.get(e.getKey());
             Medicine med = medByKey.get(e.getKey());
             if (user == null || med == null) continue;
@@ -641,7 +646,7 @@ public class ReportService {
      * (specs with no inventory are skipped).
      */
     private void appendInventorySection(StringBuilder sb, List<Inventory> records,
-                                        Map<String, Integer> inTransitMap) {
+                                        Map<String, BigDecimal> inTransitMap) {
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, List<Inventory>>> pharmaSpecMap = new LinkedHashMap<>();
         for (Inventory inv : records) {
@@ -661,14 +666,14 @@ public class ReportService {
                 String key = spec[0] + "|" + spec[1];
                 List<Inventory> entries = bySpec.getOrDefault(key, Collections.emptyList());
                 if (entries.isEmpty()) continue;
-                int total = 0;
+                BigDecimal total = BigDecimal.ZERO;
                 sb.append("\n").append(spec[2]).append("\n");
                 for (Inventory inv : entries) {
                     appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
                             inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
-                    total += inv.getQuantity();
+                    total = total.add(inv.getQuantity());
                 }
-                sb.append("  TOTAL: ").append(total).append("\n");
+                sb.append("  TOTAL: ").append(total.toPlainString()).append("\n");
             }
         }
     }
@@ -679,7 +684,7 @@ public class ReportService {
      * Used for the ADMIN MEDICINE STOCK section in the daily report.
      */
     private void appendInventoryAdminSection(StringBuilder sb, List<Inventory> records,
-                                             Map<String, Integer> inTransitMap) {
+                                             Map<String, BigDecimal> inTransitMap) {
         LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
         LinkedHashMap<Long, Map<String, List<Inventory>>> pharmaSpecMap = new LinkedHashMap<>();
         for (Inventory inv : records) {
@@ -703,13 +708,13 @@ public class ReportService {
                         ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
                         : spec[2];
                 sb.append("\n").append(header).append("\n");
-                int total = 0;
+                BigDecimal total = BigDecimal.ZERO;
                 for (Inventory inv : entries) {
                     appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
                             inv.getMedicine().getId(), inv.getInventoryType(), inv.getQuantity(), inTransitMap);
-                    total += inv.getQuantity();
+                    total = total.add(inv.getQuantity());
                 }
-                sb.append("  TOTAL: ").append(total).append("\n");
+                sb.append("  TOTAL: ").append(total.toPlainString()).append("\n");
             }
         }
     }
@@ -721,7 +726,7 @@ public class ReportService {
                 ? specInt + " ml" : specInt + " mg";
         sb.append(tx.getSubmittedBy().getUsername())
           .append("  ")
-          .append(tx.getQuantity()).append(" x ").append(specLabel);
+          .append(tx.getQuantity().toPlainString()).append(" x ").append(specLabel);
         if (tx.getNotes() != null && !tx.getNotes().isBlank()) {
             sb.append("  ").append(tx.getNotes());
         }
@@ -745,38 +750,44 @@ public class ReportService {
         LinkedHashSet<String> specOrder = new LinkedHashSet<>();
         for (String[] spec : DAILY_SPEC_ORDER) specOrder.add(spec[2]);
 
-        // Map<periodKey, Map<specName, long[]{qty, val}>>
-        Map<String, Map<String, long[]>> grouped = new LinkedHashMap<>();
+        // Map<periodKey, Map<specName, Agg{qty, val}>>
+        Map<String, Map<String, SalesAgg>> grouped = new LinkedHashMap<>();
         for (Transaction t : txns) {
             String key = groupKey(t.getSubmittedAt().toLocalDate(), period);
             String specName = specDisplayName(t.getMedicine());
             specOrder.add(specName);
-            grouped.computeIfAbsent(key, k -> new LinkedHashMap<>())
-                   .computeIfAbsent(specName, s -> new long[]{0, 0});
+            SalesAgg agg = grouped.computeIfAbsent(key, k -> new LinkedHashMap<>())
+                   .computeIfAbsent(specName, s -> new SalesAgg());
             int price = t.getPricePerUnit() != null ? t.getPricePerUnit() : t.getMedicine().getPrice();
-            long[] agg = grouped.get(key).get(specName);
-            agg[0] += t.getQuantity();
-            agg[1] += (long) t.getQuantity() * price;
+            agg.qty = agg.qty.add(t.getQuantity());
+            agg.value += BigDecimal.valueOf(price).multiply(t.getQuantity()).setScale(0, RoundingMode.HALF_UP).longValue();
         }
 
         List<String> orderedSpecs = new ArrayList<>(specOrder);
 
         List<SalesGraphResponse.DataPoint> dataPoints = new ArrayList<>();
         for (String key : allPeriodKeys(period, from, to)) {
-            Map<String, long[]> specMap = grouped.getOrDefault(key, Collections.emptyMap());
-            long totalQty = 0, totalVal = 0;
+            Map<String, SalesAgg> specMap = grouped.getOrDefault(key, Collections.emptyMap());
+            BigDecimal totalQty = BigDecimal.ZERO;
+            long totalVal = 0;
             List<SalesGraphResponse.SpecBreakdown> specs = new ArrayList<>();
             for (String specName : orderedSpecs) {
-                long[] agg = specMap.getOrDefault(specName, new long[]{0, 0});
-                specs.add(new SalesGraphResponse.SpecBreakdown(specName, (int) agg[0], agg[1]));
-                totalQty += agg[0];
-                totalVal += agg[1];
+                SalesAgg agg = specMap.getOrDefault(specName, new SalesAgg());
+                specs.add(new SalesGraphResponse.SpecBreakdown(specName, agg.qty, agg.value));
+                totalQty = totalQty.add(agg.qty);
+                totalVal += agg.value;
             }
             dataPoints.add(new SalesGraphResponse.DataPoint(
-                    keyToLabel(key, period), (int) totalQty, totalVal, specs));
+                    keyToLabel(key, period), totalQty, totalVal, specs));
         }
 
         return new SalesGraphResponse(period, dataPoints);
+    }
+
+    /** Mutable per-(period,spec) accumulator for salesGraph() — quantity is decimal, value (money) stays whole. */
+    private static final class SalesAgg {
+        BigDecimal qty = BigDecimal.ZERO;
+        long value = 0;
     }
 
     private String specDisplayName(Medicine m) {
@@ -840,7 +851,7 @@ public class ReportService {
         String sign = "ADD".equals(a.getAdjustmentType()) ? "+" : "-";
         sb.append(a.getUser().getUsername())
           .append("  ")
-          .append(sign).append(a.getQuantity()).append(" x ").append(specLabel);
+          .append(sign).append(a.getQuantity().toPlainString()).append(" x ").append(specLabel);
         if (a.getNote() != null && !a.getNote().isBlank()) {
             sb.append("  ").append(a.getNote());
         }

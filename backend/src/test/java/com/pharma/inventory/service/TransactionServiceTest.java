@@ -23,6 +23,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -72,7 +73,7 @@ class TransactionServiceTest {
 
         inventory = new Inventory();
         inventory.setId(1L); inventory.setUser(regularUser);
-        inventory.setMedicine(medicine); inventory.setQuantity(50);
+        inventory.setMedicine(medicine); inventory.setQuantity(BigDecimal.valueOf(50));
 
         // Default: settled quantity mirrors whatever the test set inventory.quantity to —
         // i.e. no drift between the raw ledger and the reconstructed total. Individual tests
@@ -85,7 +86,7 @@ class TransactionServiceTest {
 
     private TransactionRequest buildReq(String notes) {
         TransactionRequest r = new TransactionRequest();
-        r.setMedicineId(1L); r.setQuantity(10); r.setNotes(notes);
+        r.setMedicineId(1L); r.setQuantity(BigDecimal.TEN); r.setNotes(notes);
         return r;
     }
 
@@ -126,7 +127,7 @@ class TransactionServiceTest {
             TransactionResponse res = transactionService.submit(req, "john.doe");
 
             assertThat(res.getStatus()).isEqualTo("PENDING");
-            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 40));
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity().compareTo(BigDecimal.valueOf(40)) == 0));
         }
 
         @Test @DisplayName("saves TransactionScreenshot entries when screenshots provided")
@@ -211,9 +212,9 @@ class TransactionServiceTest {
 
         @Test @DisplayName("throws InsufficientInventoryException when qty exceeds stock")
         void submit_insufficientStock_throwsInsufficientInventory() {
-            inventory.setQuantity(5);
+            inventory.setQuantity(BigDecimal.valueOf(5));
             TransactionRequest req = buildReq("Clinic dispatch today");
-            req.setQuantity(10);
+            req.setQuantity(BigDecimal.TEN);
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
@@ -288,16 +289,16 @@ class TransactionServiceTest {
         void submit_exceedsSettledStock_throwsInsufficientInventoryDespiteRawQuantity() {
             // raw ledger says 11 (e.g. drifted from the true adjustment/transaction history, or
             // includes in-transit stock) — CurrentStockCalculator says only 8 are really settled.
-            inventory.setQuantity(11);
+            inventory.setQuantity(BigDecimal.valueOf(11));
             TransactionRequest req = buildReq("Clinic dispatch today please");
-            req.setQuantity(11);
+            req.setQuantity(BigDecimal.valueOf(11));
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
             when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(Optional.of(inventory));
             when(currentStockCalculator.settledQuantity(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(8);
+                    .thenReturn(BigDecimal.valueOf(8));
 
             assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
                     .isInstanceOf(InsufficientInventoryException.class)
@@ -307,9 +308,9 @@ class TransactionServiceTest {
 
         @Test @DisplayName("succeeds when requested equals the reconstructed settled quantity")
         void submit_exactlySettledStock_succeeds() {
-            inventory.setQuantity(11); // raw 11, reconstructed settled 8
+            inventory.setQuantity(BigDecimal.valueOf(11)); // raw 11, reconstructed settled 8
             TransactionRequest req = buildReq("Clinic dispatch of settled stock");
-            req.setQuantity(8);
+            req.setQuantity(BigDecimal.valueOf(8));
             Transaction tx = savedTx(req);
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
@@ -317,13 +318,13 @@ class TransactionServiceTest {
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(Optional.of(inventory));
             when(currentStockCalculator.settledQuantity(1L, 1L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
-                    .thenReturn(8);
+                    .thenReturn(BigDecimal.valueOf(8));
             when(inventoryRepository.save(any())).thenReturn(inventory);
             when(transactionRepository.save(any())).thenReturn(tx);
             when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
 
             assertThatNoException().isThrownBy(() -> transactionService.submit(req, "john.doe"));
-            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 3)); // raw 11 - 8
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity().compareTo(BigDecimal.valueOf(3)) == 0)); // raw 11 - 8
         }
     }
 
@@ -460,7 +461,7 @@ class TransactionServiceTest {
         void setup() {
             pendingTx = Transaction.builder()
                     .id(1L).submittedBy(regularUser).medicine(medicine)
-                    .quantity(10).status(TransactionStatus.PENDING)
+                    .quantity(BigDecimal.TEN).status(TransactionStatus.PENDING)
                     .notes("Clinic dispatch confirmed").build();
             pendingTx.setSubmittedAt(LocalDateTime.now());
         }
@@ -500,7 +501,7 @@ class TransactionServiceTest {
             TransactionResponse res = transactionService.approve(1L, req, "admin");
 
             assertThat(res.getStatus()).isEqualTo("REJECTED");
-            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 60)); // 50+10
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity().compareTo(BigDecimal.valueOf(60)) == 0)); // 50+10
         }
 
         @Test @DisplayName("throws ResourceNotFoundException when transaction not found")
@@ -578,7 +579,7 @@ class TransactionServiceTest {
         void setup() {
             pendingTx = Transaction.builder()
                     .id(1L).submittedBy(regularUser).medicine(medicine)
-                    .quantity(10).status(TransactionStatus.PENDING)
+                    .quantity(BigDecimal.TEN).status(TransactionStatus.PENDING)
                     .notes("Clinic dispatch confirmed")
                     .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
                     .build();
@@ -594,7 +595,7 @@ class TransactionServiceTest {
 
             transactionService.deleteTransaction(1L);
 
-            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 60)); // 50+10
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity().compareTo(BigDecimal.valueOf(60)) == 0)); // 50+10
             verify(transactionRepository).delete(pendingTx);
         }
 
@@ -608,7 +609,7 @@ class TransactionServiceTest {
 
             transactionService.deleteTransaction(1L);
 
-            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 60));
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity().compareTo(BigDecimal.valueOf(60)) == 0));
             verify(transactionRepository).delete(pendingTx);
         }
 
@@ -644,7 +645,7 @@ class TransactionServiceTest {
         void setup() {
             pendingTx = Transaction.builder()
                     .id(1L).submittedBy(regularUser).medicine(medicine)
-                    .quantity(10).status(TransactionStatus.PENDING)
+                    .quantity(BigDecimal.TEN).status(TransactionStatus.PENDING)
                     .notes("Clinic dispatch confirmed")
                     .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
                     .build();
@@ -661,7 +662,7 @@ class TransactionServiceTest {
 
             transactionService.deleteOwnPending(1L, "john.doe");
 
-            verify(inventoryRepository).save(argThat(i -> i.getQuantity() == 60)); // 50+10
+            verify(inventoryRepository).save(argThat(i -> i.getQuantity().compareTo(BigDecimal.valueOf(60)) == 0)); // 50+10
             verify(transactionRepository).delete(pendingTx);
         }
 
@@ -734,7 +735,7 @@ class TransactionServiceTest {
         void setup() {
             existingTx = Transaction.builder()
                     .id(1L).submittedBy(regularUser).medicine(medicine)
-                    .quantity(5).status(TransactionStatus.PENDING)
+                    .quantity(BigDecimal.valueOf(5)).status(TransactionStatus.PENDING)
                     .notes("Original notes here at dispatch").build();
             existingTx.setSubmittedAt(LocalDateTime.now());
         }

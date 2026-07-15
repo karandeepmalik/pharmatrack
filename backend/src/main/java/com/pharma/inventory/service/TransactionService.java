@@ -19,6 +19,7 @@ import com.pharma.inventory.repository.MedicineRepository;
 import com.pharma.inventory.repository.TransactionRepository;
 import com.pharma.inventory.repository.TransactionScreenshotRepository;
 import com.pharma.inventory.repository.UserRepository;
+import com.pharma.inventory.util.QuantityUtil;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -26,6 +27,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -62,6 +64,7 @@ public class TransactionService {
     public TransactionResponse submit(TransactionRequest req, String username) {
         validateNotes(req.getNotes());
         validateSubmittedDate(req.getSubmittedDate());
+        req.setQuantity(QuantityUtil.round(req.getQuantity()));
         User user = findUserByUsername(username);
         Medicine medicine = findMedicineById(req.getMedicineId());
 
@@ -71,11 +74,11 @@ public class TransactionService {
         // Validate against forward-reconstructed settled stock (same algorithm ReportService uses
         // for historical reports) rather than the raw inventory.quantity field, which can drift
         // from the true adjustment/transaction ledger and include not-yet-arrived in-transit stock.
-        int settledQty = currentStockCalculator.settledQuantity(user.getId(), medicine.getId(), invType);
-        if (settledQty < req.getQuantity()) {
+        BigDecimal settledQty = currentStockCalculator.settledQuantity(user.getId(), medicine.getId(), invType);
+        if (settledQty.compareTo(req.getQuantity()) < 0) {
             throw new InsufficientInventoryException(settledQty, req.getQuantity());
         }
-        inventory.setQuantity(inventory.getQuantity() - req.getQuantity());
+        inventory.setQuantity(inventory.getQuantity().subtract(req.getQuantity()));
         inventoryRepository.save(inventory);
 
         LocalDateTime submittedAt = req.getSubmittedDate() != null
@@ -175,7 +178,7 @@ public class TransactionService {
                     ? tx.getInventoryType()
                     : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
             Inventory inv = findInventoryByType(tx.getSubmittedBy().getId(), tx.getMedicine().getId(), rollbackType);
-            inv.setQuantity(inv.getQuantity() + tx.getQuantity());
+            inv.setQuantity(inv.getQuantity().add(tx.getQuantity()));
             inventoryRepository.save(inv);
         }
         tx.setApprovedBy(admin);
@@ -194,7 +197,7 @@ public class TransactionService {
                     : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
             Inventory inv = findInventoryByType(
                     tx.getSubmittedBy().getId(), tx.getMedicine().getId(), rollbackType);
-            inv.setQuantity(inv.getQuantity() + tx.getQuantity());
+            inv.setQuantity(inv.getQuantity().add(tx.getQuantity()));
             inventoryRepository.save(inv);
         }
         transactionRepository.delete(tx);
@@ -221,7 +224,7 @@ public class TransactionService {
                 ? tx.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
         Inventory inv = findInventoryByType(
                 tx.getSubmittedBy().getId(), tx.getMedicine().getId(), rollbackType);
-        inv.setQuantity(inv.getQuantity() + tx.getQuantity());
+        inv.setQuantity(inv.getQuantity().add(tx.getQuantity()));
         inventoryRepository.save(inv);
 
         transactionRepository.delete(tx);

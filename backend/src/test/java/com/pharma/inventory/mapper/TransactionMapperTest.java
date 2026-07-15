@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -47,7 +48,7 @@ class TransactionMapperTest {
     private Transaction buildTx(TransactionStatus status) {
         Transaction t = Transaction.builder()
                 .id(42L).submittedBy(submitter).medicine(medicine)
-                .quantity(5).status(status).notes("Ward B dispatch today")
+                .quantity(BigDecimal.valueOf(5)).status(status).notes("Ward B dispatch today")
                 .build();
         t.setSubmittedAt(LocalDateTime.of(2026, 4, 1, 10, 0));
         return t;
@@ -59,7 +60,7 @@ class TransactionMapperTest {
         TransactionResponse r = mapper.toResponse(t);
 
         assertThat(r.getId()).isEqualTo(42L);
-        assertThat(r.getQuantity()).isEqualTo(5);
+        assertThat(r.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
         assertThat(r.getStatus()).isEqualTo("PENDING");
         assertThat(r.getNotes()).isEqualTo("Ward B dispatch today");
         assertThat(r.getSubmittedAt()).isEqualTo(LocalDateTime.of(2026, 4, 1, 10, 0));

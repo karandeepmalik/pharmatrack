@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.HashMap;
@@ -39,31 +40,31 @@ public class CurrentStockCalculator {
     private final TransactionRepository transactionRepository;
 
     @Transactional(readOnly = true)
-    public int settledQuantity(Long userId, Long medicineId, Inventory.InventoryType type) {
-        return settledQuantitiesForUser(userId).getOrDefault(bucketKey(medicineId, type), 0);
+    public BigDecimal settledQuantity(Long userId, Long medicineId, Inventory.InventoryType type) {
+        return settledQuantitiesForUser(userId).getOrDefault(bucketKey(medicineId, type), BigDecimal.ZERO);
     }
 
     /** Settled quantity for every (medicineId, inventoryType) bucket the given user currently holds. */
     @Transactional(readOnly = true)
-    public Map<String, Integer> settledQuantitiesForUser(Long userId) {
+    public Map<String, BigDecimal> settledQuantitiesForUser(Long userId) {
         LocalDateTime now = LocalDateTime.now(IST);
 
         List<InventoryAdjustment> adjustments = inventoryAdjustmentRepository.findAllUpToForUser(userId, now);
         List<Transaction> transactions = transactionRepository.findNonRejectedSubmittedUpToForUser(
                 userId, Transaction.TransactionStatus.REJECTED, now);
 
-        Map<String, Integer> netQty = new HashMap<>();
-        Map<String, Integer> inTransit = new HashMap<>();
+        Map<String, BigDecimal> netQty = new HashMap<>();
+        Map<String, BigDecimal> inTransit = new HashMap<>();
 
         for (InventoryAdjustment adj : adjustments) {
             String key = bucketKey(adj.getMedicine().getId(), adj.getInventoryType());
-            int delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : -adj.getQuantity();
-            netQty.merge(key, delta, Integer::sum);
+            BigDecimal delta = "ADD".equals(adj.getAdjustmentType()) ? adj.getQuantity() : adj.getQuantity().negate();
+            netQty.merge(key, delta, BigDecimal::add);
 
             if ("ADD".equals(adj.getAdjustmentType()) && adj.isInTransit()
                     && adj.getAdjustedAt().isBefore(now)
                     && adj.getAdjustedAt().plusDays(adj.getTransitDays()).isAfter(now)) {
-                inTransit.merge(key, adj.getQuantity(), Integer::sum);
+                inTransit.merge(key, adj.getQuantity(), BigDecimal::add);
             }
         }
 
@@ -71,13 +72,13 @@ public class CurrentStockCalculator {
             Inventory.InventoryType type = tx.getInventoryType() != null
                     ? tx.getInventoryType() : Inventory.InventoryType.REGULAR_MEDICINE_STOCK;
             String key = bucketKey(tx.getMedicine().getId(), type);
-            netQty.merge(key, -tx.getQuantity(), Integer::sum);
+            netQty.merge(key, tx.getQuantity().negate(), BigDecimal::add);
         }
 
-        Map<String, Integer> settled = new HashMap<>();
-        for (Map.Entry<String, Integer> e : netQty.entrySet()) {
-            int transitQty = inTransit.getOrDefault(e.getKey(), 0);
-            settled.put(e.getKey(), Math.max(0, e.getValue() - transitQty));
+        Map<String, BigDecimal> settled = new HashMap<>();
+        for (Map.Entry<String, BigDecimal> e : netQty.entrySet()) {
+            BigDecimal transitQty = inTransit.getOrDefault(e.getKey(), BigDecimal.ZERO);
+            settled.put(e.getKey(), e.getValue().subtract(transitQty).max(BigDecimal.ZERO));
         }
         return settled;
     }

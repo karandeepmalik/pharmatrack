@@ -92,7 +92,7 @@ export default function SubmitTransaction() {
     Boolean(selectedType) &&
     Boolean(selectedSpec) &&
     Boolean(quantity) &&
-    Number(quantity) >= 1 &&
+    Number(quantity) >= 0.1 &&
     Number(quantity) <= maxQty &&
     notes.trim().length >= NOTES_CONSTRAINTS.MIN_LENGTH &&
     screenshot.hasAnyScreenshot &&
@@ -243,7 +243,7 @@ export default function SubmitTransaction() {
           <label htmlFor="quantity-input">
             Quantity {selectedItem && `(max ${maxQty})`}
           </label>
-          <input id="quantity-input" type="number" min="1" max={maxQty}
+          <input id="quantity-input" type="number" min="0.1" max={maxQty} step="0.1"
             value={quantity} disabled={!selectedSpec}
             onChange={(e) => setQuantity(e.target.value)} />
         </div>

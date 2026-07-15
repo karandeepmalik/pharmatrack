@@ -3,9 +3,11 @@ import com.pharma.inventory.dto.*;
 import com.pharma.inventory.entity.*;
 import com.pharma.inventory.exception.*;
 import com.pharma.inventory.repository.*;
+import com.pharma.inventory.util.QuantityUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -25,6 +27,8 @@ public class MedicineStockService {
 
     @Transactional
     public InventoryResponse adjustInventory(AdjustInventoryRequest req, String adjustedByUsername) {
+        req.setQuantity(QuantityUtil.round(req.getQuantity()));
+
         User user = userRepository.findById(req.getUserId())
             .orElseThrow(() -> new ResourceNotFoundException("User", req.getUserId()));
         if (user.getRole() == User.Role.ADMIN) {
@@ -43,15 +47,15 @@ public class MedicineStockService {
         Inventory inv = inventoryRepository
             .findByUserIdAndMedicineIdAndInventoryType(user.getId(), medicine.getId(), invType)
             .orElse(Inventory.builder()
-                .user(user).medicine(medicine).quantity(0)
+                .user(user).medicine(medicine).quantity(BigDecimal.ZERO)
                 .inventoryType(invType).build());
 
         if ("REDUCE".equals(req.getAdjustmentType())) {
-            if (inv.getQuantity() < req.getQuantity())
+            if (inv.getQuantity().compareTo(req.getQuantity()) < 0)
                 throw new InsufficientInventoryException(inv.getQuantity(), req.getQuantity());
-            inv.setQuantity(inv.getQuantity() - req.getQuantity());
+            inv.setQuantity(inv.getQuantity().subtract(req.getQuantity()));
         } else {
-            inv.setQuantity(inv.getQuantity() + req.getQuantity());
+            inv.setQuantity(inv.getQuantity().add(req.getQuantity()));
         }
         inv.setLastNote(req.getNote());
         InventoryResponse response = toResponse(inventoryRepository.save(inv));
@@ -99,9 +103,9 @@ public class MedicineStockService {
                 adj.getUser().getId(), adj.getMedicine().getId(), adj.getInventoryType())
                 .ifPresent(inv -> {
                     if ("ADD".equals(adj.getAdjustmentType())) {
-                        inv.setQuantity(Math.max(0, inv.getQuantity() - adj.getQuantity()));
+                        inv.setQuantity(inv.getQuantity().subtract(adj.getQuantity()).max(BigDecimal.ZERO));
                     } else {
-                        inv.setQuantity(inv.getQuantity() + adj.getQuantity());
+                        inv.setQuantity(inv.getQuantity().add(adj.getQuantity()));
                     }
                     inventoryRepository.save(inv);
                 });
@@ -141,7 +145,7 @@ public class MedicineStockService {
 
         // Same forward-reconstruction ReportService uses for historical reports — so what's
         // shown as "available" can never disagree with what the daily report shows as on hand.
-        Map<String, Integer> settledByBucket = currentStockCalculator.settledQuantitiesForUser(userId);
+        Map<String, BigDecimal> settledByBucket = currentStockCalculator.settledQuantitiesForUser(userId);
 
         List<InventoryResponse> result = new java.util.ArrayList<>();
         regular.stream().map(i -> toDispatchableResponse(i, settledByBucket)).forEach(result::add);
@@ -149,10 +153,10 @@ public class MedicineStockService {
         return result;
     }
 
-    private InventoryResponse toDispatchableResponse(Inventory i, Map<String, Integer> settledByBucket) {
+    private InventoryResponse toDispatchableResponse(Inventory i, Map<String, BigDecimal> settledByBucket) {
         InventoryResponse r = toResponse(i);
         String key = i.getMedicine().getId() + "|" + i.getInventoryType().name();
-        r.setQuantity(settledByBucket.getOrDefault(key, 0));
+        r.setQuantity(settledByBucket.getOrDefault(key, BigDecimal.ZERO));
         return r;
     }
 

@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -56,7 +57,7 @@ class TransactionControllerTest {
         sampleResponse = new TransactionResponse();
         sampleResponse.setId(1L);
         sampleResponse.setStatus("PENDING");
-        sampleResponse.setQuantity(10);
+        sampleResponse.setQuantity(BigDecimal.TEN);
         sampleResponse.setMedicineName("FIP Shield Vial");
         sampleResponse.setMedicineType("VIAL");
         sampleResponse.setSpecification(10.0);

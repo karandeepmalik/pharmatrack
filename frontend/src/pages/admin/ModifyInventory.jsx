@@ -46,7 +46,7 @@ export default function ModifyInventory() {
 
     const isValid =
         form.userId && form.medicineId && form.adjustmentType &&
-        Number(form.quantity) >= 1 &&
+        Number(form.quantity) >= 0.1 &&
         form.note.trim().length >= 5 &&
         form.adjustmentDate && form.adjustmentDate <= today;
 
@@ -72,7 +72,7 @@ export default function ModifyInventory() {
         } catch (ex) {
             const status = ex.response?.status;
             if (status === 409) {
-                setErr(`Insufficient stock. Current quantity: ${currentQty ?? 0}.`);
+                setErr(`Insufficient stock. Current quantity: ${Number(currentQty ?? 0).toFixed(1)}.`);
             } else {
                 setErr(ex.response?.data?.message || 'Failed to modify medicine stock.');
             }
@@ -113,7 +113,7 @@ export default function ModifyInventory() {
                                         ? `${i.concentrationMgPerMl ?? i.specification} mg/ml`
                                         : `${i.specification} ${i.specUnit}`}</td>
                                     <td>Rs {i.price?.toLocaleString('en-IN')}</td>
-                                    <td><span className="qty-badge">{i.quantity}</span></td>
+                                    <td><span className="qty-badge">{Number(i.quantity).toFixed(1)}</span></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -173,7 +173,7 @@ export default function ModifyInventory() {
                     {form.userId && form.medicineId && (
                         <div className="availability-badge">
                             Current {form.inventoryType === 'ADMIN_MEDICINE_STOCK' ? 'admin medicine stock' : 'quantity'} for user:{' '}
-                            <strong>{currentQty}</strong> units
+                            <strong>{Number(currentQty).toFixed(1)}</strong> units
                             {selectedMedicine && (
                                 <span style={{ marginLeft: '1rem' }}>
                                     Price: <strong>Rs {selectedMedicine.price?.toLocaleString('en-IN')}</strong>
@@ -196,7 +196,7 @@ export default function ModifyInventory() {
                             {form.adjustmentType === 'REDUCE' && currentQty !== null &&
                                 ` (max ${currentQty})`}
                         </label>
-                        <input id="qty-input" type="number" min="1"
+                        <input id="qty-input" type="number" min="0.1" step="0.1"
                             max={form.adjustmentType === 'REDUCE' && currentQty !== null ? currentQty : undefined}
                             value={form.quantity}
                             disabled={!form.medicineId}

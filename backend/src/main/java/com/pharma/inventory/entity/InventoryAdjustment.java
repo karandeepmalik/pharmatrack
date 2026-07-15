@@ -1,6 +1,7 @@
 package com.pharma.inventory.entity;
 import jakarta.persistence.*;
 import lombok.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity @Table(name="inventory_adjustments", indexes = {
@@ -13,7 +14,7 @@ public class InventoryAdjustment {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="user_id",nullable=false) private User user;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="medicine_id",nullable=false) private Medicine medicine;
-    @Column(nullable=false) private Integer quantity;
+    @Column(nullable=false, columnDefinition="NUMERIC(10,1)") private BigDecimal quantity;
     @Column(nullable=false) private String adjustmentType;
     @Column(length=500) private String note;
     @Column(nullable=false) private boolean internalMovement;

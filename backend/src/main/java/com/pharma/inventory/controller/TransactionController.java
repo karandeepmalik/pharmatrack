@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -45,7 +46,7 @@ public class TransactionController {
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<TransactionResponse> submit(
             @RequestParam("medicineId") Long medicineId,
-            @RequestParam("quantity") Integer quantity,
+            @RequestParam("quantity") BigDecimal quantity,
             @RequestParam("notes") String notes,
             @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots,
             @RequestParam(value = "pricePerUnit", required = false) Integer pricePerUnit,
@@ -130,7 +131,7 @@ public class TransactionController {
 
     // ── Assembly helper (no logic — only construction) ─────────────────
 
-    private TransactionRequest buildRequest(Long medicineId, Integer quantity,
+    private TransactionRequest buildRequest(Long medicineId, BigDecimal quantity,
                                              String notes, List<MultipartFile> screenshots,
                                              Integer pricePerUnit, String inventoryType)
             throws IOException {

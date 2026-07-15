@@ -1,6 +1,7 @@
 package com.pharma.inventory.entity;
 import jakarta.persistence.*;
 import lombok.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 @Entity @Table(name="inventory",uniqueConstraints=@UniqueConstraint(columnNames={"user_id","medicine_id","inventory_type"}))
@@ -14,7 +15,7 @@ public class Inventory {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="user_id",nullable=false) private User user;
     @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="medicine_id",nullable=false) private Medicine medicine;
-    @Column(nullable=false) private Integer quantity;
+    @Column(nullable=false, columnDefinition="NUMERIC(10,1)") private BigDecimal quantity;
     @Column(length=500) private String lastNote;
     @Column(nullable=false) private LocalDateTime lastUpdated;
 

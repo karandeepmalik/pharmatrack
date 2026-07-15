@@ -12,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +56,7 @@ class CurrentStockCalculatorTest {
 
     private InventoryAdjustment adj(String type, int qty, LocalDateTime adjustedAt) {
         return InventoryAdjustment.builder()
-                .user(user).medicine(medicine).quantity(qty)
+                .user(user).medicine(medicine).quantity(BigDecimal.valueOf(qty))
                 .adjustmentType(type).inTransit(false).wasInTransit(false).transitDays(2)
                 .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
                 .adjustedAt(adjustedAt)
@@ -64,7 +65,7 @@ class CurrentStockCalculatorTest {
 
     private InventoryAdjustment inTransitAdj(int qty, LocalDateTime adjustedAt, int transitDays) {
         return InventoryAdjustment.builder()
-                .user(user).medicine(medicine).quantity(qty)
+                .user(user).medicine(medicine).quantity(BigDecimal.valueOf(qty))
                 .adjustmentType("ADD").inTransit(true).wasInTransit(true).transitDays(transitDays)
                 .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
                 .adjustedAt(adjustedAt)
@@ -73,7 +74,7 @@ class CurrentStockCalculatorTest {
 
     private Transaction tx(int qty, Transaction.TransactionStatus status) {
         Transaction t = Transaction.builder()
-                .submittedBy(user).medicine(medicine).quantity(qty)
+                .submittedBy(user).medicine(medicine).quantity(BigDecimal.valueOf(qty))
                 .status(status).notes("Test dispatch note")
                 .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
                 .build();
@@ -99,9 +100,9 @@ class CurrentStockCalculatorTest {
                     tx(1, Transaction.TransactionStatus.APPROVED)
             ));
 
-            int settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            BigDecimal settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
-            assertThat(settled).isEqualTo(8);
+            assertThat(settled).isEqualByComparingTo(BigDecimal.valueOf(8));
         }
 
         @Test @DisplayName("REMOVE adjustments reduce the reconstructed total")
@@ -112,9 +113,9 @@ class CurrentStockCalculatorTest {
             ));
             when(transactionRepository.findNonRejectedSubmittedUpToForUser(eq(34L), any(), any())).thenReturn(List.of());
 
-            int settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            BigDecimal settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
-            assertThat(settled).isEqualTo(7);
+            assertThat(settled).isEqualByComparingTo(BigDecimal.valueOf(7));
         }
 
         @Test @DisplayName("REJECTED transactions do not reduce the reconstructed total")
@@ -127,9 +128,9 @@ class CurrentStockCalculatorTest {
             // findNonRejectedSubmittedUpToForUser in real usage — asserting the empty-list case
             // here documents that expectation via the mock itself.
 
-            int settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            BigDecimal settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
-            assertThat(settled).isEqualTo(10);
+            assertThat(settled).isEqualByComparingTo(BigDecimal.TEN);
         }
 
         @Test @DisplayName("excludes quantity from a still-active in-transit ADD adjustment")
@@ -140,9 +141,9 @@ class CurrentStockCalculatorTest {
             ));
             when(transactionRepository.findNonRejectedSubmittedUpToForUser(eq(34L), any(), any())).thenReturn(List.of());
 
-            int settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            BigDecimal settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
-            assertThat(settled).isEqualTo(8); // 8 + 3 net, minus 3 still in transit
+            assertThat(settled).isEqualByComparingTo(BigDecimal.valueOf(8)); // 8 + 3 net, minus 3 still in transit
         }
 
         @Test @DisplayName("does not exclude an in-transit ADD adjustment whose transit window has expired")
@@ -152,9 +153,9 @@ class CurrentStockCalculatorTest {
             ));
             when(transactionRepository.findNonRejectedSubmittedUpToForUser(eq(34L), any(), any())).thenReturn(List.of());
 
-            int settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            BigDecimal settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
-            assertThat(settled).isEqualTo(3); // fully settled, no longer excluded as in-transit
+            assertThat(settled).isEqualByComparingTo(BigDecimal.valueOf(3)); // fully settled, no longer excluded as in-transit
         }
 
         @Test @DisplayName("clamps to 0 rather than returning negative when transactions exceed adjustments")
@@ -166,9 +167,9 @@ class CurrentStockCalculatorTest {
                     tx(5, Transaction.TransactionStatus.APPROVED)
             ));
 
-            int settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            BigDecimal settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
-            assertThat(settled).isEqualTo(0);
+            assertThat(settled).isEqualByComparingTo(BigDecimal.ZERO);
         }
 
         @Test @DisplayName("returns 0 for a bucket with no adjustment or transaction history")
@@ -176,7 +177,7 @@ class CurrentStockCalculatorTest {
             when(inventoryAdjustmentRepository.findAllUpToForUser(eq(34L), any())).thenReturn(List.of());
             when(transactionRepository.findNonRejectedSubmittedUpToForUser(eq(34L), any(), any())).thenReturn(List.of());
 
-            int settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+            BigDecimal settled = calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
 
             assertThat(settled).isZero();
         }
@@ -184,7 +185,7 @@ class CurrentStockCalculatorTest {
         @Test @DisplayName("keeps REGULAR and ADMIN_MEDICINE_STOCK buckets for the same medicine separate")
         void separatesInventoryTypeBuckets() {
             InventoryAdjustment adminAdj = InventoryAdjustment.builder()
-                    .user(user).medicine(medicine).quantity(20)
+                    .user(user).medicine(medicine).quantity(BigDecimal.valueOf(20))
                     .adjustmentType("ADD").inTransit(false).wasInTransit(false).transitDays(2)
                     .inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK)
                     .adjustedAt(LocalDateTime.now().minusDays(5))
@@ -195,8 +196,8 @@ class CurrentStockCalculatorTest {
             ));
             when(transactionRepository.findNonRejectedSubmittedUpToForUser(eq(34L), any(), any())).thenReturn(List.of());
 
-            assertThat(calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK)).isEqualTo(10);
-            assertThat(calculator.settledQuantity(34L, 19L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK)).isEqualTo(20);
+            assertThat(calculator.settledQuantity(34L, 19L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK)).isEqualByComparingTo(BigDecimal.TEN);
+            assertThat(calculator.settledQuantity(34L, 19L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK)).isEqualByComparingTo(BigDecimal.valueOf(20));
         }
     }
 
@@ -211,7 +212,7 @@ class CurrentStockCalculatorTest {
             medicine2.setSpecification(5.0); medicine2.setPharmaCompany(pharma);
 
             InventoryAdjustment other = InventoryAdjustment.builder()
-                    .user(user).medicine(medicine2).quantity(6)
+                    .user(user).medicine(medicine2).quantity(BigDecimal.valueOf(6))
                     .adjustmentType("ADD").inTransit(false).wasInTransit(false).transitDays(2)
                     .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK)
                     .adjustedAt(LocalDateTime.now().minusDays(3))
@@ -222,10 +223,10 @@ class CurrentStockCalculatorTest {
             ));
             when(transactionRepository.findNonRejectedSubmittedUpToForUser(eq(34L), any(), any())).thenReturn(List.of());
 
-            Map<String, Integer> result = calculator.settledQuantitiesForUser(34L);
+            Map<String, BigDecimal> result = calculator.settledQuantitiesForUser(34L);
 
-            assertThat(result).containsEntry("19|REGULAR_MEDICINE_STOCK", 8);
-            assertThat(result).containsEntry("20|REGULAR_MEDICINE_STOCK", 6);
+            assertThat(result).containsEntry("19|REGULAR_MEDICINE_STOCK", BigDecimal.valueOf(8));
+            assertThat(result).containsEntry("20|REGULAR_MEDICINE_STOCK", BigDecimal.valueOf(6));
         }
     }
 }

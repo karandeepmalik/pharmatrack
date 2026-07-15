@@ -1,5 +1,6 @@
 package com.pharma.inventory.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +23,7 @@ public class TransactionResponse {
     private Double concentrationMgPerMl;
     private String pharmaName;
     private Long pharmaId;
-    private Integer quantity;
+    private BigDecimal quantity;
     private String status;
     private LocalDateTime submittedAt;
     private String approvedByUsername;
@@ -76,8 +77,8 @@ public class TransactionResponse {
     public Long getPharmaId() { return pharmaId; }
     public void setPharmaId(Long pharmaId) { this.pharmaId = pharmaId; }
 
-    public Integer getQuantity() { return quantity; }
-    public void setQuantity(Integer quantity) { this.quantity = quantity; }
+    public BigDecimal getQuantity() { return quantity; }
+    public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

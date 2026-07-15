@@ -3,6 +3,7 @@ package com.pharma.inventory.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -17,7 +18,7 @@ public class SalesGraphResponse {
     @AllArgsConstructor
     public static class SpecBreakdown {
         private String specName;
-        private int quantity;
+        private BigDecimal quantity;
         private long value;
     }
 
@@ -26,7 +27,7 @@ public class SalesGraphResponse {
     @AllArgsConstructor
     public static class DataPoint {
         private String label;
-        private int quantity;
+        private BigDecimal quantity;
         private long value;
         private List<SpecBreakdown> specs;
     }

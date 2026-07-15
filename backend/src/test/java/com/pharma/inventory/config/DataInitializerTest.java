@@ -14,6 +14,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,10 +56,10 @@ class DataInitializerTest {
             boolean hasMatchingGenesis = adjustments.stream().anyMatch(a ->
                     a.getMedicine().getId().equals(inv.getMedicine().getId())
                             && a.getInventoryType() == inv.getInventoryType()
-                            && a.getQuantity() == inv.getQuantity()
+                            && a.getQuantity().compareTo(inv.getQuantity()) == 0
                             && "ADD".equals(a.getAdjustmentType()));
             assertThat(hasMatchingGenesis)
-                    .as("Inventory row id=%d (user=%s, medicine=%d, qty=%d) has no matching genesis adjustment",
+                    .as("Inventory row id=%d (user=%s, medicine=%d, qty=%s) has no matching genesis adjustment",
                             inv.getId(), inv.getUser().getUsername(), inv.getMedicine().getId(), inv.getQuantity())
                     .isTrue();
         }
@@ -70,12 +71,12 @@ class DataInitializerTest {
         List<Inventory> allInventory = inventoryRepository.findAll();
 
         for (Inventory inv : allInventory) {
-            int settled = currentStockCalculator.settledQuantity(
+            BigDecimal settled = currentStockCalculator.settledQuantity(
                     inv.getUser().getId(), inv.getMedicine().getId(), inv.getInventoryType());
             assertThat(settled)
                     .as("Reconstructed quantity for user=%s medicine=%d should match seeded quantity",
                             inv.getUser().getUsername(), inv.getMedicine().getId())
-                    .isEqualTo(inv.getQuantity());
+                    .isEqualByComparingTo(inv.getQuantity());
         }
     }
 
