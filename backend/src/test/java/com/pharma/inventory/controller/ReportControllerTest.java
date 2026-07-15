@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import org.mockito.ArgumentMatchers;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -181,11 +182,11 @@ class ReportControllerTest {
 
         private SalesGraphResponse sampleSalesGraph() {
             List<SalesGraphResponse.SpecBreakdown> specs = List.of(
-                    new SalesGraphResponse.SpecBreakdown("Vial 10 ml", 5, 20000L),
-                    new SalesGraphResponse.SpecBreakdown("Vial 5 ml",  3, 9000L)
+                    new SalesGraphResponse.SpecBreakdown("Vial 10 ml", BigDecimal.valueOf(5), 20000L),
+                    new SalesGraphResponse.SpecBreakdown("Vial 5 ml",  BigDecimal.valueOf(3), 9000L)
             );
             return new SalesGraphResponse("daily", List.of(
-                    new SalesGraphResponse.DataPoint("15 Jun", 8, 29000L, specs)
+                    new SalesGraphResponse.DataPoint("15 Jun", BigDecimal.valueOf(8), 29000L, specs)
             ));
         }
 

@@ -192,7 +192,7 @@ export default function ViewPastTransactions() {
                                             <td>{tx.submittedByUsername}</td>
                                             <td>{tx.medicineName}</td>
                                             <td>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</td>
-                                            <td>{tx.quantity}</td>
+                                            <td>{Number(tx.quantity).toFixed(1)}</td>
                                             <td>{tx.pricePerUnit != null
                                                 ? `Rs ${tx.pricePerUnit.toLocaleString('en-IN')}`
                                                 : tx.price != null

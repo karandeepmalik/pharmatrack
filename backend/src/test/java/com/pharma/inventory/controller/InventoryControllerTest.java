@@ -25,6 +25,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -62,7 +63,7 @@ class InventoryControllerTest {
         sampleResponse.setSpecUnit("mg/ml");
         sampleResponse.setPharmaId(1L);
         sampleResponse.setPharmaName("Shield FX");
-        sampleResponse.setQuantity(100);
+        sampleResponse.setQuantity(BigDecimal.valueOf(100));
         sampleResponse.setPrice(4000);
 
         mockUser = User.builder().id(2L).username("john.doe").role(User.Role.USER).active(true)
@@ -131,14 +132,14 @@ class InventoryControllerTest {
 
         private AdjustInventoryRequest validAddReq() {
             AdjustInventoryRequest r = new AdjustInventoryRequest();
-            r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(10);
+            r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(BigDecimal.TEN);
             r.setAdjustmentType("ADD"); r.setNote("Restocking for Ward 3");
             return r;
         }
 
         private AdjustInventoryRequest validReduceReq() {
             AdjustInventoryRequest r = new AdjustInventoryRequest();
-            r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(5);
+            r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(BigDecimal.valueOf(5));
             r.setAdjustmentType("REDUCE"); r.setNote("Returned expired stock");
             return r;
         }
@@ -146,7 +147,7 @@ class InventoryControllerTest {
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanAddInventory() throws Exception {
             InventoryResponse added = new InventoryResponse();
-            added.setQuantity(110); added.setUsername("john.doe");
+            added.setQuantity(BigDecimal.valueOf(110)); added.setUsername("john.doe");
             when(medicineStockService.adjustInventory(any(), any())).thenReturn(added);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
@@ -158,7 +159,7 @@ class InventoryControllerTest {
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanReduceInventory() throws Exception {
             InventoryResponse reduced = new InventoryResponse();
-            reduced.setQuantity(45); reduced.setUsername("john.doe");
+            reduced.setQuantity(BigDecimal.valueOf(45)); reduced.setUsername("john.doe");
             when(medicineStockService.adjustInventory(any(), any())).thenReturn(reduced);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
@@ -170,7 +171,7 @@ class InventoryControllerTest {
         @Test @WithMockUser(roles = "ADMIN")
         void returnsConflictWhenInsufficientStock() throws Exception {
             when(medicineStockService.adjustInventory(any(), any()))
-                    .thenThrow(new InsufficientInventoryException(3, 5));
+                    .thenThrow(new InsufficientInventoryException(BigDecimal.valueOf(3), BigDecimal.valueOf(5)));
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validReduceReq())))
@@ -180,7 +181,7 @@ class InventoryControllerTest {
         @Test @WithMockUser(roles = "ADMIN")
         void rejectsZeroQuantity() throws Exception {
             AdjustInventoryRequest req = validAddReq();
-            req.setQuantity(0);
+            req.setQuantity(BigDecimal.ZERO);
             mockMvc.perform(post("/api/inventory/adjust").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
@@ -246,7 +247,7 @@ class InventoryControllerTest {
         @Test @WithMockUser(roles = "ADMIN")
         void acceptsInTransitFlagTrue() throws Exception {
             InventoryResponse added = new InventoryResponse();
-            added.setQuantity(110); added.setUsername("john.doe");
+            added.setQuantity(BigDecimal.valueOf(110)); added.setUsername("john.doe");
             when(medicineStockService.adjustInventory(any(), any())).thenReturn(added);
             AdjustInventoryRequest req = validAddReq();
             req.setInTransit(true);
@@ -260,7 +261,7 @@ class InventoryControllerTest {
         @Test @WithMockUser(roles = "ADMIN")
         void acceptsInTransitFlagFalse() throws Exception {
             InventoryResponse added = new InventoryResponse();
-            added.setQuantity(110); added.setUsername("john.doe");
+            added.setQuantity(BigDecimal.valueOf(110)); added.setUsername("john.doe");
             when(medicineStockService.adjustInventory(any(), any())).thenReturn(added);
             AdjustInventoryRequest req = validAddReq();
             req.setInTransit(false);
@@ -273,7 +274,7 @@ class InventoryControllerTest {
         @Test @WithMockUser(roles = "ADMIN")
         void acceptsValidAdjustmentDate() throws Exception {
             InventoryResponse added = new InventoryResponse();
-            added.setQuantity(110); added.setUsername("john.doe");
+            added.setQuantity(BigDecimal.valueOf(110)); added.setUsername("john.doe");
             when(medicineStockService.adjustInventory(any(), any())).thenReturn(added);
             AdjustInventoryRequest req = validAddReq();
             req.setAdjustmentDate(LocalDate.now().minusDays(1));
@@ -305,7 +306,7 @@ class InventoryControllerTest {
                     .id(1L).userId(2L).username("john.doe").userFullName("John Doe")
                     .medicineId(1L).medicineName("Shield FX Vial 10 ml")
                     .medicineType("VIAL").specification(10.0)
-                    .quantity(10).adjustmentType("ADD").note("Restocking Ward 3")
+                    .quantity(BigDecimal.TEN).adjustmentType("ADD").note("Restocking Ward 3")
                     .adjustedAt("01 Jun 2026, 10:00 AM").inTransit(false).transitDays(2)
                     .internalMovement(false).inventoryType("REGULAR_MEDICINE_STOCK")
                     .build();

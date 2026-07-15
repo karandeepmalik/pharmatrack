@@ -34,7 +34,7 @@ function StockTable({ items }) {
                             <td>{specDisplay(item)}</td>
                             <td>Rs {item.price?.toLocaleString('en-IN')}</td>
                             <td>{item.pharmaName}</td>
-                            <td><span className="qty-badge">{item.quantity}</span></td>
+                            <td><span className="qty-badge">{Number(item.quantity).toFixed(1)}</span></td>
                         </tr>
                     ))}
                 </tbody>

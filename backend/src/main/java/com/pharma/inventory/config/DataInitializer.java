@@ -1,6 +1,7 @@
 package com.pharma.inventory.config;
 import com.pharma.inventory.entity.*;
 import com.pharma.inventory.repository.*;
+import com.pharma.inventory.util.QuantityUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -8,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 @Configuration @RequiredArgsConstructor @Slf4j
@@ -111,10 +113,11 @@ public class DataInitializer {
      */
     private void seedInventoryWithGenesisAdjustment(User user, Medicine medicine, int quantity,
                                                       Inventory.InventoryType type, String note) {
+        BigDecimal qty = QuantityUtil.round(BigDecimal.valueOf(quantity));
         inventory.save(Inventory.builder().user(user).medicine(medicine)
-            .quantity(quantity).inventoryType(type).lastNote(note).build());
+            .quantity(qty).inventoryType(type).lastNote(note).build());
         adjustments.save(InventoryAdjustment.builder()
-            .user(user).medicine(medicine).quantity(quantity).adjustmentType("ADD")
+            .user(user).medicine(medicine).quantity(qty).adjustmentType("ADD")
             .note(note).internalMovement(false).inTransit(false).wasInTransit(false)
             .transitDays(2).inventoryType(type).adjustedAt(LocalDateTime.now())
             .build());

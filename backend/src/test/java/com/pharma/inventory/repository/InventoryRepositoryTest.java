@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -259,7 +260,7 @@ class InventoryRepositoryTest {
                 .user(user)
                 .medicine(medicine)
                 .inventoryType(type)
-                .quantity(qty)
+                .quantity(BigDecimal.valueOf(qty))
                 .lastUpdated(LocalDateTime.of(2024, 1, 1, 0, 0))
                 .build();
     }

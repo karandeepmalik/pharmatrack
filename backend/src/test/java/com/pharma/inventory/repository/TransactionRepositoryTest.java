@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -61,7 +62,7 @@ class TransactionRepositoryTest {
         tx1 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING,
                 LocalDateTime.of(2024, 1, 1, 10, 0));
         tx2 = Transaction.builder()
-                .submittedBy(user1).medicine(medicine).quantity(10)
+                .submittedBy(user1).medicine(medicine).quantity(BigDecimal.TEN)
                 .status(Transaction.TransactionStatus.APPROVED)
                 .notes("Test note for APPROVED")
                 .submittedAt(LocalDateTime.of(2024, 1, 2, 10, 0))
@@ -466,7 +467,7 @@ class TransactionRepositoryTest {
         return Transaction.builder()
                 .submittedBy(user)
                 .medicine(medicine)
-                .quantity(10)
+                .quantity(BigDecimal.TEN)
                 .status(status)
                 .notes("Test note for " + status)
                 .submittedAt(submittedAt)

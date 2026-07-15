@@ -552,6 +552,139 @@ async function run() {
       `Expected ${quantityBeforeAdjust}, got ${restored}`);
   });
 
+  // ── Decimal Quantity Precision ──────────────────────────────────────────
+  console.log('\n-- Decimal Quantity Precision');
+
+  await test('Admin can ADD inventory with a fractional quantity (0.3)', async () => {
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 0.3,
+      note: 'E2E decimal precision test — fractional addition',
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    const expected = quantityBeforeAdjust + 0.3;
+    assert(Math.abs(r.data.quantity - expected) < 0.001,
+      `Expected ~${expected}, got ${r.data.quantity}`);
+    // Restore immediately
+    const restoreR = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 0.3,
+      note: 'Reversing fractional addition test',
+    }, adminToken);
+    assert(restoreR.status === 200, `Restore failed: ${restoreR.status}`);
+  });
+
+  await test('Admin ADD with over-precision quantity 1.25 rounds to 1.3 (HALF_UP)', async () => {
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 1.25,
+      note: 'E2E decimal precision test — over-precision rounding',
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    const expected = quantityBeforeAdjust + 1.3;
+    assert(Math.abs(r.data.quantity - expected) < 0.001,
+      `Expected quantity rounded to a 1.3 increase (~${expected}), got ${r.data.quantity}`);
+    // Restore immediately — reduce by the rounded 1.3, not the submitted 1.25
+    const restoreR = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 1.3,
+      note: 'Reversing over-precision rounding test',
+    }, adminToken);
+    assert(restoreR.status === 200, `Restore failed: ${restoreR.status}`);
+  });
+
+  await test('[VERIFY] john.doe inventory still restored after decimal ADD/REDUCE tests', async () => {
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
+    const restored = inv ? inv.quantity : 0;
+    assert(Math.abs(restored - quantityBeforeAdjust) < 0.001,
+      `Expected ${quantityBeforeAdjust}, got ${restored}`);
+  });
+
+  let decimalTxId;
+  await test('[SETUP] Allocate stock for fractional-quantity transaction test', async () => {
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 5,
+      note: 'E2E setup — allocating stock for decimal transaction test',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('User can submit transaction with fractional quantity 1.5', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '1.5',
+      notes: 'E2E fractional quantity dispatch test',
+      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('D')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(Math.abs(r.data.quantity - 1.5) < 0.001, `Expected quantity 1.5, got ${r.data.quantity}`);
+    decimalTxId = r.data.id;
+  });
+
+  await test('Admin approves fractional-quantity transaction and report money stays whole rupees', async () => {
+    assert(decimalTxId, 'decimalTxId must be set from previous test');
+    const approveR = await apiPost(`${API}/transactions/${decimalTxId}/approve`, { approved: true }, adminToken);
+    assert(approveR.status === 200, `Expected 200, got ${approveR.status}: ${JSON.stringify(approveR.data)}`);
+
+    const salesR = await apiGet(`${API}/reports/today-sales`, adminToken);
+    assert(salesR.status === 200, `Expected 200, got ${salesR.status}`);
+    // Every "Rs <amount>" occurrence in the report must be a whole number — no decimal point —
+    // even though the underlying transaction quantity (1.5) was fractional.
+    const rsAmounts = salesR.data.content.match(/Rs [\d,]+(\.\d+)?/g) || [];
+    assert(rsAmounts.length > 0, 'Expected at least one "Rs <amount>" occurrence in sales report');
+    for (const amt of rsAmounts) {
+      assert(!amt.includes('.'), `Expected whole-rupee amount, got fractional: ${amt}`);
+    }
+  });
+
+  await test('[TEARDOWN] Restore john.doe inventory after decimal transaction test', async () => {
+    const currentR = await apiGet(`${API}/inventory`, adminToken);
+    const current = currentR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
+    const currentQty = current ? current.quantity : 0;
+    const diff = currentQty - quantityBeforeAdjust;
+    if (Math.abs(diff) < 0.001) return; // already correct
+    if (diff > 0) {
+      const r = await apiPost(`${API}/inventory/adjust`, {
+        userId: johnId,
+        medicineId: adjustMedicineId,
+        adjustmentType: 'REDUCE',
+        quantity: diff,
+        note: 'E2E decimal test teardown — restoring original inventory level',
+      }, adminToken);
+      assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+    } else {
+      const r = await apiPost(`${API}/inventory/adjust`, {
+        userId: johnId,
+        medicineId: adjustMedicineId,
+        adjustmentType: 'ADD',
+        quantity: Math.abs(diff),
+        note: 'E2E decimal test teardown — restoring original inventory level',
+      }, adminToken);
+      assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+    }
+  });
+
+  await test('[VERIFY TEARDOWN] john.doe inventory restored after decimal transaction test', async () => {
+    const r = await apiGet(`${API}/inventory`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
+    const restored = inv ? inv.quantity : 0;
+    assert(Math.abs(restored - quantityBeforeAdjust) < 0.001,
+      `Expected ${quantityBeforeAdjust}, got ${restored}`);
+  });
+
   // ── Admin: User Management ────────────────────────────────────────────
   console.log('\n-- Admin: User Management');
   await test('Admin can list all users', async () => {
@@ -823,7 +956,7 @@ async function run() {
     const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
     assert(r.status === 200, `Got ${r.status}`);
     if (r.data.content.includes('(in transit)')) {
-      const match = r.data.content.match(/\d+ \+ \d+ \(in transit\)/);
+      const match = r.data.content.match(/\d+(\.\d+)? \+ \d+(\.\d+)? \(in transit\)/);
       assert(match, 'Expected "N + M (in transit)" format for in-transit stock, got: ' + r.data.content.slice(0, 500));
     }
     // test passes if no in-transit stock is present

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -57,20 +58,20 @@ class MedicineStockServiceTest {
                 .active(true).email("a@a.com").fullName("Admin User").password("hashed").build();
 
         inventory = Inventory.builder()
-                .id(10L).user(user).medicine(medicine).quantity(50)
+                .id(10L).user(user).medicine(medicine).quantity(BigDecimal.valueOf(50))
                 .inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
     }
 
     private AdjustInventoryRequest addReq(int qty) {
         AdjustInventoryRequest r = new AdjustInventoryRequest();
-        r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(qty);
+        r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(BigDecimal.valueOf(qty));
         r.setAdjustmentType("ADD"); r.setNote("Adding stock for test");
         return r;
     }
 
     private AdjustInventoryRequest reduceReq(int qty) {
         AdjustInventoryRequest r = new AdjustInventoryRequest();
-        r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(qty);
+        r.setUserId(2L); r.setMedicineId(1L); r.setQuantity(BigDecimal.valueOf(qty));
         r.setAdjustmentType("REDUCE"); r.setNote("Reducing stock for test");
         return r;
     }
@@ -93,7 +94,7 @@ class MedicineStockServiceTest {
 
             InventoryResponse result = medicineStockService.adjustInventory(addReq(10), "admin");
 
-            assertThat(result.getQuantity()).isEqualTo(60);
+            assertThat(result.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(60));
         }
 
         @Test
@@ -108,7 +109,7 @@ class MedicineStockServiceTest {
 
             InventoryResponse result = medicineStockService.adjustInventory(reduceReq(20), "admin");
 
-            assertThat(result.getQuantity()).isEqualTo(30);
+            assertThat(result.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(30));
         }
 
         @Test
@@ -123,7 +124,7 @@ class MedicineStockServiceTest {
 
             InventoryResponse result = medicineStockService.adjustInventory(addReq(5), "admin");
 
-            assertThat(result.getQuantity()).isEqualTo(5);
+            assertThat(result.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
         }
 
         @Test
@@ -187,7 +188,7 @@ class MedicineStockServiceTest {
 
             InventoryResponse result = medicineStockService.adjustInventory(reduceReq(50), "admin");
 
-            assertThat(result.getQuantity()).isEqualTo(0);
+            assertThat(result.getQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
         }
 
         @Test
@@ -203,7 +204,7 @@ class MedicineStockServiceTest {
             medicineStockService.adjustInventory(addReq(7), "admin");
 
             verify(inventoryAdjustmentRepository).save(argThat(adj ->
-                    adj.getQuantity() == 7 &&
+                    adj.getQuantity().compareTo(BigDecimal.valueOf(7)) == 0 &&
                     "ADD".equals(adj.getAdjustmentType()) &&
                     adj.getUser().getId().equals(2L) &&
                     adj.getMedicine().getId().equals(1L)
@@ -361,9 +362,9 @@ class MedicineStockServiceTest {
         @DisplayName("returns combined regular and admin stock")
         void returnsBothStockTypes() {
             Inventory regular = Inventory.builder().id(1L).user(user).medicine(medicine)
-                    .quantity(10).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
+                    .quantity(BigDecimal.valueOf(10)).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
             Inventory admin = Inventory.builder().id(2L).user(user).medicine(medicine)
-                    .quantity(5).inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK).build();
+                    .quantity(BigDecimal.valueOf(5)).inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK).build();
 
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(regular));
@@ -379,9 +380,9 @@ class MedicineStockServiceTest {
         @DisplayName("regular stock appears before admin stock in result list")
         void regularBeforeAdminStock() {
             Inventory regular = Inventory.builder().id(1L).user(user).medicine(medicine)
-                    .quantity(10).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
+                    .quantity(BigDecimal.valueOf(10)).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
             Inventory admin = Inventory.builder().id(2L).user(user).medicine(medicine)
-                    .quantity(5).inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK).build();
+                    .quantity(BigDecimal.valueOf(5)).inventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK).build();
 
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(regular));
@@ -408,7 +409,7 @@ class MedicineStockServiceTest {
         @DisplayName("maps username correctly in response")
         void mapsUsernameInResponse() {
             Inventory inv = Inventory.builder().id(1L).user(user).medicine(medicine)
-                    .quantity(10).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
+                    .quantity(BigDecimal.valueOf(10)).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
 
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(inv));
@@ -428,25 +429,25 @@ class MedicineStockServiceTest {
             // not yet arrived) — the reconstructed/settled figure is 8. The dispatch form's
             // "max" must show 8, matching what the daily report would show for the same bucket.
             Inventory regular = Inventory.builder().id(1L).user(user).medicine(medicine)
-                    .quantity(11).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
+                    .quantity(BigDecimal.valueOf(11)).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
 
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(regular));
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.ADMIN_MEDICINE_STOCK))
                     .thenReturn(List.of());
             when(currentStockCalculator.settledQuantitiesForUser(2L))
-                    .thenReturn(Map.of("1|REGULAR_MEDICINE_STOCK", 8));
+                    .thenReturn(Map.of("1|REGULAR_MEDICINE_STOCK", BigDecimal.valueOf(8)));
 
             List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
 
-            assertThat(result.get(0).getQuantity()).isEqualTo(8);
+            assertThat(result.get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(8));
         }
 
         @Test
         @DisplayName("shows 0 when the calculator has no reconstructed data for the bucket, even if raw quantity is positive")
         void showsZeroWhenNoReconstructedData() {
             Inventory regular = Inventory.builder().id(1L).user(user).medicine(medicine)
-                    .quantity(10).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
+                    .quantity(BigDecimal.valueOf(10)).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
 
             when(inventoryRepository.findAvailableByUserIdAndType(2L, Inventory.InventoryType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(regular));
@@ -455,7 +456,7 @@ class MedicineStockServiceTest {
 
             List<InventoryResponse> result = medicineStockService.getAvailableForUser(2L);
 
-            assertThat(result.get(0).getQuantity()).isEqualTo(0);
+            assertThat(result.get(0).getQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
         }
     }
 
@@ -467,7 +468,7 @@ class MedicineStockServiceTest {
 
         private InventoryAdjustment makeAdj(String type, int qty) {
             return InventoryAdjustment.builder()
-                    .id(10L).user(user).medicine(medicine).quantity(qty)
+                    .id(10L).user(user).medicine(medicine).quantity(BigDecimal.valueOf(qty))
                     .adjustmentType(type).note("Test note for adjustment")
                     .inTransit(false).wasInTransit(false).transitDays(2)
                     .internalMovement(false)
@@ -489,7 +490,7 @@ class MedicineStockServiceTest {
             assertThat(result).hasSize(1);
             assertThat(result.get(0).getUsername()).isEqualTo("john.doe");
             assertThat(result.get(0).getAdjustmentType()).isEqualTo("ADD");
-            assertThat(result.get(0).getQuantity()).isEqualTo(10);
+            assertThat(result.get(0).getQuantity()).isEqualByComparingTo(BigDecimal.TEN);
         }
 
         @Test
@@ -525,7 +526,7 @@ class MedicineStockServiceTest {
 
         private InventoryAdjustment addAdj(int qty) {
             return InventoryAdjustment.builder()
-                    .id(20L).user(user).medicine(medicine).quantity(qty)
+                    .id(20L).user(user).medicine(medicine).quantity(BigDecimal.valueOf(qty))
                     .adjustmentType("ADD").note("Test ADD")
                     .inTransit(false).wasInTransit(false).transitDays(2)
                     .internalMovement(false)
@@ -536,7 +537,7 @@ class MedicineStockServiceTest {
 
         private InventoryAdjustment reduceAdj(int qty) {
             return InventoryAdjustment.builder()
-                    .id(21L).user(user).medicine(medicine).quantity(qty)
+                    .id(21L).user(user).medicine(medicine).quantity(BigDecimal.valueOf(qty))
                     .adjustmentType("REDUCE").note("Test REDUCE")
                     .inTransit(false).wasInTransit(false).transitDays(2)
                     .internalMovement(false)
@@ -554,7 +555,7 @@ class MedicineStockServiceTest {
 
             medicineStockService.deleteAdjustment(20L);
 
-            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 40));
+            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity().compareTo(BigDecimal.valueOf(40)) == 0));
             verify(inventoryAdjustmentRepository).deleteById(20L);
         }
 
@@ -567,21 +568,21 @@ class MedicineStockServiceTest {
 
             medicineStockService.deleteAdjustment(21L);
 
-            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 60));
+            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity().compareTo(BigDecimal.valueOf(60)) == 0));
             verify(inventoryAdjustmentRepository).deleteById(21L);
         }
 
         @Test
         @DisplayName("deleting ADD clamps inventory to 0 if reversal would go negative")
         void deletingAddClampsToZero() {
-            inventory.setQuantity(5); // only 5 remains, but adjustment was for 10
+            inventory.setQuantity(BigDecimal.valueOf(5)); // only 5 remains, but adjustment was for 10
             when(inventoryAdjustmentRepository.findById(20L)).thenReturn(Optional.of(addAdj(10)));
             when(inventoryRepository.findByUserIdAndMedicineIdAndInventoryType(any(), any(), any()))
                     .thenReturn(Optional.of(inventory));
 
             medicineStockService.deleteAdjustment(20L);
 
-            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity() == 0));
+            verify(inventoryRepository).save(argThat(inv -> inv.getQuantity().compareTo(BigDecimal.ZERO) == 0));
         }
 
         @Test
@@ -624,7 +625,7 @@ class MedicineStockServiceTest {
 
             assertThat(result).hasSize(1);
             assertThat(result.get(0).getUsername()).isEqualTo("john.doe");
-            assertThat(result.get(0).getQuantity()).isEqualTo(50);
+            assertThat(result.get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(50));
         }
 
         @Test
@@ -666,7 +667,7 @@ class MedicineStockServiceTest {
                     .type(Medicine.MedicineType.TABLET).specification(25.0)
                     .price(4000).pharmaCompany(pharma).active(true).build();
             Inventory tabletInv = Inventory.builder().id(11L).user(user).medicine(tablet)
-                    .quantity(30).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
+                    .quantity(BigDecimal.valueOf(30)).inventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK).build();
 
             when(inventoryRepository.findAll()).thenReturn(List.of(tabletInv));
 

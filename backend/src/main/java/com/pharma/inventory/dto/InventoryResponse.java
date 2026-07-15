@@ -1,10 +1,11 @@
 package com.pharma.inventory.dto;
+import java.math.BigDecimal;
 public class InventoryResponse {
     private Long id,userId,medicineId,pharmaId;
     private String username,medicineName,medicineType,pharmaName,specUnit;
     private Double specification;
     private Double concentrationMgPerMl;
-    private Integer quantity;
+    private BigDecimal quantity;
     private Integer price;
     private String lastNote;
     private String inventoryType;
@@ -19,7 +20,7 @@ public class InventoryResponse {
     public String getSpecUnit(){return specUnit;} public void setSpecUnit(String s){this.specUnit=s;}
     public Long getPharmaId(){return pharmaId;} public void setPharmaId(Long p){this.pharmaId=p;}
     public String getPharmaName(){return pharmaName;} public void setPharmaName(String p){this.pharmaName=p;}
-    public Integer getQuantity(){return quantity;} public void setQuantity(Integer q){this.quantity=q;}
+    public BigDecimal getQuantity(){return quantity;} public void setQuantity(BigDecimal q){this.quantity=q;}
     public Integer getPrice(){return price;} public void setPrice(Integer p){this.price=p;}
     public String getLastNote(){return lastNote;} public void setLastNote(String n){this.lastNote=n;}
     public String getInventoryType(){return inventoryType;} public void setInventoryType(String t){this.inventoryType=t;}

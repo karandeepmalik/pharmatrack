@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.hibernate.annotations.BatchSize;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -37,8 +38,8 @@ public class Transaction {
     @JoinColumn(name = "medicine_id", nullable = false)
     private Medicine medicine;
 
-    @Column(nullable = false)
-    private Integer quantity;
+    @Column(nullable = false, columnDefinition = "NUMERIC(10,1)")
+    private BigDecimal quantity;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

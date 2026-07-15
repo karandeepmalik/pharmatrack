@@ -3,6 +3,8 @@ package com.pharma.inventory.dto;
 import lombok.Builder;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data @Builder
 public class InventoryAdjustmentResponse {
     private Long   id;
@@ -13,7 +15,7 @@ public class InventoryAdjustmentResponse {
     private String medicineName;
     private String medicineType;
     private Double specification;
-    private int    quantity;
+    private BigDecimal quantity;
     private String adjustmentType;
     private String note;
     private String adjustedAt;

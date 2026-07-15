@@ -34,6 +34,7 @@ public class DataMigrationService {
         dropLegacyUniqueConstraint();
         createTransactionScreenshotsTable();
         seedInventoryIfEmpty();
+        widenQuantityColumnsToDecimal();
     }
 
     /**
@@ -66,14 +67,55 @@ public class DataMigrationService {
      * Widen inventory_type columns to VARCHAR(30) before renaming values.
      * REGULAR_MEDICINE_STOCK is 22 chars — any column narrower than that silently
      * drops the rename UPDATE (exception caught below), leaving stale values.
+     *
+     * The length check (skip when already >= 30) is required, not just an optimization:
+     * re-running ALTER COLUMN TYPE on an already-VARCHAR(30) column still bumps Postgres's
+     * relation cache-invalidation counter even though nothing changes, which breaks any
+     * server-side prepared statement a pooled Hibernate connection already holds against that
+     * table (seen as "cached plan must not change result type" on the next INSERT after seeding).
      */
     private void widenInventoryTypeColumns() {
         for (String table : List.of("inventory", "transactions", "inventory_adjustments")) {
             try {
+                Integer len = jdbc.queryForObject(
+                        "SELECT character_maximum_length FROM information_schema.columns " +
+                        "WHERE table_name = ? AND column_name = 'inventory_type'", Integer.class, table);
+                if (len != null && len >= 30) {
+                    continue; // already wide enough — skip to avoid invalidating cached statement plans
+                }
                 jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN inventory_type TYPE VARCHAR(30)");
                 log.info("DataMigration: widened {}.inventory_type to VARCHAR(30)", table);
             } catch (Exception e) {
                 log.debug("DataMigration: {}.inventory_type widen skipped — {}", table, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Quantities are now tracked to one decimal place (BigDecimal), not whole units (Integer).
+     * ddl-auto=validate in prod means Hibernate never alters existing columns, and ddl-auto=update
+     * in dev has already proven unreliable for column-type changes in this codebase (see
+     * widenInventoryTypeColumns() above) — so this checks the live column type on every startup
+     * rather than relying on Hibernate. The scale check (skip when already 1) is required, not just
+     * an optimization: re-running ALTER COLUMN TYPE on an already-NUMERIC(10,1) column still bumps
+     * Postgres's relation cache-invalidation counter even though nothing changes, which breaks any
+     * server-side prepared statement a pooled Hibernate connection already holds against that table
+     * (seen as "cached plan must not change result type" on the next INSERT after seeding).
+     */
+    private void widenQuantityColumnsToDecimal() {
+        for (String table : List.of("inventory", "inventory_adjustments", "transactions")) {
+            try {
+                Integer scale = jdbc.queryForObject(
+                        "SELECT numeric_scale FROM information_schema.columns " +
+                        "WHERE table_name = ? AND column_name = 'quantity'", Integer.class, table);
+                if (scale != null && scale == 1) {
+                    continue; // already NUMERIC(10,1) — skip to avoid invalidating cached statement plans
+                }
+                jdbc.execute("ALTER TABLE " + table +
+                        " ALTER COLUMN quantity TYPE NUMERIC(10,1) USING quantity::numeric(10,1)");
+                log.info("DataMigration: widened {}.quantity to NUMERIC(10,1)", table);
+            } catch (Exception e) {
+                log.debug("DataMigration: {}.quantity widen skipped — {}", table, e.getMessage());
             }
         }
     }

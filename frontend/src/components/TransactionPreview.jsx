@@ -24,7 +24,7 @@ export default function TransactionPreview({ item, quantity, notes, screenshotCo
         {item.medicineName} ({item.medicineType}, {item.medicineType==='VIAL'?`${item.concentrationMgPerMl??item.specification} mg/ml`:`${item.specification} mg (10 Tablets)`})
       </p>
       <p>
-        <strong>Quantity:</strong> {quantity}
+        <strong>Quantity:</strong> {Number(quantity).toFixed(1)}
       </p>
       {displayPrice != null && (
         <p>

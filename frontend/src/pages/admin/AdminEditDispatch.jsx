@@ -184,7 +184,7 @@ export default function AdminEditDispatch() {
                                                     : '—'}</td>
                                                 <td>{tx.submittedByUsername}</td>
                                                 <td>{tx.medicineName}<br /><small>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</small></td>
-                                                <td>{tx.quantity}</td>
+                                                <td>{Number(tx.quantity).toFixed(1)}</td>
                                                 <td>{statusBadge(tx.status)}</td>
                                                 <td>
                                                     {edit.active ? (

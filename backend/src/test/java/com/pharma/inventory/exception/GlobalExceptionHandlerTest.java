@@ -21,6 +21,7 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import org.springframework.data.domain.Page;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
@@ -63,7 +64,7 @@ class GlobalExceptionHandlerTest {
         @DisplayName("InsufficientInventoryException → 409")
         void insufficientInventory_returns409() throws Exception {
             when(transactionService.approve(any(), any(), anyString()))
-                    .thenThrow(new InsufficientInventoryException(5, 10));
+                    .thenThrow(new InsufficientInventoryException(BigDecimal.valueOf(5), BigDecimal.valueOf(10)));
 
             mockMvc.perform(post("/api/transactions/1/approve").with(csrf())
                     .contentType("application/json").content("{\"approved\":true}"))

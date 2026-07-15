@@ -200,7 +200,7 @@ function BarChart({ dataPoints, metric, specColorMap }) {
                                     <text x={tx + 22} y={ty + 34 + si * 16} fontSize={10} fill="#374151">
                                         {spec.specName.replace('Tablet ', 'Tab ').replace(' (10 Tablets)', '')}: {
                                             metric === 'quantity'
-                                                ? val.toLocaleString()
+                                                ? val.toFixed(1)
                                                 : 'Rs ' + val.toLocaleString()
                                         }
                                     </text>
@@ -344,7 +344,7 @@ export default function SalesGraphReport() {
                             Total Units
                         </div>
                         <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e40af', marginTop: '2px' }}>
-                            {totalQty.toLocaleString()}
+                            {totalQty.toFixed(1)}
                         </div>
                     </div>
                     <div style={{ background: '#f0fdf4', borderRadius: '8px', padding: '12px 20px', minWidth: '140px' }}>

@@ -135,7 +135,7 @@ export default function ApproveTransactions() {
                   <p><strong>Submitted by:</strong> {tx.submittedByFullName} ({tx.submittedByUsername})</p>
                   <p><strong>Medicine:</strong> {tx.medicineName} — {tx.medicineType === 'VIAL' ? `${tx.concentrationMgPerMl ?? tx.specification} mg/ml` : `${tx.specification} mg (10 Tablets)`}</p>
                   <p><strong>Pharma:</strong> {tx.pharmaName}</p>
-                  <p><strong>Quantity:</strong> {tx.quantity}</p>
+                  <p><strong>Quantity:</strong> {Number(tx.quantity).toFixed(1)}</p>
                   {tx.status === 'PENDING' && (
                     <div className="tx-price-edit">
                       <label htmlFor={`price-${tx.id}`}><strong>Price (Rs):</strong></label>
