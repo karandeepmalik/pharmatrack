@@ -408,6 +408,28 @@ class TransactionServiceTest {
             assertThat(result.getTotalElements()).isEqualTo(21);
             assertThat(result.getNumber()).isEqualTo(1);
         }
+
+        @Test @DisplayName("preserves submission-order id sequence even when findByIdsWithDetails returns a different order")
+        void getAllPaged_reordersEntitiesToMatchIdPageOrder() {
+            // findAllIds returns ids in oldest-submitted-first (ASC) order — the order requests
+            // were sent for approval. findByIdsWithDetails has its own unrelated ORDER BY and
+            // here returns the entities in the opposite order, simulating that mismatch.
+            Transaction t1 = savedTx(buildReq("First submitted, sent for approval earliest"));
+            Transaction t2 = savedTx(buildReq("Second submitted, sent for approval later"));
+            t2.setId(2L);
+            TransactionResponse r1 = stubResponse(t1);
+            TransactionResponse r2 = stubResponse(t2);
+
+            when(transactionRepository.findAllIds(any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(1L, 2L), PageRequest.of(0, 20), 2));
+            when(transactionRepository.findByIdsWithDetails(List.of(1L, 2L)))
+                    .thenReturn(List.of(t2, t1)); // deliberately reversed vs. the id-page order
+            when(transactionMapper.toResponse(t1)).thenReturn(r1);
+            when(transactionMapper.toResponse(t2)).thenReturn(r2);
+
+            Page<TransactionResponse> result = transactionService.getAllPaged("ALL", 0, 20);
+            assertThat(result.getContent()).containsExactly(r1, r2);
+        }
     }
 
     // ── getByUserPaged() ──────────────────────────────────────────────

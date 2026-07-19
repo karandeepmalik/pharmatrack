@@ -5,10 +5,16 @@ import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
 
 const PAGE_SIZE = 20;
 
+const specLabel = (tx) => tx.medicineType === 'VIAL'
+  ? `${tx.concentrationMgPerMl ?? tx.specification ?? '?'} mg/ml`
+  : `${tx.specification ?? '?'} mg`;
+
 export default function MyTransactions() {
   const [allTxs, setAllTxs]         = useState([]);
   const [hasMore, setHasMore]       = useState(false);
   const [filter, setFilter]         = useState('ALL');
+  const [specFilter, setSpecFilter] = useState('ALL');
+  const [notesSearch, setNotesSearch] = useState('');
   const [loading, setLoading]       = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError]           = useState(null);
@@ -75,7 +81,16 @@ export default function MyTransactions() {
     return () => obs.disconnect();
   }, [loadPage]);
 
-  const filtered = filter === 'ALL' ? allTxs : allTxs.filter((t) => t.status === filter);
+  // Unique medicine specs present in the loaded dispatches, for the spec filter dropdown
+  const specOptions = [...new Map(
+    allTxs.map((t) => [t.medicineId, { medicineId: t.medicineId, label: `${t.medicineName ?? 'Unknown'} — ${specLabel(t)}` }])
+  ).values()].sort((a, b) => a.label.localeCompare(b.label));
+
+  const filtered = allTxs
+    .filter((t) => filter === 'ALL' || t.status === filter)
+    .filter((t) => specFilter === 'ALL' || String(t.medicineId) === specFilter)
+    .filter((t) => !notesSearch.trim() ||
+      (t.notes || '').toLowerCase().includes(notesSearch.trim().toLowerCase()));
 
   if (loading) return <div className="loading">Loading…</div>;
 
@@ -98,15 +113,37 @@ export default function MyTransactions() {
         ))}
       </div>
 
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="spec-filter">Medicine Spec</label>
+          <select
+            id="spec-filter"
+            value={specFilter}
+            onChange={(e) => setSpecFilter(e.target.value)}>
+            <option value="ALL">All Medicines</option>
+            {specOptions.map((o) => (
+              <option key={o.medicineId} value={String(o.medicineId)}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-group">
+          <label htmlFor="notes-search">Search Notes</label>
+          <input
+            id="notes-search"
+            type="text"
+            placeholder="Search by dispatch note…"
+            value={notesSearch}
+            onChange={(e) => setNotesSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
       {filtered.length === 0 ? (
         <p className="empty-message">No transactions found.</p>
       ) : (
         <div className="transactions-list">
           {filtered.map((tx) => {
-            const status   = tx.status ?? 'UNKNOWN';
-            const specLabel = tx.medicineType === 'VIAL'
-              ? `${tx.concentrationMgPerMl ?? tx.specification ?? '?'} mg/ml`
-              : `${tx.specification ?? '?'} mg`;
+            const status = tx.status ?? 'UNKNOWN';
             return (
               <div key={tx.id} className={`transaction-card status-${status.toLowerCase()}`}>
                 <div className="tx-header">
@@ -122,7 +159,7 @@ export default function MyTransactions() {
                     </button>
                   )}
                 </div>
-                <p><strong>Medicine:</strong> {tx.medicineName ?? 'Unknown'} ({tx.medicineType ?? 'Unknown'}, {specLabel})</p>
+                <p><strong>Medicine:</strong> {tx.medicineName ?? 'Unknown'} ({tx.medicineType ?? 'Unknown'}, {specLabel(tx)})</p>
                 <p><strong>Quantity:</strong> {Number(tx.quantity).toFixed(1)}</p>
                 <p><strong>Note:</strong> {tx.notes}</p>
                 <p><strong>Submitted:</strong> {tx.submittedAt ? new Date(tx.submittedAt).toLocaleString() : '—'}</p>

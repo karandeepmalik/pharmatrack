@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import MyTransactions from '../../../pages/user/MyTransactions';
@@ -43,6 +43,12 @@ const renderPage = () =>
     </MemoryRouter>
   );
 
+// The Medicine Spec filter dropdown's option text can duplicate text shown in a
+// transaction card (e.g. "Shield FX Vial — 20 mg/ml"), so queries that need to find
+// card content unambiguously must be scoped to the transactions list, excluding the
+// filter row.
+const withinList = (container) => within(container.querySelector('.transactions-list'));
+
 beforeEach(() => jest.clearAllMocks());
 
 // ── Loading & render ──────────────────────────────────────────────────────
@@ -82,6 +88,22 @@ describe('MyTransactions — page structure', () => {
     expect(screen.getByRole('button', { name: /^pending$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^approved$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^rejected$/i })).toBeInTheDocument();
+  });
+
+  test('renders Medicine Spec filter dropdown', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument()
+    );
+  });
+
+  test('renders Search Notes text input', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/search notes/i)).toBeInTheDocument()
+    );
   });
 });
 
@@ -131,9 +153,9 @@ describe('MyTransactions — crash guard for malformed data', () => {
 
   test('renders without crashing when tx.medicineName is null', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ medicineName: null })]));
-    renderPage();
+    const { container } = renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/unknown/i)).toBeInTheDocument()
+      expect(withinList(container).getByText(/unknown/i)).toBeInTheDocument()
     );
   });
 
@@ -150,9 +172,9 @@ describe('MyTransactions — crash guard for malformed data', () => {
     api.getMyTransactions.mockResolvedValue(
       mkPage([makeTx({ specification: null, concentrationMgPerMl: null })])
     );
-    renderPage();
+    const { container } = renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument()
+      expect(withinList(container).getByText(/shield fx vial/i)).toBeInTheDocument()
     );
   });
 
@@ -160,9 +182,9 @@ describe('MyTransactions — crash guard for malformed data', () => {
     const tx = makeTx();
     delete tx.screenshots;
     api.getMyTransactions.mockResolvedValue(mkPage([tx]));
-    renderPage();
+    const { container } = renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument()
+      expect(withinList(container).getByText(/shield fx vial/i)).toBeInTheDocument()
     );
   });
 });
@@ -172,16 +194,16 @@ describe('MyTransactions — crash guard for malformed data', () => {
 describe('MyTransactions — transaction display', () => {
   test('shows medicine name in transaction card', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx()]));
-    renderPage();
+    const { container } = renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument()
+      expect(withinList(container).getByText(/shield fx vial/i)).toBeInTheDocument()
     );
   });
 
   test('shows transaction quantity', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ quantity: 5 })]));
-    renderPage();
-    await waitFor(() => screen.getByText(/shield fx vial/i));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText(/shield fx vial/i));
     expect(screen.getByText(/quantity/i)).toBeInTheDocument();
   });
 
@@ -211,9 +233,9 @@ describe('MyTransactions — transaction display', () => {
 
   test('shows mg/ml spec for VIAL medicine', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ medicineType: 'VIAL', concentrationMgPerMl: 20 })]));
-    renderPage();
+    const { container } = renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/20 mg\/ml/i)).toBeInTheDocument()
+      expect(withinList(container).getByText(/20 mg\/ml/i)).toBeInTheDocument()
     );
   });
 
@@ -221,9 +243,9 @@ describe('MyTransactions — transaction display', () => {
     api.getMyTransactions.mockResolvedValue(
       mkPage([makeTx({ medicineType: 'TABLET', specification: 25, concentrationMgPerMl: null })])
     );
-    renderPage();
+    const { container } = renderPage();
     await waitFor(() =>
-      expect(screen.getByText(/25 mg/i)).toBeInTheDocument()
+      expect(withinList(container).getByText(/25 mg/i)).toBeInTheDocument()
     );
   });
 
@@ -239,8 +261,8 @@ describe('MyTransactions — transaction display', () => {
 
   test('does not show screenshot indicator when screenshots list is empty', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ screenshots: [] })]));
-    renderPage();
-    await waitFor(() => screen.getByText(/shield fx vial/i));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText(/shield fx vial/i));
     expect(screen.queryByText(/payment screenshot/i)).not.toBeInTheDocument();
   });
 });
@@ -315,6 +337,128 @@ describe('MyTransactions — filter tabs', () => {
   });
 });
 
+// ── Medicine spec filter ──────────────────────────────────────────────────
+
+describe('MyTransactions — medicine spec filter', () => {
+  const vial10 = makeTx({
+    id: 1, medicineId: 10, medicineName: 'Shield FX Vial 10 ml', medicineType: 'VIAL',
+    concentrationMgPerMl: 20, notes: 'Vial 10 dispatch note',
+  });
+  const vial5 = makeTx({
+    id: 2, medicineId: 20, medicineName: 'Shield FX Vial 5 ml', medicineType: 'VIAL',
+    concentrationMgPerMl: 20, notes: 'Vial 5 dispatch note',
+  });
+  const tablet = makeTx({
+    id: 3, medicineId: 30, medicineName: 'Shield FX Tablet 25 mg', medicineType: 'TABLET',
+    specification: 25, concentrationMgPerMl: null, notes: 'Tablet dispatch note',
+  });
+
+  beforeEach(() => {
+    api.getMyTransactions.mockResolvedValue(mkPage([vial10, vial5, tablet]));
+  });
+
+  test('All Medicines shows every dispatch by default', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText(vial10.notes));
+    expect(screen.getByText(vial5.notes)).toBeInTheDocument();
+    expect(screen.getByText(tablet.notes)).toBeInTheDocument();
+  });
+
+  test('lists each distinct medicine once as a filter option', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/medicine spec/i));
+    expect(screen.getByRole('option', { name: /shield fx vial 10 ml/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /shield fx vial 5 ml/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /shield fx tablet 25 mg/i })).toBeInTheDocument();
+  });
+
+  test('filtering by a specific medicine hides the others', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText(vial10.notes));
+
+    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+
+    expect(screen.getByText(vial10.notes)).toBeInTheDocument();
+    expect(screen.queryByText(vial5.notes)).not.toBeInTheDocument();
+    expect(screen.queryByText(tablet.notes)).not.toBeInTheDocument();
+  });
+
+  test('switching back to All Medicines restores all dispatches', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText(vial10.notes));
+
+    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), 'ALL');
+
+    expect(screen.getByText(vial10.notes)).toBeInTheDocument();
+    expect(screen.getByText(vial5.notes)).toBeInTheDocument();
+    expect(screen.getByText(tablet.notes)).toBeInTheDocument();
+  });
+
+  test('spec filter combines with status filter tabs', async () => {
+    const pendingVial10 = makeTx({
+      id: 4, status: 'PENDING', medicineId: 10, medicineName: 'Shield FX Vial 10 ml',
+      medicineType: 'VIAL', concentrationMgPerMl: 20, notes: 'Pending vial 10 note',
+    });
+    api.getMyTransactions.mockResolvedValue(mkPage([vial10, pendingVial10, vial5]));
+    renderPage();
+    await waitFor(() => screen.getByText(vial10.notes));
+
+    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await userEvent.click(screen.getByRole('button', { name: /^pending$/i }));
+
+    expect(screen.getByText('Pending vial 10 note')).toBeInTheDocument();
+    expect(screen.queryByText(vial10.notes)).not.toBeInTheDocument();
+    expect(screen.queryByText(vial5.notes)).not.toBeInTheDocument();
+  });
+});
+
+// ── Notes search ─────────────────────────────────────────────────────────
+
+describe('MyTransactions — notes search', () => {
+  const clinicTx = makeTx({ id: 1, notes: 'Dispatched to Clinic B for FIP treatment' });
+  const wardTx   = makeTx({ id: 2, notes: 'Restocking Ward 3 monthly supply' });
+
+  beforeEach(() => {
+    api.getMyTransactions.mockResolvedValue(mkPage([clinicTx, wardTx]));
+  });
+
+  test('empty search shows all dispatches', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText(clinicTx.notes));
+    expect(screen.getByText(wardTx.notes)).toBeInTheDocument();
+  });
+
+  test('searching by note text filters to matching rows only', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText(clinicTx.notes));
+
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
+
+    expect(screen.getByText(clinicTx.notes)).toBeInTheDocument();
+    expect(screen.queryByText(wardTx.notes)).not.toBeInTheDocument();
+  });
+
+  test('note search is case-insensitive', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText(clinicTx.notes));
+
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'CLINIC');
+
+    expect(screen.getByText(clinicTx.notes)).toBeInTheDocument();
+    expect(screen.queryByText(wardTx.notes)).not.toBeInTheDocument();
+  });
+
+  test('note search matching no rows shows empty state', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText(clinicTx.notes));
+
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'nonexistent note text');
+
+    expect(screen.getByText(/no transactions found/i)).toBeInTheDocument();
+  });
+});
+
 // ── Delete own pending dispatch ─────────────────────────────────────────────
 
 describe('MyTransactions — delete transaction', () => {
@@ -330,44 +474,44 @@ describe('MyTransactions — delete transaction', () => {
 
   test('shows Delete button for a PENDING transaction', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'PENDING' })]));
-    renderPage();
-    await waitFor(() => screen.getByText(/shield fx vial/i));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText(/shield fx vial/i));
     expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
   });
 
   test('does not show Delete button for an APPROVED transaction', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'APPROVED' })]));
-    renderPage();
-    await waitFor(() => screen.getByText(/shield fx vial/i));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText(/shield fx vial/i));
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
   });
 
   test('does not show Delete button for a REJECTED transaction', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'REJECTED' })]));
-    renderPage();
-    await waitFor(() => screen.getByText(/shield fx vial/i));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText(/shield fx vial/i));
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
   });
 
   test('clicking Delete asks for confirmation and does nothing when declined', async () => {
     confirmSpy.mockReturnValue(false);
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'PENDING' })]));
-    renderPage();
-    await waitFor(() => screen.getByText(/shield fx vial/i));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText(/shield fx vial/i));
 
     await userEvent.click(screen.getByRole('button', { name: /delete/i }));
 
     expect(confirmSpy).toHaveBeenCalled();
     expect(api.deleteMyTransaction).not.toHaveBeenCalled();
-    expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument();
+    expect(withinList(container).getByText(/shield fx vial/i)).toBeInTheDocument();
   });
 
   test('confirming Delete calls the API and removes the transaction from the list', async () => {
     confirmSpy.mockReturnValue(true);
     api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ status: 'PENDING', id: 5 })]));
     api.deleteMyTransaction.mockResolvedValue({});
-    renderPage();
-    await waitFor(() => screen.getByText(/shield fx vial/i));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText(/shield fx vial/i));
 
     await userEvent.click(screen.getByRole('button', { name: /delete/i }));
 
@@ -383,8 +527,8 @@ describe('MyTransactions — delete transaction', () => {
     api.deleteMyTransaction.mockRejectedValue({
       response: { data: { message: 'Cannot delete — already approved' } },
     });
-    renderPage();
-    await waitFor(() => screen.getByText(/shield fx vial/i));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText(/shield fx vial/i));
 
     await userEvent.click(screen.getByRole('button', { name: /delete/i }));
 
@@ -392,6 +536,6 @@ describe('MyTransactions — delete transaction', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/cannot delete — already approved/i)
     );
     // Record stays in the list since deletion failed
-    expect(screen.getByText(/shield fx vial/i)).toBeInTheDocument();
+    expect(withinList(container).getByText(/shield fx vial/i)).toBeInTheDocument();
   });
 });
