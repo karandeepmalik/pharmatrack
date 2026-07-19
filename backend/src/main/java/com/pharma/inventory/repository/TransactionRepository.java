@@ -26,11 +26,13 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
      * Step 1: fetch a page of IDs via lightweight scalar queries.
      * Step 2: fetch the full entity graph for those IDs (findByIdsWithDetails).
      */
-    @Query(value = "SELECT t.id FROM Transaction t ORDER BY t.submittedAt DESC",
+    /** Admin "Review Adjustments" queue — ASC so requests are reviewed in the order they were sent for approval. */
+    @Query(value = "SELECT t.id FROM Transaction t ORDER BY t.submittedAt ASC",
            countQuery = "SELECT COUNT(t) FROM Transaction t")
     Page<Long> findAllIds(Pageable pageable);
 
-    @Query(value = "SELECT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt DESC",
+    /** Admin "Review Adjustments" queue — ASC so requests are reviewed in the order they were sent for approval. */
+    @Query(value = "SELECT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt ASC",
            countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.status = :status")
     Page<Long> findIdsByStatus(@Param("status") Transaction.TransactionStatus status, Pageable pageable);
 

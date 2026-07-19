@@ -92,6 +92,16 @@ describe('ViewPastTransactions — render', () => {
     expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
   });
 
+  test('renders Search Notes text input', () => {
+    renderPage();
+    expect(screen.getByLabelText(/search notes/i)).toBeInTheDocument();
+  });
+
+  test('Search Notes defaults to empty', () => {
+    renderPage();
+    expect(screen.getByLabelText(/search notes/i)).toHaveValue('');
+  });
+
   test('User filter defaults to All Users', () => {
     renderPage();
     expect(screen.getByLabelText(/^user$/i)).toHaveValue('ALL');
@@ -425,6 +435,83 @@ describe('ViewPastTransactions — medicine filter', () => {
     await waitFor(() => screen.getByText('Vial 10 note'));
 
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+
+    expect(api.getTransactionHistory).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Notes search ─────────────────────────────────────────────────────────
+
+describe('ViewPastTransactions — notes search', () => {
+  const clinicTx = makeTx({ id: 1, notes: 'Dispatched to Clinic B for FIP treatment' });
+  const wardTx   = makeTx({ id: 2, notes: 'Restocking Ward 3 monthly supply' });
+
+  beforeEach(() => {
+    api.getTransactionHistory.mockResolvedValue({ data: [clinicTx, wardTx] });
+  });
+
+  test('empty search shows all transactions', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => screen.getByText(clinicTx.notes));
+    expect(screen.getByText(wardTx.notes)).toBeInTheDocument();
+  });
+
+  test('searching by note text filters to matching rows only', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByText(clinicTx.notes));
+
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
+
+    expect(screen.getByText(clinicTx.notes)).toBeInTheDocument();
+    expect(screen.queryByText(wardTx.notes)).not.toBeInTheDocument();
+  });
+
+  test('note search is case-insensitive', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByText(clinicTx.notes));
+
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'CLINIC');
+
+    expect(screen.getByText(clinicTx.notes)).toBeInTheDocument();
+    expect(screen.queryByText(wardTx.notes)).not.toBeInTheDocument();
+  });
+
+  test('note search matching no rows shows empty state', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByText(clinicTx.notes));
+
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'nonexistent note text');
+
+    expect(screen.getByText(/no transactions found/i)).toBeInTheDocument();
+  });
+
+  test('note search combines with user filter', async () => {
+    const johnClinic = makeTx({ id: 3, submittedByUsername: 'john.doe', notes: 'Clinic B dispatch for john' });
+    const janeClinic  = makeTx({ id: 4, submittedByUsername: 'jane.smith', notes: 'Clinic B dispatch for jane' });
+    api.getTransactionHistory.mockResolvedValue({ data: [johnClinic, janeClinic] });
+
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByText(johnClinic.notes));
+
+    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic b');
+
+    expect(screen.getByText(johnClinic.notes)).toBeInTheDocument();
+    expect(screen.queryByText(janeClinic.notes)).not.toBeInTheDocument();
+  });
+
+  test('note search does not trigger a new API call', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByText(clinicTx.notes));
+
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
 
     expect(api.getTransactionHistory).toHaveBeenCalledTimes(1);
   });

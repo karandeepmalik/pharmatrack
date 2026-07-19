@@ -31,7 +31,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class TransactionService {
@@ -121,7 +123,7 @@ public class TransactionService {
         if (ids.isEmpty()) {
             return new PageImpl<>(List.of(), pageable, idPage.getTotalElements());
         }
-        List<Transaction> txList = transactionRepository.findByIdsWithDetails(ids);
+        List<Transaction> txList = orderByIds(transactionRepository.findByIdsWithDetails(ids), ids);
         List<TransactionResponse> content = txList.stream().map(transactionMapper::toResponse).toList();
         return new PageImpl<>(content, pageable, idPage.getTotalElements());
     }
@@ -135,9 +137,21 @@ public class TransactionService {
         if (ids.isEmpty()) {
             return new PageImpl<>(List.of(), pageable, idPage.getTotalElements());
         }
-        List<Transaction> txList = transactionRepository.findByIdsWithDetails(ids);
+        List<Transaction> txList = orderByIds(transactionRepository.findByIdsWithDetails(ids), ids);
         List<TransactionResponse> content = txList.stream().map(transactionMapper::toResponse).toList();
         return new PageImpl<>(content, pageable, idPage.getTotalElements());
+    }
+
+    /**
+     * findByIdsWithDetails() has its own fixed ORDER BY that has nothing to do with the
+     * page's intended order (which comes from whichever id-lookup query produced {@code ids}) —
+     * re-sort the fetched entities to match {@code ids} instead of trusting the two queries'
+     * ORDER BY clauses to happen to agree.
+     */
+    private List<Transaction> orderByIds(List<Transaction> txList, List<Long> ids) {
+        Map<Long, Transaction> byId = new LinkedHashMap<>();
+        for (Transaction t : txList) byId.put(t.getId(), t);
+        return ids.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
     }
 
     @Transactional(readOnly = true)

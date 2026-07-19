@@ -37,6 +37,7 @@ export default function ViewPastTransactions() {
     const [medicines, setMedicines]   = useState([]);
     const [userFilter, setUserFilter] = useState('ALL');
     const [medicineFilter, setMedicineFilter] = useState('ALL');
+    const [notesSearch, setNotesSearch] = useState('');
 
     useEffect(() => {
         api.getUsers().then(r => setUsers(
@@ -65,7 +66,9 @@ export default function ViewPastTransactions() {
     // Client-side filters applied on top of the fetched results
     const displayedTransactions = transactions
         .filter(tx => userFilter === 'ALL' || tx.submittedByUsername === userFilter)
-        .filter(tx => medicineFilter === 'ALL' || String(tx.medicineId) === medicineFilter);
+        .filter(tx => medicineFilter === 'ALL' || String(tx.medicineId) === medicineFilter)
+        .filter(tx => !notesSearch.trim() ||
+            (tx.notes || '').toLowerCase().includes(notesSearch.trim().toLowerCase()));
 
     const statusBadge = (s) => {
         const cls = s === 'APPROVED' ? 'badge-approved'
@@ -144,6 +147,16 @@ export default function ViewPastTransactions() {
                                 </option>
                             ))}
                         </select>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="notes-search">Search Notes</label>
+                        <input
+                            id="notes-search"
+                            type="text"
+                            placeholder="Search by dispatch note…"
+                            value={notesSearch}
+                            onChange={e => setNotesSearch(e.target.value)}
+                        />
                     </div>
                 </div>
 

@@ -90,10 +90,10 @@ class TransactionRepositoryTest {
         }
 
         @Test
-        @DisplayName("returns IDs in DESC submittedAt order")
-        void returnsDescOrder() {
+        @DisplayName("returns IDs in ASC submittedAt order (oldest sent for approval first)")
+        void returnsAscOrder() {
             Page<Long> page = repo.findAllIds(PageRequest.of(0, 20));
-            assertThat(page.getContent()).containsExactly(tx3.getId(), tx2.getId(), tx1.getId());
+            assertThat(page.getContent()).containsExactly(tx1.getId(), tx2.getId(), tx3.getId());
         }
 
         @Test
@@ -110,7 +110,7 @@ class TransactionRepositoryTest {
         @DisplayName("last page has remaining items")
         void lastPageHasRemainder() {
             Page<Long> page = repo.findAllIds(PageRequest.of(1, 2));
-            assertThat(page.getContent()).containsExactly(tx1.getId());
+            assertThat(page.getContent()).containsExactly(tx3.getId());
             assertThat(page.isLast()).isTrue();
         }
     }
@@ -145,10 +145,10 @@ class TransactionRepositoryTest {
         }
 
         @Test
-        @DisplayName("PENDING results are in DESC submittedAt order")
-        void pendingInDescOrder() {
+        @DisplayName("PENDING results are in ASC submittedAt order (oldest sent for approval first)")
+        void pendingInAscOrder() {
             Page<Long> page = repo.findIdsByStatus(Transaction.TransactionStatus.PENDING, PageRequest.of(0, 20));
-            assertThat(page.getContent()).containsExactly(tx3.getId(), tx1.getId());
+            assertThat(page.getContent()).containsExactly(tx1.getId(), tx3.getId());
         }
     }
 
