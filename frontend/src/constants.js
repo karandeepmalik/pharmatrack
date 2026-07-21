@@ -27,3 +27,9 @@ export const NOTES_CONSTRAINTS = {
 // ── Transaction statuses ───────────────────────────────────────────────
 
 export const TRANSACTION_STATUSES = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
+
+// ── Inventory type display label ────────────────────────────────────────
+
+/** Human-readable label for an inventoryType value ('REGULAR_MEDICINE_STOCK' / 'ADMIN_MEDICINE_STOCK'). */
+export const inventoryTypeLabel = (type) =>
+  type === 'ADMIN_MEDICINE_STOCK' ? 'Admin Stock' : 'Regular Stock';

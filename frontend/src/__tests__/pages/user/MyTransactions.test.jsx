@@ -28,6 +28,7 @@ const makeTx = (overrides = {}) => ({
   notes: 'Clinic B dispatch note',
   submittedAt: '2026-05-01T10:00:00',
   screenshots: [],
+  inventoryType: 'REGULAR_MEDICINE_STOCK',
   ...overrides,
 });
 
@@ -264,6 +265,38 @@ describe('MyTransactions — transaction display', () => {
     const { container } = renderPage();
     await waitFor(() => withinList(container).getByText(/shield fx vial/i));
     expect(screen.queryByText(/payment screenshot/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Stock type display ───────────────────────────────────────────────────
+
+describe('MyTransactions — stock type display', () => {
+  test('shows Regular Stock for a REGULAR_MEDICINE_STOCK dispatch', async () => {
+    api.getMyTransactions.mockResolvedValue(
+      mkPage([makeTx({ inventoryType: 'REGULAR_MEDICINE_STOCK' })])
+    );
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText('Regular Stock')).toBeInTheDocument()
+    );
+  });
+
+  test('shows Admin Stock for an ADMIN_MEDICINE_STOCK dispatch', async () => {
+    api.getMyTransactions.mockResolvedValue(
+      mkPage([makeTx({ inventoryType: 'ADMIN_MEDICINE_STOCK' })])
+    );
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText('Admin Stock')).toBeInTheDocument()
+    );
+  });
+
+  test('renders "Regular Stock" for a dispatch with a null inventoryType (legacy fallback)', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ inventoryType: null })]));
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText('Regular Stock')).toBeInTheDocument()
+    );
   });
 });
 

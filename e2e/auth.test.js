@@ -1487,6 +1487,113 @@ async function run() {
     assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
   });
 
+  // ── Stock Type (inventoryType) on Transaction Responses ────────────────
+  // Regression coverage for surfacing whether a dispatch drew from a user's
+  // regular allocation or an admin-designated bucket — the admin and user
+  // dispatch-history pages, and the admin stock-modification history page,
+  // all now display this alongside each record.
+  console.log('\n-- Stock Type (inventoryType) on Transaction Responses');
+
+  let adminStockTxId;
+  await test('[SETUP] Admin allocates ADMIN_MEDICINE_STOCK inventory to john.doe', async () => {
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 5,
+      note: 'E2E setup — allocating admin-stock bucket for inventoryType test',
+      inventoryType: 'ADMIN_MEDICINE_STOCK',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('User submits a dispatch from the ADMIN_MEDICINE_STOCK bucket', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '1',
+      notes: 'E2E inventoryType test — dispatch from admin stock',
+      inventoryType: 'ADMIN_MEDICINE_STOCK',
+      screenshots: [makeFakePng('S')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.inventoryType === 'ADMIN_MEDICINE_STOCK',
+      `Expected inventoryType ADMIN_MEDICINE_STOCK on submit response, got ${r.data.inventoryType}`);
+    adminStockTxId = r.data.id;
+  });
+
+  let regularStockTxId;
+  await test('User submits a dispatch from the REGULAR_MEDICINE_STOCK bucket for comparison', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '1',
+      notes: 'E2E inventoryType test — dispatch from regular stock',
+      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('R')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.inventoryType === 'REGULAR_MEDICINE_STOCK',
+      `Expected inventoryType REGULAR_MEDICINE_STOCK on submit response, got ${r.data.inventoryType}`);
+    regularStockTxId = r.data.id;
+  });
+
+  await test('GET /transactions/my (user dispatch history) reports inventoryType for both buckets', async () => {
+    assert(adminStockTxId && regularStockTxId, 'both transaction ids must be resolved');
+    const r = await apiGet(`${API}/transactions/my`, userToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const adminTx = r.data.content.find(t => t.id === adminStockTxId);
+    const regularTx = r.data.content.find(t => t.id === regularStockTxId);
+    assert(adminTx, `Admin-stock transaction #${adminStockTxId} not found in user history`);
+    assert(regularTx, `Regular-stock transaction #${regularStockTxId} not found in user history`);
+    assert(adminTx.inventoryType === 'ADMIN_MEDICINE_STOCK',
+      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.inventoryType}`);
+    assert(regularTx.inventoryType === 'REGULAR_MEDICINE_STOCK',
+      `Expected REGULAR_MEDICINE_STOCK, got ${regularTx.inventoryType}`);
+  });
+
+  await test('GET /transactions (admin dispatch list) reports inventoryType for both buckets', async () => {
+    const r = await apiGet(`${API}/transactions?status=PENDING&size=100`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const adminTx = r.data.content.find(t => t.id === adminStockTxId);
+    const regularTx = r.data.content.find(t => t.id === regularStockTxId);
+    assert(adminTx, `Admin-stock transaction #${adminStockTxId} not found in admin list`);
+    assert(regularTx, `Regular-stock transaction #${regularStockTxId} not found in admin list`);
+    assert(adminTx.inventoryType === 'ADMIN_MEDICINE_STOCK',
+      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.inventoryType}`);
+    assert(regularTx.inventoryType === 'REGULAR_MEDICINE_STOCK',
+      `Expected REGULAR_MEDICINE_STOCK, got ${regularTx.inventoryType}`);
+  });
+
+  await test('GET /transactions/history (admin past dispatches) reports inventoryType', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const r = await apiGet(`${API}/transactions/history?from=${today}&to=${today}&status=PENDING`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    const adminTx = r.data.find(t => t.id === adminStockTxId);
+    assert(adminTx, `Admin-stock transaction #${adminStockTxId} not found in history`);
+    assert(adminTx.inventoryType === 'ADMIN_MEDICINE_STOCK',
+      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.inventoryType}`);
+  });
+
+  await test('[TEARDOWN] Admin rejects both inventoryType-test transactions', async () => {
+    const r1 = await apiPost(`${API}/transactions/${adminStockTxId}/approve`, { approved: false }, adminToken);
+    assert(r1.status === 200, `Reject failed: ${r1.status} ${JSON.stringify(r1.data)}`);
+    const r2 = await apiPost(`${API}/transactions/${regularStockTxId}/approve`, { approved: false }, adminToken);
+    assert(r2.status === 200, `Reject failed: ${r2.status} ${JSON.stringify(r2.data)}`);
+  });
+
+  await test('[TEARDOWN] Admin removes the leftover ADMIN_MEDICINE_STOCK allocation', async () => {
+    // The rejected admin-stock dispatch already restored its 1 unit, so the full 5
+    // originally allocated is back — remove all 5 to leave no test residue.
+    const r = await apiPost(`${API}/inventory/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 5,
+      note: 'E2E teardown — removing admin-stock bucket allocation for inventoryType test',
+      inventoryType: 'ADMIN_MEDICINE_STOCK',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
   // ── Summary ───────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
