@@ -25,6 +25,7 @@ public class TransactionResponse {
     private Long pharmaId;
     private BigDecimal quantity;
     private String status;
+    private String inventoryType;
     private LocalDateTime submittedAt;
     private String approvedByUsername;
     private LocalDateTime approvedAt;
@@ -82,6 +83,9 @@ public class TransactionResponse {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getInventoryType() { return inventoryType; }
+    public void setInventoryType(String inventoryType) { this.inventoryType = inventoryType; }
 
     public LocalDateTime getSubmittedAt() { return submittedAt; }
     public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }

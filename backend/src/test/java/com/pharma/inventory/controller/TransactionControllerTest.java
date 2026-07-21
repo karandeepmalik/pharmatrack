@@ -349,6 +349,19 @@ class TransactionControllerTest {
 
             verify(transactionService).getByUserPaged(anyString(), eq(2), eq(5));
         }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("response includes inventoryType so the user can tell regular vs admin stock dispatches apart")
+        void getMy_includesInventoryType() throws Exception {
+            sampleResponse.setInventoryType("ADMIN_MEDICINE_STOCK");
+            Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(transactionService.getByUserPaged(eq("john.doe"), anyInt(), anyInt())).thenReturn(page);
+
+            mockMvc.perform(get("/api/transactions/my"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.content[0].inventoryType").value("ADMIN_MEDICINE_STOCK"));
+        }
     }
 
     // ── POST /api/transactions/{id}/approve ────────────────────────────
@@ -433,6 +446,22 @@ class TransactionControllerTest {
                     .param("from", "2026-05-01")
                     .param("to", "2026-05-04"))
                     .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("response includes inventoryType so the admin can tell regular vs admin stock dispatches apart")
+        void history_includesInventoryType() throws Exception {
+            sampleResponse.setInventoryType("REGULAR_MEDICINE_STOCK");
+            when(transactionService.getHistory(any(), any(), eq("ALL")))
+                    .thenReturn(List.of(sampleResponse));
+
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04")
+                    .param("status", "ALL"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].inventoryType").value("REGULAR_MEDICINE_STOCK"));
         }
     }
 

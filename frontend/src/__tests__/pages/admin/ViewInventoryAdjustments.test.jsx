@@ -50,10 +50,16 @@ const ADJ_REDUCE = {
 const renderPage = () =>
     render(<MemoryRouter><ViewInventoryAdjustments /></MemoryRouter>);
 
+const MEDICINES = [
+    { id: 1, name: 'Shield FX Vial 10 ml', type: 'VIAL',   specification: 10, price: 4000 },
+    { id: 2, name: 'Shield FX Tablet 25 mg (10 Tablets)', type: 'TABLET', specification: 25, price: 4000 },
+];
+
 beforeEach(() => {
     jest.clearAllMocks();
     api.getInventoryAdjustments.mockResolvedValue({ data: [] });
     api.deleteInventoryAdjustment.mockResolvedValue({});
+    api.getMedicines.mockResolvedValue({ data: MEDICINES });
 });
 
 // ── Render ────────────────────────────────────────────────────────────────
@@ -215,6 +221,11 @@ describe('ViewInventoryAdjustments — table content', () => {
         expect(cells.length).toBeGreaterThanOrEqual(1);
     });
 
+    test('shows Regular Stock badge for REGULAR_MEDICINE_STOCK records', () => {
+        const table = screen.getByRole('table');
+        expect(within(table).getAllByText('Regular Stock').length).toBe(2);
+    });
+
     test('shows Delete button for each row', () => {
         const deleteBtns = screen.getAllByRole('button', { name: /^delete$/i });
         expect(deleteBtns).toHaveLength(2);
@@ -277,6 +288,126 @@ describe('ViewInventoryAdjustments — filters', () => {
         await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
         await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'ALL');
         expect(screen.getByText(/results \(2\)/i)).toBeInTheDocument();
+    });
+});
+
+// ── Stock Type column ───────────────────────────────────────────────────────
+
+describe('ViewInventoryAdjustments — stock type column', () => {
+    const ADJ_ADMIN = {
+        ...ADJ_ADD,
+        id: 3,
+        username: 'karan',
+        note: 'Admin bucket restock',
+        inventoryType: 'ADMIN_MEDICINE_STOCK',
+    };
+
+    test('shows Admin Stock badge for ADMIN_MEDICINE_STOCK records', async () => {
+        api.getInventoryAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_ADMIN] });
+        renderPage();
+        await userEvent.click(screen.getByRole('button', { name: /search/i }));
+        await waitFor(() => screen.getByRole('table'));
+
+        const table = screen.getByRole('table');
+        expect(within(table).getByText('Regular Stock')).toBeInTheDocument();
+        expect(within(table).getByText('Admin Stock')).toBeInTheDocument();
+    });
+
+    test('renders "Regular Stock" for a record with a null inventoryType (legacy fallback)', async () => {
+        api.getInventoryAdjustments.mockResolvedValue({ data: [{ ...ADJ_ADD, inventoryType: null }] });
+        renderPage();
+        await userEvent.click(screen.getByRole('button', { name: /search/i }));
+        await waitFor(() => screen.getByRole('table'));
+
+        expect(within(screen.getByRole('table')).getByText('Regular Stock')).toBeInTheDocument();
+    });
+});
+
+// ── Medicine spec filter ─────────────────────────────────────────────────────
+
+describe('ViewInventoryAdjustments — medicine spec filter', () => {
+    const vial10Adj = { ...ADJ_ADD,    id: 1, medicineId: 1, note: 'Vial 10 note' };
+    const tabletAdj = { ...ADJ_REDUCE, id: 2, medicineId: 2, note: 'Tablet note' };
+
+    beforeEach(async () => {
+        api.getInventoryAdjustments.mockResolvedValue({ data: [vial10Adj, tabletAdj] });
+        renderPage();
+        await userEvent.click(screen.getByRole('button', { name: /search/i }));
+        await waitFor(() => screen.getByRole('table'));
+    });
+
+    test('renders Medicine Spec filter dropdown after search', () => {
+        expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
+    });
+
+    test('medicine dropdown lists medicines fetched on mount', () => {
+        const select = screen.getByLabelText(/medicine spec/i);
+        expect(within(select).getByRole('option', { name: /vial 10 ml/i })).toBeInTheDocument();
+        expect(within(select).getByRole('option', { name: /tablet 25 mg/i })).toBeInTheDocument();
+    });
+
+    test('filtering by a specific medicine hides other medicines\' records', async () => {
+        await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '1');
+        expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
+        const table = screen.getByRole('table');
+        expect(within(table).getByText('Vial 10 note')).toBeInTheDocument();
+        expect(within(table).queryByText('Tablet note')).not.toBeInTheDocument();
+    });
+
+    test('resetting medicine filter to All Medicines restores all rows', async () => {
+        await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '1');
+        await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), 'ALL');
+        expect(screen.getByText(/results \(2\)/i)).toBeInTheDocument();
+    });
+
+    test('medicine filter does not trigger a new API call', async () => {
+        await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '1');
+        expect(api.getInventoryAdjustments).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ── Notes search ─────────────────────────────────────────────────────────
+
+describe('ViewInventoryAdjustments — notes search', () => {
+    const restockAdj = { ...ADJ_ADD,    id: 1, note: 'Restocking Ward 3 supply' };
+    const expiredAdj = { ...ADJ_REDUCE, id: 2, note: 'Returned expired stock from clinic' };
+
+    beforeEach(async () => {
+        api.getInventoryAdjustments.mockResolvedValue({ data: [restockAdj, expiredAdj] });
+        renderPage();
+        await userEvent.click(screen.getByRole('button', { name: /search/i }));
+        await waitFor(() => screen.getByRole('table'));
+    });
+
+    test('renders Search Notes text input after search', () => {
+        expect(screen.getByLabelText(/search notes/i)).toBeInTheDocument();
+    });
+
+    test('empty search shows all records', () => {
+        expect(screen.getByText(restockAdj.note)).toBeInTheDocument();
+        expect(screen.getByText(expiredAdj.note)).toBeInTheDocument();
+    });
+
+    test('searching by note text filters to matching rows only', async () => {
+        await userEvent.type(screen.getByLabelText(/search notes/i), 'ward');
+        expect(screen.getByText(restockAdj.note)).toBeInTheDocument();
+        expect(screen.queryByText(expiredAdj.note)).not.toBeInTheDocument();
+    });
+
+    test('note search is case-insensitive', async () => {
+        await userEvent.type(screen.getByLabelText(/search notes/i), 'WARD');
+        expect(screen.getByText(restockAdj.note)).toBeInTheDocument();
+        expect(screen.queryByText(expiredAdj.note)).not.toBeInTheDocument();
+    });
+
+    test('note search matching no rows shows zero results', async () => {
+        await userEvent.type(screen.getByLabelText(/search notes/i), 'nonexistent text');
+        expect(screen.getByText(/results \(0\)/i)).toBeInTheDocument();
+    });
+
+    test('note search does not trigger a new API call', async () => {
+        await userEvent.type(screen.getByLabelText(/search notes/i), 'ward');
+        expect(api.getInventoryAdjustments).toHaveBeenCalledTimes(1);
     });
 });
 

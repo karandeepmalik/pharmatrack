@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
+import { inventoryTypeLabel } from '../../constants';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const weekAgoStr = () => {
@@ -12,6 +13,11 @@ const weekAgoStr = () => {
 const specLabel = (type, spec) =>
     type === 'VIAL' ? `${Math.round(spec)} ml` : `${Math.round(spec)} mg (10 Tablets)`;
 
+const medOptionLabel = (m) =>
+    m.type === 'VIAL'
+        ? `Vial ${m.specification} ml`
+        : `Tablet ${m.specification} mg (10 Tablets)`;
+
 export default function ViewInventoryAdjustments() {
     const [from, setFrom]             = useState(weekAgoStr());
     const [to, setTo]                 = useState(todayStr());
@@ -20,12 +26,20 @@ export default function ViewInventoryAdjustments() {
     const [loading, setLoading]       = useState(false);
     const [error, setError]           = useState('');
 
+    const [medicines, setMedicines]   = useState([]);
+
     // Client-side filters applied over fetched results
-    const [userFilter, setUserFilter]       = useState('ALL');
-    const [typeFilter, setTypeFilter]       = useState('ALL');
+    const [userFilter, setUserFilter]         = useState('ALL');
+    const [typeFilter, setTypeFilter]         = useState('ALL');
+    const [medicineFilter, setMedicineFilter] = useState('ALL');
+    const [notesSearch, setNotesSearch]       = useState('');
 
     // Per-row delete state: { [id]: { confirming, deleting, error } }
     const [deleteState, setDeleteState] = useState({});
+
+    useEffect(() => {
+        api.getMedicines().then(r => setMedicines(r.data || [])).catch(() => {});
+    }, []);
 
     const isValid = Boolean(from) && Boolean(to) && from <= to;
 
@@ -40,6 +54,8 @@ export default function ViewInventoryAdjustments() {
             setSearched(true);
             setUserFilter('ALL');
             setTypeFilter('ALL');
+            setMedicineFilter('ALL');
+            setNotesSearch('');
         } catch {
             setError('Failed to load adjustment records. Please try again.');
         } finally {
@@ -52,7 +68,10 @@ export default function ViewInventoryAdjustments() {
 
     const displayed = adjustments
         .filter(a => userFilter === 'ALL' || a.username === userFilter)
-        .filter(a => typeFilter === 'ALL' || a.adjustmentType === typeFilter);
+        .filter(a => typeFilter === 'ALL' || a.adjustmentType === typeFilter)
+        .filter(a => medicineFilter === 'ALL' || String(a.medicineId) === medicineFilter)
+        .filter(a => !notesSearch.trim() ||
+            (a.note || '').toLowerCase().includes(notesSearch.trim().toLowerCase()));
 
     // ── Delete flow ────────────────────────────────────────────────────
 
@@ -154,6 +173,30 @@ export default function ViewInventoryAdjustments() {
                                         <option value="REDUCE">REDUCE</option>
                                     </select>
                                 </div>
+                                <div className="form-group">
+                                    <label htmlFor="medicine-filter">Medicine Spec</label>
+                                    <select
+                                        id="medicine-filter"
+                                        value={medicineFilter}
+                                        onChange={e => setMedicineFilter(e.target.value)}>
+                                        <option value="ALL">All Medicines</option>
+                                        {medicines.map(m => (
+                                            <option key={m.id} value={String(m.id)}>
+                                                {medOptionLabel(m)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="notes-search">Search Notes</label>
+                                    <input
+                                        id="notes-search"
+                                        type="text"
+                                        placeholder="Search by note…"
+                                        value={notesSearch}
+                                        onChange={e => setNotesSearch(e.target.value)}
+                                    />
+                                </div>
                             </div>
 
                             <h2>Results ({displayed.length})</h2>
@@ -166,6 +209,7 @@ export default function ViewInventoryAdjustments() {
                                             <th>Medicine Spec</th>
                                             <th>Qty</th>
                                             <th>Type</th>
+                                            <th>Stock Type</th>
                                             <th>Note</th>
                                             <th>In Transit</th>
                                             <th>Adjusted By</th>
@@ -187,6 +231,11 @@ export default function ViewInventoryAdjustments() {
                                                     <td>
                                                         <span className={`status-badge ${adj.adjustmentType === 'ADD' ? 'badge-approved' : 'badge-rejected'}`}>
                                                             {adj.adjustmentType}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span className={`status-badge ${adj.inventoryType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
+                                                            {inventoryTypeLabel(adj.inventoryType)}
                                                         </span>
                                                     </td>
                                                     <td>{adj.note || '—'}</td>

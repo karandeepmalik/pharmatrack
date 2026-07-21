@@ -148,4 +148,31 @@ class TransactionMapperTest {
         TransactionResponse r = mapper.toResponse(buildTx(TransactionStatus.REJECTED));
         assertThat(r.getStatus()).isEqualTo("REJECTED");
     }
+
+    @Test @DisplayName("defaults inventoryType to REGULAR_MEDICINE_STOCK when null (backward compatible with old records)")
+    void toResponse_nullInventoryType_defaultsToRegular() {
+        Transaction t = buildTx(TransactionStatus.PENDING);
+        t.setInventoryType(null);
+
+        TransactionResponse r = mapper.toResponse(t);
+        assertThat(r.getInventoryType()).isEqualTo("REGULAR_MEDICINE_STOCK");
+    }
+
+    @Test @DisplayName("maps explicit REGULAR_MEDICINE_STOCK inventoryType")
+    void toResponse_regularInventoryType_mapsCorrectly() {
+        Transaction t = buildTx(TransactionStatus.PENDING);
+        t.setInventoryType(Inventory.InventoryType.REGULAR_MEDICINE_STOCK);
+
+        TransactionResponse r = mapper.toResponse(t);
+        assertThat(r.getInventoryType()).isEqualTo("REGULAR_MEDICINE_STOCK");
+    }
+
+    @Test @DisplayName("maps explicit ADMIN_MEDICINE_STOCK inventoryType")
+    void toResponse_adminInventoryType_mapsCorrectly() {
+        Transaction t = buildTx(TransactionStatus.PENDING);
+        t.setInventoryType(Inventory.InventoryType.ADMIN_MEDICINE_STOCK);
+
+        TransactionResponse r = mapper.toResponse(t);
+        assertThat(r.getInventoryType()).isEqualTo("ADMIN_MEDICINE_STOCK");
+    }
 }

@@ -51,6 +51,7 @@ public class TransactionMapper {
         // Transaction fields
         r.setQuantity(t.getQuantity());
         r.setStatus(t.getStatus().name());
+        r.setInventoryType(t.getInventoryType() != null ? t.getInventoryType().name() : "REGULAR_MEDICINE_STOCK");
         r.setSubmittedAt(t.getSubmittedAt());
         r.setNotes(t.getNotes());
 

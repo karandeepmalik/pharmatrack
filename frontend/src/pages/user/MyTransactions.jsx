@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
+import { inventoryTypeLabel } from '../../constants';
 
 const PAGE_SIZE = 20;
 
@@ -160,6 +161,7 @@ export default function MyTransactions() {
                   )}
                 </div>
                 <p><strong>Medicine:</strong> {tx.medicineName ?? 'Unknown'} ({tx.medicineType ?? 'Unknown'}, {specLabel(tx)})</p>
+                <p><strong>Stock Type:</strong> {inventoryTypeLabel(tx.inventoryType)}</p>
                 <p><strong>Quantity:</strong> {Number(tx.quantity).toFixed(1)}</p>
                 <p><strong>Note:</strong> {tx.notes}</p>
                 <p><strong>Submitted:</strong> {tx.submittedAt ? new Date(tx.submittedAt).toLocaleString() : '—'}</p>

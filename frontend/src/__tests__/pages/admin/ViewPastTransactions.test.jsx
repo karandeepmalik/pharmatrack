@@ -29,6 +29,7 @@ const makeTx = (overrides = {}) => ({
   notes: 'Clinic B dispatch',
   submittedAt: '2026-05-03T10:00:00',
   approvedByUsername: 'admin',
+  inventoryType: 'REGULAR_MEDICINE_STOCK',
   ...overrides,
 });
 
@@ -264,6 +265,65 @@ describe('ViewPastTransactions — search', () => {
     await waitFor(() =>
       expect(screen.getByText(/results \(2\)/i)).toBeInTheDocument()
     );
+  });
+});
+
+// ── Stock Type column ───────────────────────────────────────────────────────
+
+describe('ViewPastTransactions — stock type column', () => {
+  test('shows Regular Stock badge for a REGULAR_MEDICINE_STOCK dispatch', async () => {
+    api.getTransactionHistory.mockResolvedValue({
+      data: [makeTx({ inventoryType: 'REGULAR_MEDICINE_STOCK' })],
+    });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Regular Stock')).toBeInTheDocument()
+    );
+  });
+
+  test('shows Admin Stock badge for an ADMIN_MEDICINE_STOCK dispatch', async () => {
+    api.getTransactionHistory.mockResolvedValue({
+      data: [makeTx({ inventoryType: 'ADMIN_MEDICINE_STOCK' })],
+    });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Admin Stock')).toBeInTheDocument()
+    );
+  });
+
+  test('renders "Regular Stock" for a dispatch with a null inventoryType (legacy fallback)', async () => {
+    api.getTransactionHistory.mockResolvedValue({
+      data: [makeTx({ inventoryType: null })],
+    });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Regular Stock')).toBeInTheDocument()
+    );
+  });
+
+  test('shows both stock types when mixed dispatches are present', async () => {
+    api.getTransactionHistory.mockResolvedValue({
+      data: [
+        makeTx({ id: 1, inventoryType: 'REGULAR_MEDICINE_STOCK' }),
+        makeTx({ id: 2, inventoryType: 'ADMIN_MEDICINE_STOCK' }),
+      ],
+    });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => screen.getByRole('table'));
+    expect(screen.getByText('Regular Stock')).toBeInTheDocument();
+    expect(screen.getByText('Admin Stock')).toBeInTheDocument();
   });
 });
 
