@@ -1,22 +1,22 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import AddInventory from '../../../pages/admin/AddInventory';
+import AddMedicineStock from '../../../pages/admin/AddMedicineStock';
 
 const renderPage = () =>
   render(
-    <MemoryRouter initialEntries={['/admin/add-inventory']}>
+    <MemoryRouter initialEntries={['/admin/add-medicine-stock']}>
       <Routes>
-        <Route path="/admin/add-inventory" element={<AddInventory />} />
-        <Route path="/admin/modify-inventory" element={<div>Modify Inventory Page</div>} />
+        <Route path="/admin/add-medicine-stock" element={<AddMedicineStock />} />
+        <Route path="/admin/modify-medicine-stock" element={<div>Modify Medicine Stock Page</div>} />
       </Routes>
     </MemoryRouter>
   );
 
-describe('AddInventory — redirect', () => {
-  test('redirects to /admin/modify-inventory', () => {
+describe('AddMedicineStock — redirect', () => {
+  test('redirects to /admin/modify-medicine-stock', () => {
     renderPage();
-    expect(screen.getByText('Modify Inventory Page')).toBeInTheDocument();
+    expect(screen.getByText('Modify Medicine Stock Page')).toBeInTheDocument();
   });
 
   test('does not render any content of its own', () => {

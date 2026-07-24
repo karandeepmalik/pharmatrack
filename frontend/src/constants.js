@@ -1,5 +1,5 @@
 /**
- * Shared constants for the pharma inventory application.
+ * Shared constants for the pharma medicine stock application.
  * Centralised here so validation rules stay in sync between
  * components and tests without magic numbers scattered across files.
  */
@@ -28,8 +28,8 @@ export const NOTES_CONSTRAINTS = {
 
 export const TRANSACTION_STATUSES = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 
-// ── Inventory type display label ────────────────────────────────────────
+// ── MedicineStock type display label ────────────────────────────────────────
 
-/** Human-readable label for an inventoryType value ('REGULAR_MEDICINE_STOCK' / 'ADMIN_MEDICINE_STOCK'). */
-export const inventoryTypeLabel = (type) =>
+/** Human-readable label for a medicineStockType value ('REGULAR_MEDICINE_STOCK' / 'ADMIN_MEDICINE_STOCK'). */
+export const medicineStockTypeLabel = (type) =>
   type === 'ADMIN_MEDICINE_STOCK' ? 'Admin Stock' : 'Regular Stock';

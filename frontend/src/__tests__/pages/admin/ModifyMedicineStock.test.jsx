@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import ModifyInventory from '../../../pages/admin/ModifyInventory';
+import ModifyMedicineStock from '../../../pages/admin/ModifyMedicineStock';
 import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
@@ -29,19 +29,19 @@ const makeMedicine = (overrides = {}) => ({
 const renderPage = () =>
   render(
     <MemoryRouter>
-      <ModifyInventory />
+      <ModifyMedicineStock />
     </MemoryRouter>
   );
 
 beforeEach(() => {
   jest.clearAllMocks();
   api.getMedicines.mockResolvedValue({ data: [makeMedicine()] });
-  api.getAdminInventory.mockResolvedValue({ data: [] });
+  api.getAdminMedicineStock.mockResolvedValue({ data: [] });
 });
 
 // ── User dropdown ─────────────────────────────────────────────────────────
 
-describe('ModifyInventory — user dropdown', () => {
+describe('ModifyMedicineStock — user dropdown', () => {
   test('shows active regular users in the dropdown', async () => {
     api.getUsers.mockResolvedValue({ data: [makeUser()] });
     renderPage();
@@ -51,7 +51,7 @@ describe('ModifyInventory — user dropdown', () => {
     );
   });
 
-  test('excludes admin users from the dropdown (admin cannot hold inventory)', async () => {
+  test('excludes admin users from the dropdown (admin cannot hold medicineStock)', async () => {
     api.getUsers.mockResolvedValue({
       data: [
         makeUser({ id: 1, username: 'admin', fullName: 'System Admin', role: 'ADMIN' }),
@@ -107,9 +107,9 @@ describe('ModifyInventory — user dropdown', () => {
   });
 });
 
-// ── Inventory type selector ───────────────────────────────────────────────
+// ── MedicineStock type selector ───────────────────────────────────────────────
 
-describe('ModifyInventory — inventory type selector', () => {
+describe('ModifyMedicineStock — medicineStock type selector', () => {
   test('shows stock type selector with Regular and Admin Medicine Stock options', async () => {
     api.getUsers.mockResolvedValue({ data: [makeUser()] });
     renderPage();
@@ -134,7 +134,7 @@ describe('ModifyInventory — inventory type selector', () => {
 
 // ── Page structure ────────────────────────────────────────────────────────
 
-describe('ModifyInventory — page structure', () => {
+describe('ModifyMedicineStock — page structure', () => {
   test('renders the page heading', async () => {
     api.getUsers.mockResolvedValue({ data: [] });
     renderPage();
@@ -161,7 +161,7 @@ describe('ModifyInventory — page structure', () => {
 
 // ── Internal movement checkbox ────────────────────────────────────────────
 
-describe('ModifyInventory — internal movement', () => {
+describe('ModifyMedicineStock — internal movement', () => {
   test('renders the Internal Movement checkbox unchecked by default', async () => {
     api.getUsers.mockResolvedValue({ data: [makeUser()] });
     renderPage();
@@ -192,7 +192,7 @@ describe('ModifyInventory — internal movement', () => {
 
 // ── Adjustment date input ─────────────────────────────────────────────────
 
-describe('ModifyInventory — adjustment date', () => {
+describe('ModifyMedicineStock — adjustment date', () => {
   test('renders an Adjustment Date input', async () => {
     api.getUsers.mockResolvedValue({ data: [makeUser()] });
     renderPage();
@@ -231,7 +231,7 @@ describe('ModifyInventory — adjustment date', () => {
 
 // ── In Transit checkbox ───────────────────────────────────────────────────
 
-describe('ModifyInventory — in transit', () => {
+describe('ModifyMedicineStock — in transit', () => {
   test('renders the In Transit checkbox', async () => {
     api.getUsers.mockResolvedValue({ data: [makeUser()] });
     renderPage();

@@ -5,14 +5,14 @@ import * as api from '../../api/api';
 const specLabel = (type, spec, concentration) =>
     type === 'VIAL' ? `${concentration ?? spec} mg/ml` : `${spec} mg (10 Tablets)`;
 
-export default function ModifyInventory() {
+export default function ModifyMedicineStock() {
     const [users, setUsers]         = useState([]);
     const [medicines, setMedicines] = useState([]);
-    const [inventory, setInventory] = useState([]);
+    const [medicineStock, setMedicineStock] = useState([]);
     const today = new Date().toISOString().slice(0, 10);
     const [form, setForm]           = useState({
         userId: '', medicineId: '', adjustmentType: 'ADD',
-        quantity: '', note: '', inventoryType: 'REGULAR_MEDICINE_STOCK',
+        quantity: '', note: '', medicineStockType: 'REGULAR_MEDICINE_STOCK',
         internalMovement: false, inTransit: false, transitDays: 2,
         adjustmentDate: today,
     });
@@ -21,7 +21,7 @@ export default function ModifyInventory() {
     const [submitting, setSubmitting] = useState(false);
 
     const reload = () =>
-        api.getAdminInventory().then(r => setInventory(r.data));
+        api.getAdminMedicineStock().then(r => setMedicineStock(r.data));
 
     useEffect(() => {
         api.getUsers().then(r => setUsers(r.data));
@@ -31,15 +31,15 @@ export default function ModifyInventory() {
 
     const set = field => e => setForm(f => ({ ...f, [field]: e.target.value }));
 
-    // Only non-admin users can hold inventory
+    // Only non-admin users can hold medicineStock
     const eligibleUsers = users.filter(u => u.active && u.role !== 'ADMIN');
 
     const currentQty = (() => {
         if (!form.userId || !form.medicineId) return null;
-        const found = inventory.find(
+        const found = medicineStock.find(
             i => String(i.userId) === form.userId &&
                  String(i.medicineId) === form.medicineId &&
-                 i.inventoryType === form.inventoryType
+                 i.medicineStockType === form.medicineStockType
         );
         return found?.quantity ?? 0;
     })();
@@ -54,13 +54,13 @@ export default function ModifyInventory() {
         e.preventDefault();
         setMsg(''); setErr(''); setSubmitting(true);
         try {
-            await api.adjustInventory({
+            await api.adjustMedicineStock({
                 userId:          Number(form.userId),
                 medicineId:      Number(form.medicineId),
                 adjustmentType:  form.adjustmentType,
                 quantity:        Number(form.quantity),
                 note:            form.note.trim(),
-                inventoryType:   form.inventoryType,
+                medicineStockType:   form.medicineStockType,
                 internalMovement: form.internalMovement,
                 inTransit:       form.inTransit,
                 transitDays:     form.inTransit ? Number(form.transitDays) : 2,
@@ -83,11 +83,11 @@ export default function ModifyInventory() {
 
     const selectedMedicine = medicines.find(m => String(m.id) === form.medicineId);
 
-    // Group inventory by type for display
-    const regularStock       = inventory.filter(i => i.quantity > 0 && i.inventoryType === 'REGULAR_MEDICINE_STOCK');
-    const adminMedicineStock = inventory.filter(i => i.quantity > 0 && i.inventoryType === 'ADMIN_MEDICINE_STOCK');
+    // Group medicineStock by type for display
+    const regularStock       = medicineStock.filter(i => i.quantity > 0 && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const adminMedicineStock = medicineStock.filter(i => i.quantity > 0 && i.medicineStockType === 'ADMIN_MEDICINE_STOCK');
 
-    const InventoryTable = ({ items, caption }) => (
+    const MedicineStockTable = ({ items, caption }) => (
         items.length > 0 ? (
             <div className="form-section" style={{ marginTop: '2rem' }}>
                 <h2>{caption}</h2>
@@ -162,9 +162,9 @@ export default function ModifyInventory() {
                     </div>
 
                     <div className="form-group">
-                        <label htmlFor="inventory-type-select">Stock Type</label>
-                        <select id="inventory-type-select" value={form.inventoryType}
-                            onChange={set('inventoryType')} required>
+                        <label htmlFor="medicine-stock-type-select">Stock Type</label>
+                        <select id="medicine-stock-type-select" value={form.medicineStockType}
+                            onChange={set('medicineStockType')} required>
                             <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
                             <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
                         </select>
@@ -172,7 +172,7 @@ export default function ModifyInventory() {
 
                     {form.userId && form.medicineId && (
                         <div className="availability-badge">
-                            Current {form.inventoryType === 'ADMIN_MEDICINE_STOCK' ? 'admin medicine stock' : 'quantity'} for user:{' '}
+                            Current {form.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'admin medicine stock' : 'quantity'} for user:{' '}
                             <strong>{Number(currentQty).toFixed(1)}</strong> units
                             {selectedMedicine && (
                                 <span style={{ marginLeft: '1rem' }}>
@@ -287,8 +287,8 @@ export default function ModifyInventory() {
                 </form>
             </div>
 
-            <InventoryTable items={regularStock} caption="Current Regular Medicine Stock" />
-            <InventoryTable items={adminMedicineStock} caption="Current Admin Medicine Stock" />
+            <MedicineStockTable items={regularStock} caption="Current Regular Medicine Stock" />
+            <MedicineStockTable items={adminMedicineStock} caption="Current Admin Medicine Stock" />
         </div>
     );
 }

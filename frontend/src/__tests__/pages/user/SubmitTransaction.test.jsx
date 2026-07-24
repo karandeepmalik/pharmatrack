@@ -7,21 +7,21 @@ import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
 
-const mockInventory = [
+const mockMedicineStock = [
   { pharmaId: 1, pharmaName: 'Shield FX', medicineId: 1, medicineName: 'Shield FX Vial',
     medicineType: 'VIAL', specification: 10, quantity: 50, specUnit: 'mg/ml', price: 4000,
-    inventoryType: 'REGULAR_MEDICINE_STOCK' },
+    medicineStockType: 'REGULAR_MEDICINE_STOCK' },
   { pharmaId: 1, pharmaName: 'Shield FX', medicineId: 2, medicineName: 'Shield FX Tablet',
     medicineType: 'TABLET', specification: 50, quantity: 30, specUnit: 'mg (10 Tablets)', price: 8000,
-    inventoryType: 'REGULAR_MEDICINE_STOCK' },
+    medicineStockType: 'REGULAR_MEDICINE_STOCK' },
   { pharmaId: 2, pharmaName: 'MediCure', medicineId: 3, medicineName: 'MediCure Vial',
     medicineType: 'VIAL', specification: 20, quantity: 10, specUnit: 'mg/ml', price: 2000,
-    inventoryType: 'REGULAR_MEDICINE_STOCK' },
+    medicineStockType: 'REGULAR_MEDICINE_STOCK' },
 ];
 
 beforeEach(() => {
   jest.clearAllMocks();
-  api.getAvailableInventory.mockResolvedValue({ data: mockInventory });
+  api.getAvailableMedicineStock.mockResolvedValue({ data: mockMedicineStock });
 });
 
 const renderPage = () => render(<MemoryRouter><SubmitTransaction /></MemoryRouter>);
@@ -54,8 +54,8 @@ const fillValidForm = async () => {
 // ── Loading & render ───────────────────────────────────────────────────
 
 describe('Initial render', () => {
-  test('shows loading indicator while inventory is fetching', () => {
-    api.getAvailableInventory.mockReturnValue(new Promise(() => {}));
+  test('shows loading indicator while medicineStock is fetching', () => {
+    api.getAvailableMedicineStock.mockReturnValue(new Promise(() => {}));
     renderPage();
     expect(screen.getByText(/loading stock/i)).toBeInTheDocument();
   });
@@ -72,7 +72,7 @@ describe('Initial render', () => {
     expect(screen.getByRole('link', { name: /← back/i })).toHaveAttribute('href', '/user/dashboard');
   });
 
-  test('renders all form fields after inventory loads', async () => {
+  test('renders all form fields after medicineStock loads', async () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/pharma company/i));
     expect(screen.getByLabelText(/medicine type/i)).toBeInTheDocument();
@@ -87,8 +87,8 @@ describe('Initial render', () => {
     expect(screen.getByRole('button', { name: /submit medicine dispatch/i })).toBeDisabled();
   });
 
-  test('shows error if inventory fetch fails', async () => {
-    api.getAvailableInventory.mockRejectedValue(new Error('Network error'));
+  test('shows error if medicineStock fetch fails', async () => {
+    api.getAvailableMedicineStock.mockRejectedValue(new Error('Network error'));
     renderPage();
     await waitFor(() => screen.getByRole('alert'));
     expect(screen.getByRole('alert')).toHaveTextContent(/failed to load stock/i);
@@ -289,9 +289,9 @@ describe('Price override input', () => {
   });
 });
 
-// ── Inventory type selector ────────────────────────────────────────────
+// ── MedicineStock type selector ────────────────────────────────────────────
 
-describe('Inventory type selector', () => {
+describe('MedicineStock type selector', () => {
   test('renders stock type select with Regular and Admin Medicine Stock options', async () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/stock type/i));
@@ -318,12 +318,12 @@ describe('Inventory type selector', () => {
   });
 
   test('changing stock type resets pharma, type, spec and quantity', async () => {
-    const adminInventory = [
+    const adminMedicineStock = [
       { pharmaId: 1, pharmaName: 'FIP Shield', medicineId: 1, medicineName: 'FIP Shield Vial',
         medicineType: 'VIAL', specification: 10, quantity: 20, specUnit: 'mg/ml', price: 4000,
-        inventoryType: 'ADMIN_MEDICINE_STOCK' },
+        medicineStockType: 'ADMIN_MEDICINE_STOCK' },
     ];
-    api.getAvailableInventory.mockResolvedValueOnce({ data: mockInventory });
+    api.getAvailableMedicineStock.mockResolvedValueOnce({ data: mockMedicineStock });
     renderPage();
     await waitFor(() => screen.getByLabelText(/pharma company/i));
 
@@ -332,19 +332,19 @@ describe('Inventory type selector', () => {
     expect(screen.getByLabelText(/medicine type/i)).toHaveValue('VIAL');
 
     // Switch to Admin Medicine Stock
-    api.getAvailableInventory.mockResolvedValue({ data: adminInventory });
+    api.getAvailableMedicineStock.mockResolvedValue({ data: adminMedicineStock });
     await userEvent.selectOptions(screen.getByLabelText(/stock type/i), 'ADMIN_MEDICINE_STOCK');
     expect(screen.getByLabelText(/pharma company/i)).toHaveValue('');
   });
 
-  test('submit call includes inventoryType', async () => {
+  test('submit call includes medicineStockType', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();
     await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
     await waitFor(() =>
       expect(api.submitTransaction).toHaveBeenCalledWith(
         expect.objectContaining({
-          inventoryType: 'REGULAR_MEDICINE_STOCK',
+          medicineStockType: 'REGULAR_MEDICINE_STOCK',
         })
       )
     );
@@ -388,12 +388,12 @@ describe('Form submission', () => {
 
   test('shows API error message on failure', async () => {
     api.submitTransaction.mockRejectedValue({
-      response: { data: { message: 'Insufficient inventory: requested 5 but only 3 available' } },
+      response: { data: { message: 'Insufficient medicineStock: requested 5 but only 3 available' } },
     });
     await fillValidForm();
     await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/insufficient inventory/i)
+      expect(screen.getByRole('alert')).toHaveTextContent(/insufficient medicineStock/i)
     );
   });
 

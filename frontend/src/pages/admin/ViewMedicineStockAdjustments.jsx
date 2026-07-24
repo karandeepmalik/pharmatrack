@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
-import { inventoryTypeLabel } from '../../constants';
+import { medicineStockTypeLabel } from '../../constants';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const weekAgoStr = () => {
@@ -18,7 +18,7 @@ const medOptionLabel = (m) =>
         ? `Vial ${m.specification} ml`
         : `Tablet ${m.specification} mg (10 Tablets)`;
 
-export default function ViewInventoryAdjustments() {
+export default function ViewMedicineStockAdjustments() {
     const [from, setFrom]             = useState(weekAgoStr());
     const [to, setTo]                 = useState(todayStr());
     const [adjustments, setAdjustments] = useState([]);
@@ -49,7 +49,7 @@ export default function ViewInventoryAdjustments() {
         setError('');
         setDeleteState({});
         try {
-            const res = await api.getInventoryAdjustments(from, to);
+            const res = await api.getMedicineStockAdjustments(from, to);
             setAdjustments(res.data);
             setSearched(true);
             setUserFilter('ALL');
@@ -84,7 +84,7 @@ export default function ViewInventoryAdjustments() {
     const confirmDelete = async (id) => {
         setDeleteState(prev => ({ ...prev, [id]: { ...prev[id], deleting: true, error: '' } }));
         try {
-            await api.deleteInventoryAdjustment(id);
+            await api.deleteMedicineStockAdjustment(id);
             setAdjustments(prev => prev.filter(a => a.id !== id));
             setDeleteState(prev => { const n = { ...prev }; delete n[id]; return n; });
         } catch (err) {
@@ -101,7 +101,7 @@ export default function ViewInventoryAdjustments() {
             </div>
 
             <div role="note" className="alert" style={{ background: '#fff8e1', borderColor: '#f9a825', marginBottom: '1rem' }}>
-                Deleting a record reverses its inventory effect (ADD is undone; REDUCE is restored).
+                Deleting a record reverses its medicineStock effect (ADD is undone; REDUCE is restored).
             </div>
 
             {error && <div role="alert" className="alert alert-error">{error}</div>}
@@ -234,8 +234,8 @@ export default function ViewInventoryAdjustments() {
                                                         </span>
                                                     </td>
                                                     <td>
-                                                        <span className={`status-badge ${adj.inventoryType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
-                                                            {inventoryTypeLabel(adj.inventoryType)}
+                                                        <span className={`status-badge ${adj.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
+                                                            {medicineStockTypeLabel(adj.medicineStockType)}
                                                         </span>
                                                     </td>
                                                     <td>{adj.note || '—'}</td>
@@ -249,7 +249,7 @@ export default function ViewInventoryAdjustments() {
                                                         {del.confirming ? (
                                                             <div>
                                                                 <p style={{ fontSize: '0.85rem', margin: '0 0 0.25rem' }}>
-                                                                    Are you sure? This will reverse the inventory change.
+                                                                    Are you sure? This will reverse the medicineStock change.
                                                                 </p>
                                                                 {del.error && (
                                                                     <p role="alert" className="form-error">{del.error}</p>

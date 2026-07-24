@@ -28,7 +28,7 @@ const makeTx = (overrides = {}) => ({
   notes: 'Clinic B dispatch note',
   submittedAt: '2026-05-01T10:00:00',
   screenshots: [],
-  inventoryType: 'REGULAR_MEDICINE_STOCK',
+  medicineStockType: 'REGULAR_MEDICINE_STOCK',
   ...overrides,
 });
 
@@ -273,7 +273,7 @@ describe('MyTransactions — transaction display', () => {
 describe('MyTransactions — stock type display', () => {
   test('shows Regular Stock for a REGULAR_MEDICINE_STOCK dispatch', async () => {
     api.getMyTransactions.mockResolvedValue(
-      mkPage([makeTx({ inventoryType: 'REGULAR_MEDICINE_STOCK' })])
+      mkPage([makeTx({ medicineStockType: 'REGULAR_MEDICINE_STOCK' })])
     );
     renderPage();
     await waitFor(() =>
@@ -283,7 +283,7 @@ describe('MyTransactions — stock type display', () => {
 
   test('shows Admin Stock for an ADMIN_MEDICINE_STOCK dispatch', async () => {
     api.getMyTransactions.mockResolvedValue(
-      mkPage([makeTx({ inventoryType: 'ADMIN_MEDICINE_STOCK' })])
+      mkPage([makeTx({ medicineStockType: 'ADMIN_MEDICINE_STOCK' })])
     );
     renderPage();
     await waitFor(() =>
@@ -291,8 +291,8 @@ describe('MyTransactions — stock type display', () => {
     );
   });
 
-  test('renders "Regular Stock" for a dispatch with a null inventoryType (legacy fallback)', async () => {
-    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ inventoryType: null })]));
+  test('renders "Regular Stock" for a dispatch with a null medicineStockType (legacy fallback)', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ medicineStockType: null })]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByText('Regular Stock')).toBeInTheDocument()

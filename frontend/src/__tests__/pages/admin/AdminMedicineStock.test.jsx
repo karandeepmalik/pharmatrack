@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import AdminInventory from '../../../pages/admin/AdminInventory';
+import AdminMedicineStock from '../../../pages/admin/AdminMedicineStock';
 import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
@@ -18,7 +18,7 @@ const makeRegular = (overrides = {}) => ({
   price: 4000,
   pharmaName: 'Shield FX',
   quantity: 50,
-  inventoryType: 'REGULAR_MEDICINE_STOCK',
+  medicineStockType: 'REGULAR_MEDICINE_STOCK',
   ...overrides,
 });
 
@@ -33,14 +33,14 @@ const makeAdmin = (overrides = {}) => ({
   price: 4000,
   pharmaName: 'Shield FX',
   quantity: 100,
-  inventoryType: 'ADMIN_MEDICINE_STOCK',
+  medicineStockType: 'ADMIN_MEDICINE_STOCK',
   ...overrides,
 });
 
 const renderPage = () =>
   render(
     <MemoryRouter>
-      <AdminInventory />
+      <AdminMedicineStock />
     </MemoryRouter>
   );
 
@@ -48,9 +48,9 @@ beforeEach(() => jest.clearAllMocks());
 
 // ── Render ─────────────────────────────────────────────────────────────────
 
-describe('AdminInventory — render', () => {
+describe('AdminMedicineStock — render', () => {
   test('shows page heading', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [makeRegular()] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [makeRegular()] });
     renderPage();
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /view available medicine stock/i })).toBeInTheDocument()
@@ -58,7 +58,7 @@ describe('AdminInventory — render', () => {
   });
 
   test('shows error alert when fetch fails', async () => {
-    api.getAdminInventory.mockRejectedValue(new Error('Network error'));
+    api.getAdminMedicineStock.mockRejectedValue(new Error('Network error'));
     renderPage();
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/failed to load stock/i)
@@ -66,7 +66,7 @@ describe('AdminInventory — render', () => {
   });
 
   test('does NOT render By Spec / By User toggle buttons', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [makeRegular()] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [makeRegular()] });
     renderPage();
     await waitFor(() => screen.getByRole('heading', { name: /view available medicine stock/i }));
     expect(screen.queryByRole('button', { name: /by spec/i })).not.toBeInTheDocument();
@@ -76,9 +76,9 @@ describe('AdminInventory — render', () => {
 
 // ── Two-section layout ────────────────────────────────────────────────────
 
-describe('AdminInventory — two-section layout', () => {
+describe('AdminMedicineStock — two-section layout', () => {
   test('renders "Regular Stock (User Allocations)" section heading', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [makeRegular()] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [makeRegular()] });
     renderPage();
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /regular stock \(user allocations\)/i })).toBeInTheDocument()
@@ -86,7 +86,7 @@ describe('AdminInventory — two-section layout', () => {
   });
 
   test('renders "Admin Stock (System Stock)" section heading', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [makeAdmin()] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [makeAdmin()] });
     renderPage();
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /admin stock \(system stock\)/i })).toBeInTheDocument()
@@ -94,8 +94,8 @@ describe('AdminInventory — two-section layout', () => {
   });
 
   test('REGULAR_MEDICINE_STOCK item appears in the Regular section, not Admin section', async () => {
-    api.getAdminInventory.mockResolvedValue({
-      data: [makeRegular({ id: 1, username: 'john.doe', inventoryType: 'REGULAR_MEDICINE_STOCK' })],
+    api.getAdminMedicineStock.mockResolvedValue({
+      data: [makeRegular({ id: 1, username: 'john.doe', medicineStockType: 'REGULAR_MEDICINE_STOCK' })],
     });
     renderPage();
     await waitFor(() => screen.getByRole('heading', { name: /regular stock/i }));
@@ -108,8 +108,8 @@ describe('AdminInventory — two-section layout', () => {
   });
 
   test('ADMIN_MEDICINE_STOCK item appears in the Admin section, not Regular section', async () => {
-    api.getAdminInventory.mockResolvedValue({
-      data: [makeAdmin({ id: 100, username: 'admin', inventoryType: 'ADMIN_MEDICINE_STOCK' })],
+    api.getAdminMedicineStock.mockResolvedValue({
+      data: [makeAdmin({ id: 100, username: 'admin', medicineStockType: 'ADMIN_MEDICINE_STOCK' })],
     });
     renderPage();
     await waitFor(() => screen.getByRole('heading', { name: /admin stock/i }));
@@ -121,8 +121,8 @@ describe('AdminInventory — two-section layout', () => {
     expect(within(regularSection).queryByText('admin')).not.toBeInTheDocument();
   });
 
-  test('both sections render when both inventory types are present', async () => {
-    api.getAdminInventory.mockResolvedValue({
+  test('both sections render when both medicineStock types are present', async () => {
+    api.getAdminMedicineStock.mockResolvedValue({
       data: [
         makeRegular({ id: 1, username: 'john.doe' }),
         makeAdmin({ id: 2, username: 'admin' }),
@@ -136,7 +136,7 @@ describe('AdminInventory — two-section layout', () => {
   });
 
   test('Regular section shows "No stock records found" when no regular items', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [makeAdmin()] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [makeAdmin()] });
     renderPage();
     await waitFor(() => screen.getByRole('heading', { name: /regular stock/i }));
 
@@ -145,7 +145,7 @@ describe('AdminInventory — two-section layout', () => {
   });
 
   test('Admin section shows "No stock records found" when no admin items', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [makeRegular()] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [makeRegular()] });
     renderPage();
     await waitFor(() => screen.getByRole('heading', { name: /admin stock/i }));
 
@@ -154,7 +154,7 @@ describe('AdminInventory — two-section layout', () => {
   });
 
   test('both sections show "No stock records found" when data is empty', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [] });
     renderPage();
     await waitFor(() => screen.getByRole('heading', { name: /admin stock/i }));
     const empties = screen.getAllByText(/no stock records found/i);
@@ -164,9 +164,9 @@ describe('AdminInventory — two-section layout', () => {
 
 // ── Zero quantity filtering ────────────────────────────────────────────────
 
-describe('AdminInventory — zero quantity filtering', () => {
+describe('AdminMedicineStock — zero quantity filtering', () => {
   test('hides items with quantity 0 from the Regular section', async () => {
-    api.getAdminInventory.mockResolvedValue({
+    api.getAdminMedicineStock.mockResolvedValue({
       data: [
         makeRegular({ id: 1, medicineName: 'Shield FX Vial 10 ml', quantity: 10 }),
         makeRegular({ id: 2, medicineName: 'Shield FX Tablet 25 mg', quantity: 0 }),
@@ -181,7 +181,7 @@ describe('AdminInventory — zero quantity filtering', () => {
   });
 
   test('hides items with quantity 0 from the Admin section', async () => {
-    api.getAdminInventory.mockResolvedValue({
+    api.getAdminMedicineStock.mockResolvedValue({
       data: [
         makeAdmin({ id: 1, medicineName: 'Shield FX Vial 10 ml', quantity: 100 }),
         makeAdmin({ id: 2, medicineName: 'Shield FX Tablet 25 mg', quantity: 0 }),
@@ -198,9 +198,9 @@ describe('AdminInventory — zero quantity filtering', () => {
 
 // ── Default sort ──────────────────────────────────────────────────────────
 
-describe('AdminInventory — default sort order', () => {
+describe('AdminMedicineStock — default sort order', () => {
   test('Regular section rows sorted by medicine name', async () => {
-    api.getAdminInventory.mockResolvedValue({
+    api.getAdminMedicineStock.mockResolvedValue({
       data: [
         makeRegular({ id: 2, medicineName: 'Shield FX Vial 5 ml'  }),
         makeRegular({ id: 1, medicineName: 'Shield FX Tablet 25 mg' }),
@@ -218,12 +218,12 @@ describe('AdminInventory — default sort order', () => {
 
 // ── Filters ──────────────────────────────────────────────────────────────
 
-describe('AdminInventory — filters', () => {
+describe('AdminMedicineStock — filters', () => {
   const vial   = makeRegular({ id: 1, medicineName: 'Shield FX Vial 10 ml',   username: 'john.doe',   quantity: 5 });
   const tablet = makeRegular({ id: 2, medicineName: 'Shield FX Tablet 25 mg', username: 'jane.smith', quantity: 3 });
 
   test('renders "Filter by Medicine" dropdown', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [vial] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [vial] });
     renderPage();
     await waitFor(() =>
       expect(screen.getByLabelText(/filter by medicine/i)).toBeInTheDocument()
@@ -231,7 +231,7 @@ describe('AdminInventory — filters', () => {
   });
 
   test('renders "Filter by User" dropdown', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [vial] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [vial] });
     renderPage();
     await waitFor(() =>
       expect(screen.getByLabelText(/filter by user/i)).toBeInTheDocument()
@@ -239,7 +239,7 @@ describe('AdminInventory — filters', () => {
   });
 
   test('medicine filter shows only matching rows in Regular section', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [vial, tablet] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [vial, tablet] });
     renderPage();
     await waitFor(() => screen.getByRole('table'));
 
@@ -254,7 +254,7 @@ describe('AdminInventory — filters', () => {
   });
 
   test('user filter shows only matching rows in Regular section', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [vial, tablet] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [vial, tablet] });
     renderPage();
     await waitFor(() => screen.getByRole('table'));
 
@@ -266,7 +266,7 @@ describe('AdminInventory — filters', () => {
   });
 
   test('user filter dropdown is populated only from regular stock users, not admin', async () => {
-    api.getAdminInventory.mockResolvedValue({
+    api.getAdminMedicineStock.mockResolvedValue({
       data: [
         vial,
         makeAdmin({ id: 100, username: 'admin' }),
@@ -282,7 +282,7 @@ describe('AdminInventory — filters', () => {
   });
 
   test('clearing medicine filter restores all rows', async () => {
-    api.getAdminInventory.mockResolvedValue({ data: [vial, tablet] });
+    api.getAdminMedicineStock.mockResolvedValue({ data: [vial, tablet] });
     renderPage();
     await waitFor(() => screen.getByRole('table'));
 

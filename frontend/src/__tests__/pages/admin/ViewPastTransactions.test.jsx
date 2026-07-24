@@ -29,7 +29,7 @@ const makeTx = (overrides = {}) => ({
   notes: 'Clinic B dispatch',
   submittedAt: '2026-05-03T10:00:00',
   approvedByUsername: 'admin',
-  inventoryType: 'REGULAR_MEDICINE_STOCK',
+  medicineStockType: 'REGULAR_MEDICINE_STOCK',
   ...overrides,
 });
 
@@ -273,7 +273,7 @@ describe('ViewPastTransactions — search', () => {
 describe('ViewPastTransactions — stock type column', () => {
   test('shows Regular Stock badge for a REGULAR_MEDICINE_STOCK dispatch', async () => {
     api.getTransactionHistory.mockResolvedValue({
-      data: [makeTx({ inventoryType: 'REGULAR_MEDICINE_STOCK' })],
+      data: [makeTx({ medicineStockType: 'REGULAR_MEDICINE_STOCK' })],
     });
     renderPage();
 
@@ -286,7 +286,7 @@ describe('ViewPastTransactions — stock type column', () => {
 
   test('shows Admin Stock badge for an ADMIN_MEDICINE_STOCK dispatch', async () => {
     api.getTransactionHistory.mockResolvedValue({
-      data: [makeTx({ inventoryType: 'ADMIN_MEDICINE_STOCK' })],
+      data: [makeTx({ medicineStockType: 'ADMIN_MEDICINE_STOCK' })],
     });
     renderPage();
 
@@ -297,9 +297,9 @@ describe('ViewPastTransactions — stock type column', () => {
     );
   });
 
-  test('renders "Regular Stock" for a dispatch with a null inventoryType (legacy fallback)', async () => {
+  test('renders "Regular Stock" for a dispatch with a null medicineStockType (legacy fallback)', async () => {
     api.getTransactionHistory.mockResolvedValue({
-      data: [makeTx({ inventoryType: null })],
+      data: [makeTx({ medicineStockType: null })],
     });
     renderPage();
 
@@ -313,8 +313,8 @@ describe('ViewPastTransactions — stock type column', () => {
   test('shows both stock types when mixed dispatches are present', async () => {
     api.getTransactionHistory.mockResolvedValue({
       data: [
-        makeTx({ id: 1, inventoryType: 'REGULAR_MEDICINE_STOCK' }),
-        makeTx({ id: 2, inventoryType: 'ADMIN_MEDICINE_STOCK' }),
+        makeTx({ id: 1, medicineStockType: 'REGULAR_MEDICINE_STOCK' }),
+        makeTx({ id: 2, medicineStockType: 'ADMIN_MEDICINE_STOCK' }),
       ],
     });
     renderPage();

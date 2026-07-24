@@ -43,24 +43,24 @@ function StockTable({ items }) {
     );
 }
 
-export default function AdminInventory() {
-    const [inventory, setInventory] = useState([]);
+export default function AdminMedicineStock() {
+    const [medicineStock, setMedicineStock] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [specFilter, setSpecFilter] = useState('');
     const [userFilter, setUserFilter] = useState('');
 
     useEffect(() => {
-        api.getAdminInventory()
-            .then(r => setInventory(r.data))
+        api.getAdminMedicineStock()
+            .then(r => setMedicineStock(r.data))
             .catch(() => setError('Failed to load stock'))
             .finally(() => setLoading(false));
     }, []);
 
-    const nonZero = inventory.filter(item => item.quantity > 0);
+    const nonZero = medicineStock.filter(item => item.quantity > 0);
 
-    const regularItems = nonZero.filter(i => i.inventoryType === 'REGULAR_MEDICINE_STOCK');
-    const adminItems   = nonZero.filter(i => i.inventoryType === 'ADMIN_MEDICINE_STOCK');
+    const regularItems = nonZero.filter(i => i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const adminItems   = nonZero.filter(i => i.medicineStockType === 'ADMIN_MEDICINE_STOCK');
 
     const specOptions = [...new Set(nonZero.map(i => i.medicineName))].sort();
     const userOptions = [...new Set(regularItems.map(i => i.username))].sort();
@@ -73,7 +73,7 @@ export default function AdminInventory() {
                 a.medicineName.localeCompare(b.medicineName) ||
                 a.username.localeCompare(b.username));
 
-    if (loading) return <div className="loading">Loading inventory…</div>;
+    if (loading) return <div className="loading">Loading medicineStock…</div>;
 
     return (
         <div className="page">

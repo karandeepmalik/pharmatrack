@@ -1,19 +1,19 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import ReduceSystemInventory from '../../../pages/admin/ReduceSystemInventory';
+import ReduceSystemMedicineStock from '../../../pages/admin/ReduceSystemMedicineStock';
 
 const renderPage = () =>
   render(
-    <MemoryRouter initialEntries={['/admin/reduce-system-inventory']}>
+    <MemoryRouter initialEntries={['/admin/reduce-system-medicine-stock']}>
       <Routes>
-        <Route path="/admin/reduce-system-inventory" element={<ReduceSystemInventory />} />
+        <Route path="/admin/reduce-system-medicine-stock" element={<ReduceSystemMedicineStock />} />
         <Route path="/admin/dashboard" element={<div>Admin Dashboard Page</div>} />
       </Routes>
     </MemoryRouter>
   );
 
-describe('ReduceSystemInventory — redirect', () => {
+describe('ReduceSystemMedicineStock — redirect', () => {
   test('redirects to /admin/dashboard', () => {
     renderPage();
     expect(screen.getByText('Admin Dashboard Page')).toBeInTheDocument();

@@ -46,16 +46,16 @@ describe('ViewReports — render', () => {
 
 // ── Generating reports ───────────────────────────────────────────────────
 
-describe('ViewReports — inventory by user report', () => {
-  test('generates inventory-by-user report', async () => {
-    api.getReportInventoryByUser.mockResolvedValue(
-      sampleReport('INVENTORY_BY_USER', 'CURRENT MEDICINE STOCK PER USER\nJohn Doe: 50 units')
+describe('ViewReports — medicine stock by user report', () => {
+  test('generates medicine-stock-by-user report', async () => {
+    api.getReportMedicineStockByUser.mockResolvedValue(
+      sampleReport('MEDICINE_STOCK_BY_USER', 'CURRENT MEDICINE STOCK PER USER\nJohn Doe: 50 units')
     );
     renderPage();
 
     await userEvent.selectOptions(
       screen.getByLabelText(/select report/i),
-      'inventory-by-user'
+      'medicine-stock-by-user'
     );
     expect(screen.getByRole('button', { name: /generate report/i })).not.toBeDisabled();
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
@@ -63,12 +63,12 @@ describe('ViewReports — inventory by user report', () => {
     await waitFor(() =>
       expect(screen.getByText(/john doe: 50 units/i)).toBeInTheDocument()
     );
-    expect(api.getReportInventoryByUser).toHaveBeenCalledTimes(1);
+    expect(api.getReportMedicineStockByUser).toHaveBeenCalledTimes(1);
   });
 
-  test('inventory-by-user report shows ADMIN INVENTORY section', async () => {
+  test('medicine-stock-by-user report shows ADMIN MEDICINE STOCK section', async () => {
     const content = [
-      'CURRENT INVENTORY LEVEL BY USER',
+      'CURRENT MEDICINE STOCK LEVEL BY USER',
       'Generated: 01 Jan 2025, 12:00 PM IST',
       '========================================',
       '',
@@ -80,7 +80,7 @@ describe('ViewReports — inventory by user report', () => {
       '  TOTAL: 50',
       '',
       '========================================',
-      'ADMIN INVENTORY',
+      'ADMIN MEDICINE STOCK',
       '---------------',
       'Shield FX Vial 10 ml | 20 mg/ml',
       '-----------------------------------',
@@ -88,90 +88,90 @@ describe('ViewReports — inventory by user report', () => {
       '  TOTAL: 5',
     ].join('\n');
 
-    api.getReportInventoryByUser.mockResolvedValue(
-      sampleReport('INVENTORY_BY_USER', content)
+    api.getReportMedicineStockByUser.mockResolvedValue(
+      sampleReport('MEDICINE_STOCK_BY_USER', content)
     );
     renderPage();
 
     await userEvent.selectOptions(
       screen.getByLabelText(/select report/i),
-      'inventory-by-user'
+      'medicine-stock-by-user'
     );
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
-      expect(screen.getByText(/admin inventory/i)).toBeInTheDocument()
+      expect(screen.getByText(/admin medicine stock/i)).toBeInTheDocument()
     );
   });
 });
 
-describe('ViewReports — inventory valuation report', () => {
+describe('ViewReports — medicine stock valuation report', () => {
   test('dropdown shows "Medicine Stock Valuation" option', () => {
     renderPage();
     expect(screen.getByRole('option', { name: /^medicine stock valuation$/i })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /current medicine stock valuation/i })).not.toBeInTheDocument();
   });
 
-  test('generates inventory-valuation report', async () => {
-    api.getReportInventoryValuation.mockResolvedValue(
-      sampleReport('INVENTORY_VALUATION', 'MEDICINE STOCK VALUATION\nTOTAL VALUATION: Rs 200,000')
+  test('generates medicine-stock-valuation report', async () => {
+    api.getReportMedicineStockValuation.mockResolvedValue(
+      sampleReport('MEDICINE_STOCK_VALUATION', 'MEDICINE STOCK VALUATION\nTOTAL VALUATION: Rs 200,000')
     );
     renderPage();
 
     await userEvent.selectOptions(
       screen.getByLabelText(/select report/i),
-      'inventory-valuation'
+      'medicine-stock-valuation'
     );
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
       expect(screen.getByText(/total valuation: rs 200,000/i)).toBeInTheDocument()
     );
-    expect(api.getReportInventoryValuation).toHaveBeenCalledTimes(1);
+    expect(api.getReportMedicineStockValuation).toHaveBeenCalledTimes(1);
   });
 
-  test('shows As of Date picker when inventory-valuation is selected', async () => {
+  test('shows As of Date picker when medicine-stock-valuation is selected', async () => {
     renderPage();
-    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-valuation');
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'medicine-stock-valuation');
     expect(screen.getByLabelText(/as of date/i)).toBeInTheDocument();
   });
 
   test('As of Date picker not shown for other reports', async () => {
     renderPage();
-    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-by-user');
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'medicine-stock-by-user');
     expect(screen.queryByLabelText(/as of date/i)).not.toBeInTheDocument();
   });
 
   test('As of Date picker defaults to today', async () => {
     renderPage();
-    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-valuation');
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'medicine-stock-valuation');
     const today = new Date().toISOString().slice(0, 10);
     expect(screen.getByLabelText(/as of date/i)).toHaveValue(today);
   });
 
-  test('calls getReportInventoryValuation with selected date', async () => {
-    api.getReportInventoryValuation.mockResolvedValue(
-      sampleReport('INVENTORY_VALUATION', 'MEDICINE STOCK VALUATION\nAs of: 01 May 2026\nTOTAL VALUATION: Rs 0')
+  test('calls getReportMedicineStockValuation with selected date', async () => {
+    api.getReportMedicineStockValuation.mockResolvedValue(
+      sampleReport('MEDICINE_STOCK_VALUATION', 'MEDICINE STOCK VALUATION\nAs of: 01 May 2026\nTOTAL VALUATION: Rs 0')
     );
     renderPage();
 
-    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-valuation');
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'medicine-stock-valuation');
     fireEvent.change(screen.getByLabelText(/as of date/i), { target: { value: '2026-05-01' } });
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
-      expect(api.getReportInventoryValuation).toHaveBeenCalledWith('2026-05-01')
+      expect(api.getReportMedicineStockValuation).toHaveBeenCalledWith('2026-05-01')
     );
   });
 
   test('renders report with new valuation format (Valuation: N units x Rs Y = Rs Z)', async () => {
-    api.getReportInventoryValuation.mockResolvedValue(
-      sampleReport('INVENTORY_VALUATION',
+    api.getReportMedicineStockValuation.mockResolvedValue(
+      sampleReport('MEDICINE_STOCK_VALUATION',
         'MEDICINE STOCK VALUATION\nShield FX\n---------\nVial 10 ml\n  john.doe: 7 + 3 (in transit)\n  Valuation: 10 units x Rs 4,000 = Rs 40,000\n\nTOTAL VALUATION: Rs 40,000')
     );
     renderPage();
 
-    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-valuation');
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'medicine-stock-valuation');
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
@@ -244,7 +244,7 @@ describe("ViewReports — today's sales report", () => {
 
   test("date range inputs are not shown for other reports", async () => {
     renderPage();
-    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-by-user');
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'medicine-stock-by-user');
     expect(screen.queryByLabelText(/from date/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/to date/i)).not.toBeInTheDocument();
   });
@@ -254,7 +254,7 @@ describe('ViewReports — daily report', () => {
   test('generates daily report', async () => {
     api.getReportDaily.mockResolvedValue(
       sampleReport('DAILY_REPORT',
-        'DAILY REPORT - 04 May 2026\nShield FX\n---------\n\nVial 10 ml\n  john.doe: 30\n  TOTAL: 30\n\nADMIN INVENTORY\n---------------\nVial 10 ml\n  (none)\n  TOTAL: 0\n\nDAILY TRANSACTION SUMMARY\n2 x 10 ml  Clinic B')
+        'DAILY REPORT - 04 May 2026\nShield FX\n---------\n\nVial 10 ml\n  john.doe: 30\n  TOTAL: 30\n\nADMIN MEDICINE STOCK\n---------------\nVial 10 ml\n  (none)\n  TOTAL: 0\n\nDAILY TRANSACTION SUMMARY\n2 x 10 ml  Clinic B')
     );
     renderPage();
 
@@ -284,7 +284,7 @@ describe('ViewReports — daily report', () => {
   test('date picker is not shown for other reports', async () => {
     renderPage();
 
-    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'inventory-by-user');
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'medicine-stock-by-user');
 
     expect(screen.queryByLabelText(/report date/i)).not.toBeInTheDocument();
   });
@@ -311,12 +311,12 @@ describe('ViewReports — daily report', () => {
 
 describe('ViewReports — error handling', () => {
   test('shows error alert when API fails', async () => {
-    api.getReportInventoryByUser.mockRejectedValue(new Error('Network error'));
+    api.getReportMedicineStockByUser.mockRejectedValue(new Error('Network error'));
     renderPage();
 
     await userEvent.selectOptions(
       screen.getByLabelText(/select report/i),
-      'inventory-by-user'
+      'medicine-stock-by-user'
     );
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
@@ -330,14 +330,14 @@ describe('ViewReports — error handling', () => {
 
 describe('ViewReports — copy to clipboard', () => {
   test('shows Copy to Clipboard button after report is generated', async () => {
-    api.getReportInventoryValuation.mockResolvedValue(
-      sampleReport('INVENTORY_VALUATION', 'TOTAL VALUATION: Rs 0')
+    api.getReportMedicineStockValuation.mockResolvedValue(
+      sampleReport('MEDICINE_STOCK_VALUATION', 'TOTAL VALUATION: Rs 0')
     );
     renderPage();
 
     await userEvent.selectOptions(
       screen.getByLabelText(/select report/i),
-      'inventory-valuation'
+      'medicine-stock-valuation'
     );
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 

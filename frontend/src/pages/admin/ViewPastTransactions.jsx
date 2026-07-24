@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
-import { inventoryTypeLabel } from '../../constants';
+import { medicineStockTypeLabel } from '../../constants';
 
 // Default date range: last 7 days
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -209,8 +209,8 @@ export default function ViewPastTransactions() {
                                             <td>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</td>
                                             <td>{Number(tx.quantity).toFixed(1)}</td>
                                             <td>
-                                                <span className={`status-badge ${tx.inventoryType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
-                                                    {inventoryTypeLabel(tx.inventoryType)}
+                                                <span className={`status-badge ${tx.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
+                                                    {medicineStockTypeLabel(tx.medicineStockType)}
                                                 </span>
                                             </td>
                                             <td>{tx.pricePerUnit != null

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import ViewInventoryAdjustments from '../../../pages/admin/ViewInventoryAdjustments';
+import ViewMedicineStockAdjustments from '../../../pages/admin/ViewMedicineStockAdjustments';
 import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
@@ -24,7 +24,7 @@ const ADJ_ADD = {
     inTransit: true,
     transitDays: 3,
     internalMovement: false,
-    inventoryType: 'REGULAR_MEDICINE_STOCK',
+    medicineStockType: 'REGULAR_MEDICINE_STOCK',
 };
 
 const ADJ_REDUCE = {
@@ -44,11 +44,11 @@ const ADJ_REDUCE = {
     inTransit: false,
     transitDays: 2,
     internalMovement: false,
-    inventoryType: 'REGULAR_MEDICINE_STOCK',
+    medicineStockType: 'REGULAR_MEDICINE_STOCK',
 };
 
 const renderPage = () =>
-    render(<MemoryRouter><ViewInventoryAdjustments /></MemoryRouter>);
+    render(<MemoryRouter><ViewMedicineStockAdjustments /></MemoryRouter>);
 
 const MEDICINES = [
     { id: 1, name: 'Shield FX Vial 10 ml', type: 'VIAL',   specification: 10, price: 4000 },
@@ -57,14 +57,14 @@ const MEDICINES = [
 
 beforeEach(() => {
     jest.clearAllMocks();
-    api.getInventoryAdjustments.mockResolvedValue({ data: [] });
-    api.deleteInventoryAdjustment.mockResolvedValue({});
+    api.getMedicineStockAdjustments.mockResolvedValue({ data: [] });
+    api.deleteMedicineStockAdjustment.mockResolvedValue({});
     api.getMedicines.mockResolvedValue({ data: MEDICINES });
 });
 
 // ── Render ────────────────────────────────────────────────────────────────
 
-describe('ViewInventoryAdjustments — render', () => {
+describe('ViewMedicineStockAdjustments — render', () => {
     test('renders page heading', () => {
         renderPage();
         expect(screen.getByRole('heading', { name: /medicine stock modifications history/i })).toBeInTheDocument();
@@ -89,7 +89,7 @@ describe('ViewInventoryAdjustments — render', () => {
 
     test('renders deletion warning notice', () => {
         renderPage();
-        expect(screen.getByRole('note')).toHaveTextContent(/reverses its inventory effect/i);
+        expect(screen.getByRole('note')).toHaveTextContent(/reverses its medicineStock effect/i);
     });
 
     test('does not show results before search', () => {
@@ -123,15 +123,15 @@ describe('ViewInventoryAdjustments — render', () => {
 
 // ── Search ────────────────────────────────────────────────────────────────
 
-describe('ViewInventoryAdjustments — search', () => {
-    test('calls getInventoryAdjustments with date range on search', async () => {
+describe('ViewMedicineStockAdjustments — search', () => {
+    test('calls getMedicineStockAdjustments with date range on search', async () => {
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
-        expect(api.getInventoryAdjustments).toHaveBeenCalledTimes(1);
+        expect(api.getMedicineStockAdjustments).toHaveBeenCalledTimes(1);
     });
 
     test('shows empty-state message when no records found', async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() =>
@@ -140,21 +140,21 @@ describe('ViewInventoryAdjustments — search', () => {
     });
 
     test('shows results table when records are returned', async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [ADJ_ADD] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [ADJ_ADD] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument());
     });
 
     test('shows correct result count', async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => expect(screen.getByText(/results \(2\)/i)).toBeInTheDocument());
     });
 
     test('shows error alert on API failure', async () => {
-        api.getInventoryAdjustments.mockRejectedValue(new Error('network error'));
+        api.getMedicineStockAdjustments.mockRejectedValue(new Error('network error'));
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() =>
@@ -165,9 +165,9 @@ describe('ViewInventoryAdjustments — search', () => {
 
 // ── Table content ─────────────────────────────────────────────────────────
 
-describe('ViewInventoryAdjustments — table content', () => {
+describe('ViewMedicineStockAdjustments — table content', () => {
     beforeEach(async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => screen.getByRole('table'));
@@ -234,9 +234,9 @@ describe('ViewInventoryAdjustments — table content', () => {
 
 // ── Filters ───────────────────────────────────────────────────────────────
 
-describe('ViewInventoryAdjustments — filters', () => {
+describe('ViewMedicineStockAdjustments — filters', () => {
     beforeEach(async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => screen.getByRole('table'));
@@ -293,17 +293,17 @@ describe('ViewInventoryAdjustments — filters', () => {
 
 // ── Stock Type column ───────────────────────────────────────────────────────
 
-describe('ViewInventoryAdjustments — stock type column', () => {
+describe('ViewMedicineStockAdjustments — stock type column', () => {
     const ADJ_ADMIN = {
         ...ADJ_ADD,
         id: 3,
         username: 'karan',
         note: 'Admin bucket restock',
-        inventoryType: 'ADMIN_MEDICINE_STOCK',
+        medicineStockType: 'ADMIN_MEDICINE_STOCK',
     };
 
     test('shows Admin Stock badge for ADMIN_MEDICINE_STOCK records', async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_ADMIN] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_ADMIN] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => screen.getByRole('table'));
@@ -313,8 +313,8 @@ describe('ViewInventoryAdjustments — stock type column', () => {
         expect(within(table).getByText('Admin Stock')).toBeInTheDocument();
     });
 
-    test('renders "Regular Stock" for a record with a null inventoryType (legacy fallback)', async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [{ ...ADJ_ADD, inventoryType: null }] });
+    test('renders "Regular Stock" for a record with a null medicineStockType (legacy fallback)', async () => {
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [{ ...ADJ_ADD, medicineStockType: null }] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => screen.getByRole('table'));
@@ -325,12 +325,12 @@ describe('ViewInventoryAdjustments — stock type column', () => {
 
 // ── Medicine spec filter ─────────────────────────────────────────────────────
 
-describe('ViewInventoryAdjustments — medicine spec filter', () => {
+describe('ViewMedicineStockAdjustments — medicine spec filter', () => {
     const vial10Adj = { ...ADJ_ADD,    id: 1, medicineId: 1, note: 'Vial 10 note' };
     const tabletAdj = { ...ADJ_REDUCE, id: 2, medicineId: 2, note: 'Tablet note' };
 
     beforeEach(async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [vial10Adj, tabletAdj] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [vial10Adj, tabletAdj] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => screen.getByRole('table'));
@@ -362,18 +362,18 @@ describe('ViewInventoryAdjustments — medicine spec filter', () => {
 
     test('medicine filter does not trigger a new API call', async () => {
         await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '1');
-        expect(api.getInventoryAdjustments).toHaveBeenCalledTimes(1);
+        expect(api.getMedicineStockAdjustments).toHaveBeenCalledTimes(1);
     });
 });
 
 // ── Notes search ─────────────────────────────────────────────────────────
 
-describe('ViewInventoryAdjustments — notes search', () => {
+describe('ViewMedicineStockAdjustments — notes search', () => {
     const restockAdj = { ...ADJ_ADD,    id: 1, note: 'Restocking Ward 3 supply' };
     const expiredAdj = { ...ADJ_REDUCE, id: 2, note: 'Returned expired stock from clinic' };
 
     beforeEach(async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [restockAdj, expiredAdj] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [restockAdj, expiredAdj] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => screen.getByRole('table'));
@@ -407,15 +407,15 @@ describe('ViewInventoryAdjustments — notes search', () => {
 
     test('note search does not trigger a new API call', async () => {
         await userEvent.type(screen.getByLabelText(/search notes/i), 'ward');
-        expect(api.getInventoryAdjustments).toHaveBeenCalledTimes(1);
+        expect(api.getMedicineStockAdjustments).toHaveBeenCalledTimes(1);
     });
 });
 
 // ── Delete flow ───────────────────────────────────────────────────────────
 
-describe('ViewInventoryAdjustments — delete flow', () => {
+describe('ViewMedicineStockAdjustments — delete flow', () => {
     beforeEach(async () => {
-        api.getInventoryAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
         renderPage();
         await userEvent.click(screen.getByRole('button', { name: /search/i }));
         await waitFor(() => screen.getByRole('table'));
@@ -436,11 +436,11 @@ describe('ViewInventoryAdjustments — delete flow', () => {
         expect(screen.queryByText(/are you sure\?/i)).not.toBeInTheDocument();
     });
 
-    test('Confirm Delete calls deleteInventoryAdjustment with correct id', async () => {
+    test('Confirm Delete calls deleteMedicineStockAdjustment with correct id', async () => {
         const [firstDelete] = screen.getAllByRole('button', { name: /^delete$/i });
         await userEvent.click(firstDelete);
         await userEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
-        await waitFor(() => expect(api.deleteInventoryAdjustment).toHaveBeenCalledWith(ADJ_ADD.id));
+        await waitFor(() => expect(api.deleteMedicineStockAdjustment).toHaveBeenCalledWith(ADJ_ADD.id));
     });
 
     test('deleted record is removed from the table', async () => {
@@ -452,7 +452,7 @@ describe('ViewInventoryAdjustments — delete flow', () => {
     });
 
     test('shows inline error when delete API call fails', async () => {
-        api.deleteInventoryAdjustment.mockRejectedValue({
+        api.deleteMedicineStockAdjustment.mockRejectedValue({
             response: { data: { message: 'Record not found' } },
         });
         const [firstDelete] = screen.getAllByRole('button', { name: /^delete$/i });

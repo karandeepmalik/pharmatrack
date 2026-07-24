@@ -8,11 +8,11 @@ import TransactionPreview from '../../components/TransactionPreview';
 
 export default function SubmitTransaction() {
   // ── Server data ──────────────────────────────────────────────────────
-  const [inventory, setInventory] = useState([]);
+  const [medicineStock, setMedicineStock] = useState([]);
   const [loading, setLoading]     = useState(true);
 
-  // ── Inventory type selector ──────────────────────────────────────────
-  const [selectedInventoryType, setSelectedInventoryType] = useState('REGULAR_MEDICINE_STOCK');
+  // ── MedicineStock type selector ──────────────────────────────────────────
+  const [selectedMedicineStockType, setSelectedMedicineStockType] = useState('REGULAR_MEDICINE_STOCK');
 
   // ── Cascading selects ────────────────────────────────────────────────
   const [selectedPharma, setSelectedPharma] = useState('');
@@ -40,11 +40,11 @@ export default function SubmitTransaction() {
 
   // ── Data fetch ───────────────────────────────────────────────────────
   useEffect(() => {
-    api.getAvailableInventory()
+    api.getAvailableMedicineStock()
       .then((r) => {
-        setInventory(r.data);
+        setMedicineStock(r.data);
         const shieldFx = r.data.find(
-          (i) => i.inventoryType === 'REGULAR_MEDICINE_STOCK' && i.pharmaName === 'Shield FX'
+          (i) => i.medicineStockType === 'REGULAR_MEDICINE_STOCK' && i.pharmaName === 'Shield FX'
         );
         if (shieldFx) setSelectedPharma(String(shieldFx.pharmaId));
       })
@@ -52,18 +52,18 @@ export default function SubmitTransaction() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Derived option lists (filtered by inventory type) ─────────────────
-  const filteredInventory = inventory.filter(
-    (i) => i.inventoryType === selectedInventoryType
+  // ── Derived option lists (filtered by medicineStock type) ─────────────────
+  const filteredMedicineStock = medicineStock.filter(
+    (i) => i.medicineStockType === selectedMedicineStockType
   );
 
   const pharmaOptions = [...new Map(
-    filteredInventory.map((i) => [i.pharmaId, { id: i.pharmaId, name: i.pharmaName }])
+    filteredMedicineStock.map((i) => [i.pharmaId, { id: i.pharmaId, name: i.pharmaName }])
   ).values()];
 
   const typeOptions = selectedPharma
     ? [...new Set(
-        filteredInventory
+        filteredMedicineStock
           .filter((i) => String(i.pharmaId) === selectedPharma)
           .map((i) => i.medicineType)
       )]
@@ -71,13 +71,13 @@ export default function SubmitTransaction() {
 
   const specOptions = selectedPharma && selectedType
     ? [...new Set(
-        filteredInventory
+        filteredMedicineStock
           .filter((i) => String(i.pharmaId) === selectedPharma && i.medicineType === selectedType)
           .map((i) => i.specification)
       )]
     : [];
 
-  const selectedItem = filteredInventory.find(
+  const selectedItem = filteredMedicineStock.find(
     (i) =>
       String(i.pharmaId) === selectedPharma &&
       i.medicineType === selectedType &&
@@ -99,8 +99,8 @@ export default function SubmitTransaction() {
     !screenshot.hasAnyError;
 
   // ── Handlers ─────────────────────────────────────────────────────────
-  const handleInventoryTypeChange = (e) => {
-    setSelectedInventoryType(e.target.value);
+  const handleMedicineStockTypeChange = (e) => {
+    setSelectedMedicineStockType(e.target.value);
     setSelectedPharma('');
     setSelectedType('');
     setSelectedSpec('');
@@ -138,19 +138,19 @@ export default function SubmitTransaction() {
         notes: notes.trim(),
         screenshotFiles: validScreenshots.map((s) => s.file),
         pricePerUnit: priceOverride !== '' ? parseInt(priceOverride, 10) : undefined,
-        inventoryType: selectedInventoryType,
+        medicineStockType: selectedMedicineStockType,
         submittedDate: dispatchDate,
       });
 
       setSuccessMessage('Medicine dispatch submitted successfully and is pending admin approval.');
-      setSelectedInventoryType('REGULAR_MEDICINE_STOCK');
+      setSelectedMedicineStockType('REGULAR_MEDICINE_STOCK');
       setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
       setQuantity(''); setNotes(''); setPriceOverride('');
       setDispatchDate(new Date().toISOString().slice(0, 10));
       screenshot.clearAll();
 
-      const r = await api.getAvailableInventory();
-      setInventory(r.data);
+      const r = await api.getAvailableMedicineStock();
+      setMedicineStock(r.data);
     } catch (err) {
       setErrorMessage(
         err.response?.data?.message || 'Failed to submit adjustment. Please try again.'
@@ -178,13 +178,13 @@ export default function SubmitTransaction() {
       )}
 
       <form onSubmit={handleSubmit} noValidate>
-        {/* Inventory Type */}
+        {/* MedicineStock Type */}
         <div className="form-group">
-          <label htmlFor="inventory-type-select">Stock Type</label>
+          <label htmlFor="medicine-stock-type-select">Stock Type</label>
           <select
-            id="inventory-type-select"
-            value={selectedInventoryType}
-            onChange={handleInventoryTypeChange}
+            id="medicine-stock-type-select"
+            value={selectedMedicineStockType}
+            onChange={handleMedicineStockTypeChange}
           >
             <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
             <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
@@ -223,7 +223,7 @@ export default function SubmitTransaction() {
               const newSpec = e.target.value;
               setSelectedSpec(newSpec);
               setQuantity('');
-              const newItem = inventory.find(
+              const newItem = medicineStock.find(
                 (i) => String(i.pharmaId) === selectedPharma &&
                        i.medicineType === selectedType &&
                        String(i.specification) === newSpec

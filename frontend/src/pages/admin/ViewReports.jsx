@@ -5,8 +5,8 @@ import SalesGraphReport from './SalesGraphReport';
 
 const REPORTS = [
     { value: '', label: '-- Select a Report --' },
-    { value: 'inventory-by-user', label: 'Current Medicine Stock Per User' },
-    { value: 'inventory-valuation', label: 'Medicine Stock Valuation' },
+    { value: 'medicine-stock-by-user', label: 'Current Medicine Stock Per User' },
+    { value: 'medicine-stock-valuation', label: 'Medicine Stock Valuation' },
     { value: 'today-sales', label: 'Sales Report' },
     { value: 'daily', label: 'Daily Report' },
     { value: 'sales-graph', label: 'Sales Trend Graph' },
@@ -32,8 +32,8 @@ export default function ViewReports() {
         setContent('');
         try {
             let res;
-            if (selected === 'inventory-by-user') res = await api.getReportInventoryByUser();
-            else if (selected === 'inventory-valuation') res = await api.getReportInventoryValuation(valuationDate || null);
+            if (selected === 'medicine-stock-by-user') res = await api.getReportMedicineStockByUser();
+            else if (selected === 'medicine-stock-valuation') res = await api.getReportMedicineStockValuation(valuationDate || null);
             else if (selected === 'today-sales') res = await api.getReportTodaySales(salesFrom, salesTo);
             else if (selected === 'daily') res = await api.getReportDaily(dailyDate || null);
             setContent(res.data.content);
@@ -116,7 +116,7 @@ export default function ViewReports() {
                             </p>
                         )}
 
-                        {selected === 'inventory-valuation' && (
+                        {selected === 'medicine-stock-valuation' && (
                             <div className="form-group">
                                 <label htmlFor="valuation-date-input">As of Date</label>
                                 <input
