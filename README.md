@@ -1,6 +1,6 @@
 # PharmaTrack
 
-Pharmaceutical inventory management system  React 18 frontend + Spring Boot 3.2 backend + PostgreSQL 15.
+Pharmaceutical medicine stock management system  React 18 frontend + Spring Boot 3.2 backend + PostgreSQL 15.
 
 ## Structure
 ```
