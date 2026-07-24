@@ -33,7 +33,6 @@ public class DataMigrationService {
         renameInventoryTypeValues();
         dropLegacyUniqueConstraint();
         createTransactionScreenshotsTable();
-        seedInventoryIfEmpty();
         widenQuantityColumnsToDecimal();
     }
 
@@ -207,106 +206,6 @@ public class DataMigrationService {
             log.info("DataMigration: transaction_screenshots table ensured");
         } catch (Exception e) {
             log.debug("DataMigration: transaction_screenshots table skipped — {}", e.getMessage());
-        }
-    }
-
-    /**
-     * Seeds the inventory table when it is completely empty (e.g. after a production reseed
-     * that cleared all data). Only inserts rows for users/medicines that already exist.
-     * Uses ON CONFLICT DO NOTHING so it is safe to re-run.
-     */
-    private void seedInventoryIfEmpty() {
-        try {
-            Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM inventory", Integer.class);
-            if (count != null && count > 0) return;
-            log.info("DataMigration: inventory table is empty — seeding initial stock");
-
-            String sql =
-                "INSERT INTO inventory (user_id, medicine_id, quantity, inventory_type, last_note, last_updated) " +
-                "SELECT u.id, m.id, ?, ?, 'Initial stock', NOW() " +
-                "FROM users u JOIN medicines m ON true " +
-                "WHERE u.username = ? AND m.name = ? " +
-                "ON CONFLICT (user_id, medicine_id, inventory_type) DO NOTHING";
-
-            // Current stock is derived by forward-reconstructing inventory_adjustments +
-            // transactions (see CurrentStockCalculator), not by trusting inventory.quantity
-            // directly — so every seeded row needs a matching genesis adjustment or it's
-            // invisible to that reconstruction (shows 0 available until an admin touches it).
-            String findIdsSql =
-                "SELECT u.id AS user_id, m.id AS medicine_id " +
-                "FROM users u JOIN medicines m ON true " +
-                "WHERE u.username = ? AND m.name = ?";
-            String adjSql =
-                "INSERT INTO inventory_adjustments " +
-                "(user_id, medicine_id, quantity, adjustment_type, note, internal_movement, " +
-                " in_transit, was_in_transit, transit_days, inventory_type, adjusted_at) " +
-                "VALUES (?, ?, ?, 'ADD', 'Initial stock', false, false, false, 2, ?, NOW())";
-
-            String REG   = "REGULAR_MEDICINE_STOCK";
-            String ADMIN = "ADMIN_MEDICINE_STOCK";
-
-            // ── Vial 10 ml — regular stock ───────────────────────────────
-            Object[][] vial10 = {
-                {12, REG,   "allwyn",  "Shield FX Vial 10 ml"},
-                { 2, REG,   "arnab",   "Shield FX Vial 10 ml"},
-                { 5, REG,   "atif",    "Shield FX Vial 10 ml"},
-                { 9, REG,   "farheen", "Shield FX Vial 10 ml"},
-                { 3, REG,   "karan",   "Shield FX Vial 10 ml"},
-                { 2, REG,   "riona",   "Shield FX Vial 10 ml"},
-            };
-            // ── Vial 5 ml — regular stock ────────────────────────────────
-            Object[][] vial5 = {
-                { 6, REG,   "allwyn",   "Shield FX Vial 5 ml"},
-                {10, REG,   "anubhuti", "Shield FX Vial 5 ml"},
-                { 2, REG,   "arnab",    "Shield FX Vial 5 ml"},
-                { 1, REG,   "atif",     "Shield FX Vial 5 ml"},
-                {11, REG,   "dhairya",  "Shield FX Vial 5 ml"},
-                {16, REG,   "farheen",  "Shield FX Vial 5 ml"},
-                {87, REG,   "karan",    "Shield FX Vial 5 ml"},
-                { 8, REG,   "riona",    "Shield FX Vial 5 ml"},
-                { 6, REG,   "swati",    "Shield FX Vial 5 ml"},
-            };
-            // ── Tablet 50 mg — regular stock ─────────────────────────────
-            Object[][] tab50 = {
-                {2, REG, "farheen", "Shield FX Tablet 50 mg (10 Tablets)"},
-                {2, REG, "karan",   "Shield FX Tablet 50 mg (10 Tablets)"},
-                {1, REG, "riona",   "Shield FX Tablet 50 mg (10 Tablets)"},
-            };
-            // ── Tablet 25 mg — regular stock ─────────────────────────────
-            Object[][] tab25 = {
-                {4, REG, "dhairya", "Shield FX Tablet 25 mg (10 Tablets)"},
-                {5, REG, "farheen", "Shield FX Tablet 25 mg (10 Tablets)"},
-            };
-            // ── Tablet 12 mg — regular stock ─────────────────────────────
-            Object[][] tab12reg = {
-                {10, REG, "dhairya", "Shield FX Tablet 12 mg (10 Tablets)"},
-                {25, REG, "karan",   "Shield FX Tablet 12 mg (10 Tablets)"},
-                { 5, REG, "riona",   "Shield FX Tablet 12 mg (10 Tablets)"},
-            };
-            // ── Tablet 12 mg — admin stock ────────────────────────────────
-            Object[][] tab12adm = {
-                {10, ADMIN, "arnab", "Shield FX Tablet 12 mg (10 Tablets)"},
-                {26, ADMIN, "karan", "Shield FX Tablet 12 mg (10 Tablets)"},
-            };
-
-            int inserted = 0;
-            for (Object[][] group : new Object[][][]{vial10, vial5, tab50, tab25, tab12reg, tab12adm}) {
-                for (Object[] row : group) {
-                    int qty = (Integer) row[0];
-                    String type = (String) row[1];
-                    String username = (String) row[2];
-                    String medicineName = (String) row[3];
-                    int n = jdbc.update(sql, qty, type, username, medicineName);
-                    if (n > 0) {
-                        inserted += n;
-                        Map<String, Object> ids = jdbc.queryForMap(findIdsSql, username, medicineName);
-                        jdbc.update(adjSql, ids.get("user_id"), ids.get("medicine_id"), qty, type);
-                    }
-                }
-            }
-            log.info("DataMigration: seeded {} inventory rows with matching genesis adjustments", inserted);
-        } catch (Exception e) {
-            log.warn("DataMigration: inventory seed failed — {}", e.getMessage());
         }
     }
 

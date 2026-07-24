@@ -3,12 +3,12 @@ package com.pharma.inventory.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pharma.inventory.config.AppConfig;
 import com.pharma.inventory.config.SecurityConfig;
-import com.pharma.inventory.entity.Medicine;
-import com.pharma.inventory.entity.PharmaCompany;
-import com.pharma.inventory.repository.MedicineRepository;
-import com.pharma.inventory.repository.PharmaCompanyRepository;
+import com.pharma.inventory.dto.MedicineResponse;
+import com.pharma.inventory.dto.PharmaCompanyResponse;
+import com.pharma.inventory.exception.ResourceNotFoundException;
 import com.pharma.inventory.repository.UserRepository;
 import com.pharma.inventory.security.JwtService;
+import com.pharma.inventory.service.MedicineService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -23,7 +23,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -37,31 +36,31 @@ class MedicineControllerTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
-    @MockBean MedicineRepository medicineRepo;
-    @MockBean PharmaCompanyRepository pharmaRepo;
+    @MockBean MedicineService medicineService;
     @MockBean JwtService jwtService;
     @MockBean UserRepository userRepository;
 
-    private PharmaCompany sampleCompany;
-    private Medicine sampleMedicine;
+    private PharmaCompanyResponse sampleCompany;
+    private MedicineResponse sampleMedicine;
 
     @BeforeEach
     void setUp() {
-        sampleCompany = new PharmaCompany();
+        sampleCompany = new PharmaCompanyResponse();
         sampleCompany.setId(1L);
         sampleCompany.setName("Shield FX");
         sampleCompany.setDescription("FIP treatment supplier");
-        sampleCompany.setActive(true);
 
-        sampleMedicine = new Medicine();
+        MedicineResponse.PharmaRef ref = new MedicineResponse.PharmaRef();
+        ref.setId(1L); ref.setName("Shield FX");
+
+        sampleMedicine = new MedicineResponse();
         sampleMedicine.setId(1L);
         sampleMedicine.setName("Shield FX Vial 10 ml");
-        sampleMedicine.setType(Medicine.MedicineType.VIAL);
+        sampleMedicine.setType("VIAL");
         sampleMedicine.setSpecification(10.0);
         sampleMedicine.setConcentrationMgPerMl(20.0);
         sampleMedicine.setPrice(4000);
-        sampleMedicine.setPharmaCompany(sampleCompany);
-        sampleMedicine.setActive(true);
+        sampleMedicine.setPharmaCompany(ref);
     }
 
     // ── GET /api/medicines ────────────────────────────────────────────
@@ -70,11 +69,12 @@ class MedicineControllerTest {
     class GetAll {
         @Test @WithMockUser(roles = "ADMIN")
         void returnsAllMedicines() throws Exception {
-            when(medicineRepo.findAll()).thenReturn(List.of(sampleMedicine));
+            when(medicineService.getAll()).thenReturn(List.of(sampleMedicine));
             mockMvc.perform(get("/api/medicines"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(1))
-                    .andExpect(jsonPath("$[0].name").value("Shield FX Vial 10 ml"));
+                    .andExpect(jsonPath("$[0].name").value("Shield FX Vial 10 ml"))
+                    .andExpect(jsonPath("$[0].pharmaCompany.name").value("Shield FX"));
         }
 
         @Test
@@ -90,7 +90,7 @@ class MedicineControllerTest {
     class GetCompanies {
         @Test @WithMockUser(roles = "ADMIN")
         void returnsAllCompanies() throws Exception {
-            when(pharmaRepo.findAll()).thenReturn(List.of(sampleCompany));
+            when(medicineService.getAllCompanies()).thenReturn(List.of(sampleCompany));
             mockMvc.perform(get("/api/medicines/companies"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(1))
@@ -105,7 +105,7 @@ class MedicineControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanCreatePharmaCompany() throws Exception {
-            when(pharmaRepo.save(any(PharmaCompany.class))).thenReturn(sampleCompany);
+            when(medicineService.createCompany(any())).thenReturn(sampleCompany);
 
             mockMvc.perform(post("/api/medicines/companies").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
@@ -122,6 +122,7 @@ class MedicineControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of("description", "some desc"))))
                     .andExpect(status().isBadRequest());
+            verifyNoInteractions(medicineService);
         }
 
         @Test @WithMockUser(roles = "ADMIN")
@@ -130,6 +131,7 @@ class MedicineControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(Map.of("name", "   "))))
                     .andExpect(status().isBadRequest());
+            verifyNoInteractions(medicineService);
         }
 
         @Test @WithMockUser(roles = "USER")
@@ -167,8 +169,7 @@ class MedicineControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanCreateMedicine() throws Exception {
-            when(pharmaRepo.findById(1L)).thenReturn(Optional.of(sampleCompany));
-            when(medicineRepo.save(any(Medicine.class))).thenReturn(sampleMedicine);
+            when(medicineService.createMedicine(any())).thenReturn(sampleMedicine);
 
             mockMvc.perform(post("/api/medicines").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
@@ -179,13 +180,14 @@ class MedicineControllerTest {
         }
 
         @Test @WithMockUser(roles = "ADMIN")
-        void returnsErrorWhenPharmaCompanyNotFound() throws Exception {
-            when(pharmaRepo.findById(1L)).thenReturn(Optional.empty());
+        void returnsNotFoundWhenPharmaCompanyMissing() throws Exception {
+            when(medicineService.createMedicine(any()))
+                    .thenThrow(new ResourceNotFoundException("PharmaCompany", 1L));
 
             mockMvc.perform(post("/api/medicines").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validMedicineRequest())))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(status().isNotFound());
         }
 
         @Test @WithMockUser(roles = "ADMIN")
@@ -200,16 +202,30 @@ class MedicineControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isBadRequest());
+            verifyNoInteractions(medicineService);
         }
 
         @Test @WithMockUser(roles = "ADMIN")
         void rejectsMissingRequiredFields() throws Exception {
-            when(pharmaRepo.findById(1L)).thenReturn(Optional.of(sampleCompany));
             Map<String,Object> req = Map.of("pharmaCompanyId", 1, "name", "Some Med");
             mockMvc.perform(post("/api/medicines").with(csrf())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isBadRequest());
+            verifyNoInteractions(medicineService);
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsInvalidTypeValue() throws Exception {
+            Map<String,Object> req = Map.of(
+                    "pharmaCompanyId", 1, "name", "Some Med",
+                    "type", "NOT_A_REAL_TYPE", "specification", 10.0, "price", 4000
+            );
+            mockMvc.perform(post("/api/medicines").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+            verifyNoInteractions(medicineService);
         }
 
         @Test @WithMockUser(roles = "USER")
