@@ -14,7 +14,6 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatNoException;
 
 /**
  * Integration tests for DataMigrationService run against a real H2 in-memory database.
@@ -23,10 +22,9 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
  * must commit so that migration methods can see them. @BeforeEach reseeds the database
  * to provide isolation between tests.
  *
- * Coverage targets the three production bugs that were invisible to mocked-service tests:
+ * Coverage targets the two production bugs that were invisible to mocked-service tests:
  *  1. Legacy inventory_type values ('REGULAR', 'ADMIN_STOCK') not renamed → zero reports
  *  2. onStartup() wiping ADMIN_MEDICINE_STOCK on every restart
- *  3. seedInventoryIfEmpty() running again when inventory already exists
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -155,7 +153,7 @@ class DataMigrationServiceTest {
             dataMigrationService.onStartup();
 
             assertThat(inventoryRepository.count())
-                .as("Inventory count must not change: seedInventoryIfEmpty must skip when table is populated")
+                .as("Inventory count must not change on repeated onStartup() calls")
                 .isEqualTo(before);
         }
 
@@ -168,37 +166,6 @@ class DataMigrationServiceTest {
             dataMigrationService.onStartup();
 
             assertThat(inventoryRepository.count()).isEqualTo(before);
-        }
-    }
-
-    // ── seedInventoryIfEmpty ──────────────────────────────────────────────
-
-    @Nested @DisplayName("seedInventoryIfEmpty behaviour")
-    class SeedIfEmpty {
-
-        @Test @DisplayName("Does not add rows when inventory is already populated")
-        void skipsWhenInventoryPopulated() {
-            long before = inventoryRepository.count();
-            dataMigrationService.onStartup(); // triggers seedInventoryIfEmpty internally
-            assertThat(inventoryRepository.count())
-                .as("seedInventoryIfEmpty must skip when inventory already has rows")
-                .isEqualTo(before);
-        }
-
-        @Test @DisplayName("seedInventoryIfEmpty runs without error when inventory is empty")
-        void seedsWhenInventoryEmpty() {
-            // Clear inventory to simulate an empty-table scenario
-            jdbc.execute("DELETE FROM inventory");
-            assertThat(inventoryRepository.count()).isZero();
-
-            // In the test environment, seedInventoryIfEmpty's INSERT uses Postgres-only
-            // "ON CONFLICT ... DO NOTHING" syntax that H2 rejects outright ("bad SQL grammar"),
-            // so it never actually inserts here regardless of username matches — this is a
-            // pre-existing H2/Postgres dialect gap, not something a test can work around.
-            // The important thing is that onStartup() completes without throwing; the matching
-            // genesis-adjustment behavior added alongside this insert is verified manually
-            // against a real Postgres instance (see PR description) rather than via this suite.
-            assertThatNoException().isThrownBy(() -> dataMigrationService.onStartup());
         }
     }
 

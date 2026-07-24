@@ -3,6 +3,7 @@ package com.pharma.inventory.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -29,6 +30,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
  *   IllegalArgumentException          → 400 Bad Request
  *   MethodArgumentNotValidException   → 400 Bad Request  (Bean Validation)
  *   MissingServletRequestParameter    → 400 Bad Request
+ *   HttpMessageNotReadableException   → 400 Bad Request  (malformed JSON / invalid enum value)
  *   MaxUploadSizeExceededException    → 413 Payload Too Large
  *   Exception (catch-all)             → 500 Internal Server Error
  */
@@ -83,6 +85,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST,
             "Required parameter '" + ex.getParameterName() + "' is missing",
             req.getRequestURI());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+            HttpMessageNotReadableException ex, HttpServletRequest req) {
+        return build(HttpStatus.BAD_REQUEST, "Malformed or invalid request body", req.getRequestURI());
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)
