@@ -226,6 +226,26 @@ class TransactionServiceTest {
                     .hasMessageContaining("5").hasMessageContaining("10");
         }
 
+        @Test @DisplayName("throws IllegalArgumentException for a negative quantity instead of crediting the user's own stock")
+        void submit_negativeQuantity_throwsIllegalArgument() {
+            TransactionRequest req = buildReq("Trying to game the system here");
+            req.setQuantity(BigDecimal.valueOf(-100000));
+
+            assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("at least 0.1");
+        }
+
+        @Test @DisplayName("throws IllegalArgumentException for a zero quantity")
+        void submit_zeroQuantity_throwsIllegalArgument() {
+            TransactionRequest req = buildReq("Zero quantity attempt");
+            req.setQuantity(BigDecimal.ZERO);
+
+            assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("at least 0.1");
+        }
+
         @Test @DisplayName("throws IllegalArgumentException when notes are blank")
         void submit_blankNotes_throwsIllegalArgument() {
             TransactionRequest req = buildReq("  ");

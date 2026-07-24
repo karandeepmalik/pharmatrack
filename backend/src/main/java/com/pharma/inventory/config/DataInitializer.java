@@ -22,7 +22,10 @@ public class DataInitializer {
     private final InventoryAdjustmentRepository adjustments;
     private final PasswordEncoder encoder;
 
-    @Bean @Profile("!test")
+    // Never runs against prod: reseed() wipes and replaces ALL data (users, medicines,
+    // transactions, everything), gated only by a data-presence check. Requires the
+    // Cloud Run service to have SPRING_PROFILES_ACTIVE=prod set — see ci-cd.yml.
+    @Bean @Profile("!test & !prod")
     public CommandLineRunner seed() {
         return args -> {
             // Reseed if medicines are missing OR if the admin account is gone

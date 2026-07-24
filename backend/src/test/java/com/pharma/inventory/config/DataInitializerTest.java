@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -87,5 +88,13 @@ class DataInitializerTest {
                 "SELECT COUNT(*) FROM inventory_adjustments WHERE note IN ('Initial stock', 'Initial allocation') " +
                 "AND (adjustment_type != 'ADD' OR in_transit = true)", Long.class);
         assertThat(count).isZero();
+    }
+
+    @Test
+    @DisplayName("seed() CommandLineRunner is gated to never run under the prod profile — reseed() wipes all data")
+    void seedBeanIsGatedAgainstProdProfile() throws NoSuchMethodException {
+        Profile profile = DataInitializer.class.getMethod("seed").getAnnotation(Profile.class);
+        assertThat(profile).isNotNull();
+        assertThat(profile.value()).containsExactly("!test & !prod");
     }
 }
