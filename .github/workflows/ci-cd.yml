@@ -211,18 +211,16 @@ jobs:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
           # DB now runs on a self-hosted Postgres VM (pharmatrack-db-vm, us-central1-a), not Cloud SQL —
           # reached over plain TCP through the pharmatrack-connector VPC connector. See CLAUDE.md.
-          env_vars: |-
-            DB_URL=jdbc:postgresql://10.128.0.2:5432/pharma_inventory
-            DB_USERNAME=pharma
-            DDL_AUTO=update
-            LOG_LEVEL=INFO
-            JWT_EXPIRATION_MS=86400000
-            COOKIE_SECURE=true
-            CORS_ALLOWED_ORIGINS=https://pharmatrack-frontend-558147403401.asia-south1.run.app,https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app
+          # NOTE: env vars are set via `flags`/--set-env-vars with a custom `;;` delimiter, not the
+          # `env_vars` input — that input splits on commas even inside a single newline-separated
+          # entry, which silently corrupted CORS_ALLOWED_ORIGINS's comma-joined origin list once already.
           secrets: |-
             DB_PASSWORD=pharmatrack-db-password:latest
             JWT_SECRET=pharmatrack-jwt-secret:latest
-          flags: --vpc-connector=pharmatrack-connector --vpc-egress=private-ranges-only
+          flags: >-
+            --vpc-connector=pharmatrack-connector
+            --vpc-egress=private-ranges-only
+            --set-env-vars=^;;^DB_URL=jdbc:postgresql://10.128.0.2:5432/pharma_inventory;;DB_USERNAME=pharma;;DDL_AUTO=update;;LOG_LEVEL=INFO;;JWT_EXPIRATION_MS=86400000;;COOKIE_SECURE=true;;CORS_ALLOWED_ORIGINS=https://pharmatrack-frontend-558147403401.asia-south1.run.app,https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app
 
       - name: Deploy frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v3
