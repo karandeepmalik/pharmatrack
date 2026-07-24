@@ -12,14 +12,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Every new UI page needs back navigation.
 - Always verify DB schema compatibility when changing services.
 - Token-minimize all LLM interactions.
+- **Before merging any branch, always run the full suite — backend, frontend, and e2e — and only merge if all of it passes.** If everything's green, push, open/update the PR, wait for GitHub Actions CI to go green too, then squash-merge and delete the branch automatically — don't stop to ask for merge confirmation each time. Since merging to `main` deploys to Cloud Run, treat the task as unfinished until you've also confirmed the deployed service is actually healthy (`/actuator/health`) post-merge — a green test suite does not guarantee a working deploy (e.g. the 2026-07-24 CI/CD incident: passing tests + passing CI checks still shipped a broken `CORS_ALLOWED_ORIGINS`, only caught by inspecting the live service afterward).
 
 ## Testing
 
 ```bash
-make test-backend                                          # mvn verify, H2 in-memory, no Docker
+make test-backend                                          # mvn verify, H2 in-memory, no Docker (this already includes Spring Boot integration-style @SpringBootTest tests — there is no separate integration-test suite in this repo)
 make test-frontend                                         # Jest unit tests
 cd backend && ./mvnw test -Dtest=ClassName -q             # single backend test
-cd e2e && node auth.test.js                               # E2E (requires running stack)
+make up                                                     # start the full stack for e2e (docker compose)
+cd e2e && node auth.test.js                                # E2E — requires the running stack from `make up`
+make down                                                   # tear the stack back down when done
 ```
 
 ## Non-Obvious Architecture
