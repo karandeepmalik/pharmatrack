@@ -90,6 +90,7 @@ class AuthControllerTest {
                     .thenThrow(new BadCredentialsException("bad credentials"));
 
             mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.0.1")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json("john.doe", "wrong")))
                     .andExpect(status().isUnauthorized());
@@ -102,6 +103,7 @@ class AuthControllerTest {
                     .thenThrow(new DisabledException("disabled"));
 
             mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.0.2")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json("john.doe", "secret")))
                     .andExpect(status().isUnauthorized());
@@ -154,6 +156,7 @@ class AuthControllerTest {
                     .thenThrow(new BadCredentialsException("bad"));
 
             mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.0.3")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json("x", "y")))
                     .andExpect(status().isUnauthorized());
@@ -161,9 +164,11 @@ class AuthControllerTest {
     }
 
     // ── Login rate limiting ────────────────────────────────────────────────
-    // Each test uses its own dedicated username: LoginRateLimiter is a real singleton bean
-    // shared across the cached Spring context for this test class, so reusing a username
-    // from another test method here would leak lockout state between tests.
+    // Each test uses its own dedicated username AND its own dedicated fake source IP
+    // (via X-Forwarded-For): LoginRateLimiter is a real singleton bean shared across the
+    // cached Spring context for this test class, so reusing either would leak lockout
+    // state between tests — including from the plain Login tests above, which all share
+    // MockMvc's default remote address unless given their own X-Forwarded-For too.
 
     @Nested
     @DisplayName("Login rate limiting")
@@ -178,6 +183,7 @@ class AuthControllerTest {
 
             for (int i = 0; i < 5; i++) {
                 mockMvc.perform(post("/api/auth/login")
+                                .header("X-Forwarded-For", "10.0.1.1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json(username, "wrong")))
                         .andExpect(status().isUnauthorized());
@@ -193,12 +199,14 @@ class AuthControllerTest {
 
             for (int i = 0; i < 5; i++) {
                 mockMvc.perform(post("/api/auth/login")
+                                .header("X-Forwarded-For", "10.0.1.2")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json(username, "wrong")))
                         .andExpect(status().isUnauthorized());
             }
 
             mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.1.2")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json(username, "wrong")))
                     .andExpect(status().isTooManyRequests());
@@ -217,6 +225,7 @@ class AuthControllerTest {
                     .thenThrow(new BadCredentialsException("bad"));
             for (int i = 0; i < 6; i++) {
                 mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", "10.0.1.3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(blockedUser, "wrong")));
             }
@@ -229,6 +238,7 @@ class AuthControllerTest {
             when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
 
             mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.1.3")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json(otherUser, "secret")))
                     .andExpect(status().isOk());
@@ -243,6 +253,7 @@ class AuthControllerTest {
                     .thenThrow(new BadCredentialsException("bad"));
             for (int i = 0; i < 4; i++) {
                 mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", "10.0.1.4")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(username, "wrong")));
             }
@@ -255,6 +266,7 @@ class AuthControllerTest {
             when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
 
             mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.1.4")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json(username, "secret")))
                     .andExpect(status().isOk());
@@ -264,10 +276,76 @@ class AuthControllerTest {
                     .thenThrow(new BadCredentialsException("bad"));
             for (int i = 0; i < 4; i++) {
                 mockMvc.perform(post("/api/auth/login")
+                                .header("X-Forwarded-For", "10.0.1.4")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json(username, "wrong")))
                         .andExpect(status().isUnauthorized());
             }
+        }
+
+        @Test
+        @DisplayName("21st failure from the same IP is blocked even across many different usernames")
+        void perIpLockoutCatchesUsernameRotation() throws Exception {
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+
+            for (int i = 0; i < 20; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                                .header("X-Forwarded-For", "10.0.1.5")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(json("ratelimit.rotating" + i, "wrong")))
+                        .andExpect(status().isUnauthorized());
+            }
+
+            // A 21st attempt, yet another brand-new username never tried before from this IP —
+            // still blocked, because the per-username counter for it is fresh (0 failures).
+            mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.1.5")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json("ratelimit.rotating.new", "wrong")))
+                    .andExpect(status().isTooManyRequests());
+        }
+
+        @Test
+        @DisplayName("only the first entry of a multi-hop X-Forwarded-For is used as the client IP")
+        void multiValueForwardedForUsesFirstEntry() throws Exception {
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+
+            for (int i = 0; i < 20; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", "10.0.1.8, 35.190.0.1, 10.0.0.99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json("ratelimit.xff" + i, "wrong")));
+            }
+
+            // Same real client (10.0.1.8) behind a different chain of intermediate proxies —
+            // still recognized as the same source and blocked.
+            mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.1.8, 35.190.0.2")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json("ratelimit.xff.new", "wrong")))
+                    .andExpect(status().isTooManyRequests());
+        }
+
+        @Test
+        @DisplayName("per-IP lockout does not affect a different source IP")
+        void perIpLockoutScopedToOneIp() throws Exception {
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+
+            for (int i = 0; i < 20; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", "10.0.1.6")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json("ratelimit.floodedip" + i, "wrong")));
+            }
+
+            mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "10.0.1.7")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json("ratelimit.unaffected", "wrong")))
+                    .andExpect(status().isUnauthorized());
         }
     }
 

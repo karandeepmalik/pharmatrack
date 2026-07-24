@@ -9,6 +9,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.List;
@@ -22,6 +25,34 @@ class ScreenshotProcessorTest {
 
     @BeforeEach
     void setUp() { processor = new ScreenshotProcessor(); }
+
+    // ── real/fake byte fixtures ─────────────────────────────────────────
+    // encodeToBase64 only checks magic bytes (no full decode); compressAndEncode
+    // (via encodeAll) fully decodes non-GIF/WebP formats, so those need genuinely
+    // valid image bytes, not just a matching signature prefix.
+
+    private static byte[] realPngBytes() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB), "png", out);
+        return out.toByteArray();
+    }
+
+    private static byte[] realJpegBytes() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB), "jpg", out);
+        return out.toByteArray();
+    }
+
+    /** Correct magic-byte prefix for the given MIME type, but not a fully valid/decodable file. */
+    private static byte[] magicBytesOnly(String mimeType) {
+        return switch (mimeType) {
+            case "image/png" -> new byte[]{(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'x', 'x'};
+            case "image/jpeg", "image/jpg" -> new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 'x', 'x'};
+            case "image/gif" -> "GIF89a-fake-gif-data".getBytes();
+            case "image/webp" -> "RIFF????WEBP-fake-data".getBytes();
+            default -> throw new IllegalArgumentException("no fixture for " + mimeType);
+        };
+    }
 
     // ── hasScreenshot ──────────────────────────────────────────────────
 
@@ -46,15 +77,15 @@ class ScreenshotProcessorTest {
 
     @ParameterizedTest(name = "accepts {0}")
     @ValueSource(strings = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"})
-    @DisplayName("accepts all allowed MIME types")
+    @DisplayName("accepts all allowed MIME types when magic bytes match")
     void encodeToBase64_allowedMimeType_succeeds(String mimeType) {
-        MultipartFile file = new MockMultipartFile("f", "f.png", mimeType, "bytes".getBytes());
+        MultipartFile file = new MockMultipartFile("f", "f.png", mimeType, magicBytesOnly(mimeType));
         assertThatNoException().isThrownBy(() -> processor.encodeToBase64(file));
     }
 
     @Test @DisplayName("returns correct Base64 encoding of file bytes")
     void encodeToBase64_returnsCorrectBase64() throws IOException {
-        byte[] content = "png-content".getBytes();
+        byte[] content = realPngBytes();
         MultipartFile file = new MockMultipartFile("f", "f.png", "image/png", content);
 
         String result = processor.encodeToBase64(file);
@@ -80,6 +111,14 @@ class ScreenshotProcessorTest {
                 .isInstanceOf(InvalidScreenshotException.class);
     }
 
+    @Test @DisplayName("rejects a spoofed Content-Type whose bytes don't match any real image format")
+    void encodeToBase64_spoofedContentType_throwsInvalidScreenshot() {
+        MultipartFile file = new MockMultipartFile("f", "f.png", "image/png", "not-actually-an-image".getBytes());
+        assertThatThrownBy(() -> processor.encodeToBase64(file))
+                .isInstanceOf(InvalidScreenshotException.class)
+                .hasMessageContaining("does not match");
+    }
+
     // ── encodeToBase64 — size limit ─────────────────────────────────────
 
     @Test @DisplayName("rejects file exceeding 5 MB")
@@ -94,6 +133,8 @@ class ScreenshotProcessorTest {
     @Test @DisplayName("accepts file exactly at 5 MB limit")
     void encodeToBase64_exactlyAtLimit_succeeds() {
         byte[] exactly5mb = new byte[5 * 1024 * 1024];
+        byte[] pngMagic = magicBytesOnly("image/png");
+        System.arraycopy(pngMagic, 0, exactly5mb, 0, pngMagic.length);
         MultipartFile file = new MockMultipartFile("f", "ok.png", "image/png", exactly5mb);
         assertThatNoException().isThrownBy(() -> processor.encodeToBase64(file));
     }
@@ -117,30 +158,38 @@ class ScreenshotProcessorTest {
         assertThat(result).isEmpty();
     }
 
-    @Test @DisplayName("encodeAll encodes single valid file")
+    @Test @DisplayName("encodeAll compresses a genuinely valid PNG to JPEG")
     void encodeAll_oneFile_encodedCorrectly() throws IOException {
-        byte[] content = "png-data".getBytes();
-        MultipartFile file = new MockMultipartFile("f", "a.png", "image/png", content);
+        MultipartFile file = new MockMultipartFile("f", "a.png", "image/png", realPngBytes());
+
+        List<String[]> result = processor.encodeAll(List.of(file));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0)[1]).isEqualTo("image/jpeg");
+    }
+
+    @Test @DisplayName("encodeAll compresses multiple valid files in order")
+    void encodeAll_twoFiles_bothEncodedInOrder() throws IOException {
+        MultipartFile f1 = new MockMultipartFile("f1", "a.png", "image/png", realPngBytes());
+        MultipartFile f2 = new MockMultipartFile("f2", "b.jpg", "image/jpeg", realJpegBytes());
+
+        List<String[]> result = processor.encodeAll(List.of(f1, f2));
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0)[1]).isEqualTo("image/jpeg");
+        assertThat(result.get(1)[1]).isEqualTo("image/jpeg");
+    }
+
+    @Test @DisplayName("encodeAll stores GIF as-is without decoding, preserving its MIME type")
+    void encodeAll_gif_storedAsIs() throws IOException {
+        byte[] content = magicBytesOnly("image/gif");
+        MultipartFile file = new MockMultipartFile("f", "a.gif", "image/gif", content);
 
         List<String[]> result = processor.encodeAll(List.of(file));
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0)[0]).isEqualTo(Base64.getEncoder().encodeToString(content));
-        assertThat(result.get(0)[1]).isEqualTo("image/png");
-    }
-
-    @Test @DisplayName("encodeAll encodes multiple valid files in order")
-    void encodeAll_twoFiles_bothEncodedInOrder() throws IOException {
-        byte[] content1 = "png1".getBytes();
-        byte[] content2 = "jpg2".getBytes();
-        MultipartFile f1 = new MockMultipartFile("f1", "a.png", "image/png", content1);
-        MultipartFile f2 = new MockMultipartFile("f2", "b.jpg", "image/jpeg", content2);
-
-        List<String[]> result = processor.encodeAll(List.of(f1, f2));
-
-        assertThat(result).hasSize(2);
-        assertThat(result.get(0)[1]).isEqualTo("image/png");
-        assertThat(result.get(1)[1]).isEqualTo("image/jpeg");
+        assertThat(result.get(0)[1]).isEqualTo("image/gif");
     }
 
     @Test @DisplayName("encodeAll throws InvalidScreenshotException for invalid MIME in list")
@@ -148,5 +197,31 @@ class ScreenshotProcessorTest {
         MultipartFile bad = new MockMultipartFile("f", "bad.pdf", "application/pdf", "data".getBytes());
         assertThatThrownBy(() -> processor.encodeAll(List.of(bad)))
                 .isInstanceOf(InvalidScreenshotException.class);
+    }
+
+    @Test @DisplayName("encodeAll throws for a spoofed Content-Type whose bytes aren't a real image")
+    void encodeAll_spoofedContentType_throwsInvalidScreenshot() {
+        MultipartFile spoofed = new MockMultipartFile("f", "a.png", "image/png", "totally-not-a-png".getBytes());
+        assertThatThrownBy(() -> processor.encodeAll(List.of(spoofed)))
+                .isInstanceOf(InvalidScreenshotException.class)
+                .hasMessageContaining("does not match");
+    }
+
+    @Test @DisplayName("encodeAll throws when magic bytes match but the file isn't actually decodable")
+    void encodeAll_validSignatureButUndecodable_throwsInvalidScreenshot() {
+        MultipartFile file = new MockMultipartFile("f", "a.png", "image/png", magicBytesOnly("image/png"));
+        assertThatThrownBy(() -> processor.encodeAll(List.of(file)))
+                .isInstanceOf(InvalidScreenshotException.class);
+    }
+
+    // ── compressAndEncode — decompression-bomb guard ────────────────────
+
+    @Test @DisplayName("compressAndEncode's dimension guard does not false-positive on a normal small image")
+    void compressAndEncode_normalDimensions_notRejectedByGuard() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", out);
+        byte[] tinyValidPng = out.toByteArray();
+        String[] result = processor.compressAndEncode(tinyValidPng, "image/png");
+        assertThat(result[1]).isEqualTo("image/jpeg");
     }
 }

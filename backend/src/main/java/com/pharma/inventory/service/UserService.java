@@ -19,27 +19,31 @@ public class UserService {
     private final InventoryAdjustmentRepository adjustmentRepository;
     private final PasswordEncoder passwordEncoder;
     @Transactional
-    public User register(RegisterRequest req){
+    public UserResponse register(RegisterRequest req){
         if(userRepository.existsByUsername(req.getUsername())) throw new IllegalArgumentException("Username already taken");
         if(userRepository.existsByEmail(req.getEmail())) throw new IllegalArgumentException("Email already registered");
-        return userRepository.save(User.builder()
+        User saved = userRepository.save(User.builder()
             .username(req.getUsername()).email(req.getEmail()).fullName(req.getFullName())
             .password(passwordEncoder.encode(req.getPassword()))
             .role("ADMIN".equalsIgnoreCase(req.getRole())?User.Role.ADMIN:User.Role.USER)
             .active(true).build());
+        return toResponse(saved);
     }
     @Transactional(readOnly=true)
-    public User getByUsername(String username){ return userRepository.findByUsername(username).orElseThrow(()->new ResourceNotFoundException("User",username)); }
+    public UserResponse getByUsername(String username){ return toResponse(findEntityByUsername(username)); }
     @Transactional(readOnly=true)
-    public List<User> getAll(){ return userRepository.findAll(); }
+    public List<UserResponse> getAll(){
+        return userRepository.findAll().stream().map(UserService::toResponse).toList();
+    }
     @Transactional
-    public User toggleActive(Long id){
+    public UserResponse toggleActive(Long id){
         User u=userRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("User",id));
-        u.setActive(!u.isActive()); return userRepository.save(u);
+        u.setActive(!u.isActive());
+        return toResponse(userRepository.save(u));
     }
     @Transactional
     public void changePassword(String username,String oldPw,String newPw){
-        User u=getByUsername(username);
+        User u=findEntityByUsername(username);
         if(!passwordEncoder.matches(oldPw,u.getPassword())) throw new IllegalArgumentException("Current password is incorrect");
         u.setPassword(passwordEncoder.encode(newPw)); userRepository.save(u);
     }
@@ -58,5 +62,16 @@ public class UserService {
         User u=userRepository.findById(userId).orElseThrow(()->new ResourceNotFoundException("User",userId));
         if(newPassword==null||newPassword.length()<8) throw new IllegalArgumentException("Password must be at least 8 characters");
         u.setPassword(passwordEncoder.encode(newPassword)); userRepository.save(u);
+    }
+
+    private User findEntityByUsername(String username){
+        return userRepository.findByUsername(username).orElseThrow(()->new ResourceNotFoundException("User",username));
+    }
+
+    private static UserResponse toResponse(User u){
+        UserResponse r = new UserResponse();
+        r.setId(u.getId()); r.setUsername(u.getUsername()); r.setFullName(u.getFullName());
+        r.setEmail(u.getEmail()); r.setRole(u.getRole().name()); r.setActive(u.isActive());
+        return r;
     }
 }

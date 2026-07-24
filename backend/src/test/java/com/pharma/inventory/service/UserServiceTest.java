@@ -1,5 +1,6 @@
 package com.pharma.inventory.service;
 
+import com.pharma.inventory.dto.UserResponse;
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.exception.ResourceNotFoundException;
 import com.pharma.inventory.repository.InventoryAdjustmentRepository;
@@ -95,7 +96,7 @@ class UserServiceTest {
             when(userRepository.findById(2L)).thenReturn(Optional.of(user));
             when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            User result = userService.toggleActive(2L);
+            UserResponse result = userService.toggleActive(2L);
 
             assertThat(result.isActive()).isFalse();
         }

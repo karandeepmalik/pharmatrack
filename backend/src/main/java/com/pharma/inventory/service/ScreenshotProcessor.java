@@ -6,8 +6,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -16,6 +18,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -34,6 +37,7 @@ public class ScreenshotProcessor {
 
     private static final long MAX_BYTES = 5L * 1024 * 1024; // 5 MB
     private static final int  MAX_DIMENSION = 1200;          // px on longest side
+    private static final int  MAX_DECODE_DIMENSION = 8000;   // reject before allocating a buffer this large
     private static final float JPEG_QUALITY = 0.80f;
 
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
@@ -52,6 +56,7 @@ public class ScreenshotProcessor {
     public String encodeToBase64(MultipartFile file) throws IOException {
         validateContentType(file);
         validateSize(file);
+        validateRealFormat(file.getBytes());
         return Base64.getEncoder().encodeToString(file.getBytes());
     }
 
@@ -73,7 +78,11 @@ public class ScreenshotProcessor {
             if (hasScreenshot(file)) {
                 validateContentType(file);
                 validateSize(file);
-                result.add(compressAndEncode(file.getBytes(), file.getContentType()));
+                byte[] bytes = file.getBytes();
+                // The real MIME type is derived from the file's own magic bytes, never trusted
+                // from the client-supplied Content-Type header — see validateRealFormat().
+                String realMimeType = validateRealFormat(bytes);
+                result.add(compressAndEncode(bytes, realMimeType));
             }
         }
         return result;
@@ -81,24 +90,57 @@ public class ScreenshotProcessor {
 
     /**
      * Compresses raw image bytes and returns {@code [base64Data, mimeType]}.
-     * Falls back to original bytes if the image cannot be decoded.
+     * {@code realMimeType} must already be confirmed (via {@link #validateRealFormat}) to match
+     * the file's actual magic bytes — this method no longer falls back to storing bytes whose
+     * format couldn't be confirmed.
      */
-    public String[] compressAndEncode(byte[] rawBytes, String originalMimeType) {
-        // Preserve GIFs as-is (may be animated)
-        if ("image/gif".equalsIgnoreCase(originalMimeType)) {
-            return new String[]{Base64.getEncoder().encodeToString(rawBytes), originalMimeType};
+    public String[] compressAndEncode(byte[] rawBytes, String realMimeType) {
+        // Preserve GIFs as-is (may be animated) — already confirmed via magic bytes by the caller
+        if ("image/gif".equalsIgnoreCase(realMimeType)) {
+            return new String[]{Base64.getEncoder().encodeToString(rawBytes), realMimeType};
+        }
+        // WebP isn't decodable by standard Java ImageIO, but its magic bytes are already
+        // confirmed genuine — store as-is rather than attempting (and failing) to decode.
+        if ("image/webp".equalsIgnoreCase(realMimeType)) {
+            return new String[]{Base64.getEncoder().encodeToString(rawBytes), realMimeType};
         }
         try {
+            rejectIfDimensionsExceedLimit(rawBytes);
             BufferedImage img = ImageIO.read(new ByteArrayInputStream(rawBytes));
             if (img == null) {
-                // Format not decodable by standard Java ImageIO (e.g. WebP)
-                return new String[]{Base64.getEncoder().encodeToString(rawBytes), originalMimeType};
+                throw new InvalidScreenshotException("Payment screenshot could not be decoded as a valid image.");
             }
             img = resizeIfNeeded(img);
             byte[] compressed = encodeAsJpeg(img);
             return new String[]{Base64.getEncoder().encodeToString(compressed), "image/jpeg"};
+        } catch (InvalidScreenshotException e) {
+            throw e;
         } catch (Exception e) {
-            return new String[]{Base64.getEncoder().encodeToString(rawBytes), originalMimeType};
+            throw new InvalidScreenshotException("Payment screenshot could not be processed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Reads only the image header (not the full pixel data) to reject grossly oversized
+     * declared dimensions before any full-size BufferedImage is allocated — guards against a
+     * small file declaring huge width/height to exhaust server memory on decode.
+     */
+    private void rejectIfDimensionsExceedLimit(byte[] rawBytes) throws IOException {
+        try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(rawBytes))) {
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
+            if (!readers.hasNext()) return; // let the normal decode path handle/reject this
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(iis, true, true);
+                int w = reader.getWidth(0);
+                int h = reader.getHeight(0);
+                if (w > MAX_DECODE_DIMENSION || h > MAX_DECODE_DIMENSION) {
+                    throw new InvalidScreenshotException(
+                        "Payment screenshot dimensions are too large (" + w + "x" + h + ").");
+                }
+            } finally {
+                reader.dispose();
+            }
         }
     }
 
@@ -137,6 +179,40 @@ public class ScreenshotProcessor {
         }
         writer.dispose();
         return out.toByteArray();
+    }
+
+    /**
+     * Confirms the file's actual bytes match one of the allowed image formats via magic-byte
+     * signatures — the client-supplied Content-Type header (checked by validateContentType) is
+     * trivially spoofable and must never be trusted to decide what gets stored/served back.
+     * Returns the real MIME type derived from the signature, to be used instead of the header.
+     */
+    private String validateRealFormat(byte[] bytes) {
+        String detected = detectRealFormat(bytes);
+        if (detected == null) {
+            throw new InvalidScreenshotException(
+                "Payment screenshot content does not match a supported image format (PNG, JPEG, WebP, GIF).");
+        }
+        return detected;
+    }
+
+    private String detectRealFormat(byte[] b) {
+        if (b.length >= 8 && (b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G'
+                && b[4] == 0x0D && b[5] == 0x0A && b[6] == 0x1A && b[7] == 0x0A) {
+            return "image/png";
+        }
+        if (b.length >= 3 && (b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8 && (b[2] & 0xFF) == 0xFF) {
+            return "image/jpeg";
+        }
+        if (b.length >= 6 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8'
+                && (b[4] == '7' || b[4] == '9') && b[5] == 'a') {
+            return "image/gif";
+        }
+        if (b.length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F'
+                && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') {
+            return "image/webp";
+        }
+        return null;
     }
 
     private void validateContentType(MultipartFile file) {

@@ -6,9 +6,9 @@ import com.pharma.inventory.config.SecurityConfig;
 import com.pharma.inventory.dto.AdjustInventoryRequest;
 import com.pharma.inventory.dto.InventoryAdjustmentResponse;
 import com.pharma.inventory.dto.InventoryResponse;
+import com.pharma.inventory.dto.UserResponse;
 import com.pharma.inventory.exception.InsufficientInventoryException;
 import com.pharma.inventory.exception.ResourceNotFoundException;
-import com.pharma.inventory.entity.User;
 import com.pharma.inventory.repository.UserRepository;
 import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.service.MedicineStockService;
@@ -48,7 +48,7 @@ class InventoryControllerTest {
     @MockBean UserRepository userRepository;
 
     private InventoryResponse sampleResponse;
-    private User mockUser;
+    private UserResponse mockUser;
 
     @BeforeEach
     void setUp() {
@@ -66,8 +66,9 @@ class InventoryControllerTest {
         sampleResponse.setQuantity(BigDecimal.valueOf(100));
         sampleResponse.setPrice(4000);
 
-        mockUser = User.builder().id(2L).username("john.doe").role(User.Role.USER).active(true)
-                .email("j@j.com").fullName("John Doe").password("h").build();
+        mockUser = new UserResponse();
+        mockUser.setId(2L); mockUser.setUsername("john.doe"); mockUser.setRole("USER");
+        mockUser.setActive(true); mockUser.setEmail("j@j.com"); mockUser.setFullName("John Doe");
     }
 
     // ── GET /api/inventory ────────────────────────────────────────────
