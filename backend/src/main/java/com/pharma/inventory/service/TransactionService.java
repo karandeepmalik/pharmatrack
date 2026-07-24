@@ -66,6 +66,7 @@ public class TransactionService {
     public TransactionResponse submit(TransactionRequest req, String username) {
         validateNotes(req.getNotes());
         validateSubmittedDate(req.getSubmittedDate());
+        validateQuantity(req.getQuantity());
         req.setQuantity(QuantityUtil.round(req.getQuantity()));
         User user = findUserByUsername(username);
         Medicine medicine = findMedicineById(req.getMedicineId());
@@ -264,6 +265,15 @@ public class TransactionService {
     private void validateSubmittedDate(LocalDate date) {
         if (date != null && date.isAfter(LocalDate.now()))
             throw new IllegalArgumentException("Dispatch date cannot be in the future");
+    }
+
+    // submit() binds quantity from a multipart @RequestParam, not @RequestBody, so
+    // TransactionRequest's @DecimalMin("0.1") annotation never runs (@Valid isn't applied) —
+    // this is the actual enforcement. Without it, a negative quantity passes the "insufficient
+    // stock" check trivially and inventory.subtract(negative) credits the user's own stock.
+    private void validateQuantity(BigDecimal quantity) {
+        if (quantity.compareTo(BigDecimal.valueOf(0.1)) < 0)
+            throw new IllegalArgumentException("Quantity must be at least 0.1");
     }
 
     private User findUserByUsername(String username) {

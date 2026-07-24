@@ -220,7 +220,7 @@ jobs:
           flags: >-
             --vpc-connector=pharmatrack-connector
             --vpc-egress=private-ranges-only
-            --set-env-vars=^;;^DB_URL=jdbc:postgresql://10.128.0.2:5432/pharma_inventory;;DB_USERNAME=pharma;;DDL_AUTO=update;;LOG_LEVEL=INFO;;JWT_EXPIRATION_MS=86400000;;COOKIE_SECURE=true;;CORS_ALLOWED_ORIGINS=https://pharmatrack-frontend-558147403401.asia-south1.run.app,https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app
+            --set-env-vars=^;;^DB_URL=jdbc:postgresql://10.128.0.2:5432/pharma_inventory;;DB_USERNAME=pharma;;DDL_AUTO=update;;LOG_LEVEL=INFO;;JWT_EXPIRATION_MS=86400000;;COOKIE_SECURE=true;;SPRING_PROFILES_ACTIVE=prod;;CORS_ALLOWED_ORIGINS=https://pharmatrack-frontend-558147403401.asia-south1.run.app,https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app
 
       - name: Deploy frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v3
