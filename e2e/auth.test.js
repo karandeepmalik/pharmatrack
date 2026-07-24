@@ -66,8 +66,17 @@ async function apiPostForm(url, fields, token) {
   return { status: res.status, data };
 }
 
+// A real, decodable 2x2 PNG (verified against the backend's own ImageIO decoder before
+// use) — the backend now verifies upload magic bytes AND that the image actually decodes
+// (not just the Content-Type header), so a fake text payload declaring itself as image/png
+// is correctly rejected and won't pass here.
+const REAL_PNG_BYTES = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==',
+  'base64'
+);
+
 function makeFakePng(label = 'A') {
-  return new File([`fake-png-${label}`], `screenshot-${label}.png`, { type: 'image/png' });
+  return new File([REAL_PNG_BYTES], `screenshot-${label}.png`, { type: 'image/png' });
 }
 
 async function run() {
@@ -1297,7 +1306,8 @@ async function run() {
     assert(Array.isArray(tx.screenshots), 'screenshots field should be an array');
     assert(tx.screenshots.length === 1, `Expected 1 screenshot, got ${tx.screenshots.length}`);
     assert(tx.screenshots[0].data, 'Screenshot entry missing data field');
-    assert(tx.screenshots[0].mimeType === 'image/png', `Expected image/png, got ${tx.screenshots[0].mimeType}`);
+    // Backend compresses and re-encodes valid non-GIF/WebP images as JPEG (see ScreenshotProcessor).
+    assert(tx.screenshots[0].mimeType === 'image/jpeg', `Expected image/jpeg, got ${tx.screenshots[0].mimeType}`);
   });
 
   let multiShotTxId;
