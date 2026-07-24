@@ -3,6 +3,7 @@ import com.pharma.inventory.dto.AuthResponse;
 import com.pharma.inventory.dto.LoginRequest;
 import com.pharma.inventory.security.JwtService;
 import com.pharma.inventory.security.LoginRateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +26,9 @@ public class AuthController {
     @Value("${app.cookie.secure:false}") private boolean cookieSecure;
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletResponse response) {
-        if (loginRateLimiter.isBlocked(req.getUsername())) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletRequest request, HttpServletResponse response) {
+        String clientIp = clientIp(request);
+        if (loginRateLimiter.isBlocked(req.getUsername(), clientIp)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body("Too many failed login attempts. Please try again in a few minutes.");
         }
@@ -35,13 +37,23 @@ public class AuthController {
             UserDetails ud=userDetailsService.loadUserByUsername(req.getUsername());
             String token=jwtService.generateToken(ud.getUsername());
             var user=userRepo.findByUsername(req.getUsername()).orElseThrow();
-            loginRateLimiter.recordSuccess(req.getUsername());
+            loginRateLimiter.recordSuccess(req.getUsername(), clientIp);
             response.addHeader(HttpHeaders.SET_COOKIE, jwtCookie(token, jwtService.getExpirationMs() / 1000).toString());
             return ResponseEntity.ok(new AuthResponse(token,user.getUsername(),user.getFullName(),user.getRole().name()));
         } catch(BadCredentialsException|DisabledException|LockedException|InternalAuthenticationServiceException|UsernameNotFoundException e) {
-            loginRateLimiter.recordFailure(req.getUsername());
+            loginRateLimiter.recordFailure(req.getUsername(), clientIp);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid credentials");
         }
+    }
+
+    // Cloud Run terminates TLS and proxies requests, so request.getRemoteAddr() is always the
+    // load balancer's address — the real client IP is the first entry in X-Forwarded-For.
+    private String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     @PostMapping("/logout")

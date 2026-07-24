@@ -1,6 +1,7 @@
 package com.pharma.inventory.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pharma.inventory.dto.UserResponse;
 import com.pharma.inventory.entity.User;
 import com.pharma.inventory.config.AppConfig;
 import com.pharma.inventory.config.SecurityConfig;
@@ -52,6 +53,13 @@ class UserControllerTest {
                 .email("john@pharma.com").role(User.Role.USER).active(true).password("hashed").build();
     }
 
+    private static UserResponse toDto(User u) {
+        UserResponse r = new UserResponse();
+        r.setId(u.getId()); r.setUsername(u.getUsername()); r.setFullName(u.getFullName());
+        r.setEmail(u.getEmail()); r.setRole(u.getRole().name()); r.setActive(u.isActive());
+        return r;
+    }
+
     // ── GET /api/users ─────────────────────────────────────────────────
 
     @Nested
@@ -61,12 +69,21 @@ class UserControllerTest {
         @Test
         @WithMockUser(roles = "ADMIN")
         void adminCanListUsers() throws Exception {
-            when(userService.getAll()).thenReturn(List.of(adminUser, regularUser));
+            when(userService.getAll()).thenReturn(List.of(toDto(adminUser), toDto(regularUser)));
             mockMvc.perform(get("/api/users"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.length()").value(2))
                     .andExpect(jsonPath("$[0].username").value("admin"))
                     .andExpect(jsonPath("$[1].username").value("john.doe"));
+        }
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        void responseNeverIncludesPasswordHash() throws Exception {
+            when(userService.getAll()).thenReturn(List.of(toDto(adminUser)));
+            mockMvc.perform(get("/api/users"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].password").doesNotExist());
         }
 
         @Test
@@ -92,7 +109,7 @@ class UserControllerTest {
         @Test
         @WithMockUser(roles = "ADMIN")
         void adminCanCreateUser() throws Exception {
-            when(userService.register(any())).thenReturn(regularUser);
+            when(userService.register(any())).thenReturn(toDto(regularUser));
             var body = Map.of(
                     "username", "john.doe",
                     "email", "john@pharma.com",
@@ -113,7 +130,7 @@ class UserControllerTest {
         void adminCanCreateAdminUser() throws Exception {
             var newAdmin = User.builder().id(3L).username("admin2").fullName("Admin Two")
                     .email("admin2@pharma.com").role(User.Role.ADMIN).active(true).password("hashed").build();
-            when(userService.register(any())).thenReturn(newAdmin);
+            when(userService.register(any())).thenReturn(toDto(newAdmin));
             var body = Map.of(
                     "username", "admin2",
                     "email", "admin2@pharma.com",
@@ -175,7 +192,7 @@ class UserControllerTest {
         void adminCanToggleUser() throws Exception {
             var deactivated = User.builder().id(2L).username("john.doe").fullName("John Doe")
                     .email("john@pharma.com").role(User.Role.USER).active(false).password("hashed").build();
-            when(userService.toggleActive(2L)).thenReturn(deactivated);
+            when(userService.toggleActive(2L)).thenReturn(toDto(deactivated));
             mockMvc.perform(post("/api/users/2/toggle").with(csrf()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.active").value(false));
@@ -198,7 +215,7 @@ class UserControllerTest {
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
         void returnsCurrentUser() throws Exception {
-            when(userService.getByUsername("admin")).thenReturn(adminUser);
+            when(userService.getByUsername("admin")).thenReturn(toDto(adminUser));
             mockMvc.perform(get("/api/users/me"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.username").value("admin"))
@@ -209,6 +226,15 @@ class UserControllerTest {
         void unauthenticatedCannotGetMe() throws Exception {
             mockMvc.perform(get("/api/users/me"))
                     .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        void responseNeverIncludesPasswordHash() throws Exception {
+            when(userService.getByUsername("admin")).thenReturn(toDto(adminUser));
+            mockMvc.perform(get("/api/users/me"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.password").doesNotExist());
         }
     }
 
