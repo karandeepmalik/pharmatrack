@@ -56,7 +56,7 @@ export default function ManageUsers() {
     };
 
     const handleDelete = async (id, username) => {
-        if (!window.confirm(`Permanently delete user "${username}"? This will also remove all their inventory and transactions. This cannot be undone.`)) return;
+        if (!window.confirm(`Permanently delete user "${username}"? This will also remove all their medicineStock and transactions. This cannot be undone.`)) return;
         setError(''); setDeletingId(id);
         try {
             await api.deleteUser(id);

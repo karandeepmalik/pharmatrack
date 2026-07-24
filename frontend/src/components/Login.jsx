@@ -19,7 +19,7 @@ export default function Login(){
     };
     return(<div className="login-page"><div className="login-card">
         <h1 className="login-title">PharmaTrack</h1>
-        <p className="login-subtitle">Inventory Management</p>
+        <p className="login-subtitle">MedicineStock Management</p>
         {error&&<div role="alert" className="alert alert-error">{error}</div>}
         <form onSubmit={handle}>
             <div className="form-group"><label htmlFor="username">Username</label>

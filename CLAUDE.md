@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-PharmaTrack — pharmaceutical inventory management system. React 18 frontend (served via Nginx) + Spring Boot 3.2 (Java 17) backend + PostgreSQL 15, deployed to Cloud Run via GitHub Actions.
+PharmaTrack — pharmaceutical medicine stock management system. React 18 frontend (served via Nginx) + Spring Boot 3.2 (Java 17) backend + PostgreSQL 15, deployed to Cloud Run via GitHub Actions.
 
 ```
 frontend/   React 18 app (CRA + Jest)
@@ -45,17 +45,17 @@ No local npm/Maven install required — everything above runs through `make`/Doc
 
 ## Architecture
 
-### Backend package layout (`backend/src/main/java/com/pharma/inventory/`)
-`controller` → `service` → `repository`/`entity`, with `dto` as the API boundary shape and `mapper`/inline `toResponse()` helpers converting entities to DTOs. Controllers should be thin HTTP adapters — no business logic, no manual validation, no untyped `Map` bodies (this was a real, since-fixed problem in `MedicineController`). `security` holds JWT + rate-limiting; `scheduler` holds the one `@Scheduled` job (in-transit adjustment expiry); `exception/GlobalExceptionHandler` is the single centralized exception→HTTP-status mapping for every controller — check its class-level Javadoc table before adding a new exception type rather than handling errors ad hoc in a controller.
+### Backend package layout (`backend/src/main/java/com/pharma/medicinestock/`)
+`controller` → `service` → `repository`/`entity`, with `dto` as the API boundary shape and `mapper`/inline `toResponse()` helpers converting entities to DTOs. Controllers should be thin HTTP adapters — no business logic, no manual validation, no untyped `Map` bodies (this was a real, since-fixed problem in `MedicineController`, the drug-catalog CRUD controller — not to be confused with `MedicineStockController`, which handles stock levels). `security` holds JWT + rate-limiting; `scheduler` holds the one `@Scheduled` job (in-transit adjustment expiry); `exception/GlobalExceptionHandler` is the single centralized exception→HTTP-status mapping for every controller — check its class-level Javadoc table before adding a new exception type rather than handling errors ad hoc in a controller.
 
-### Dual inventory model
-`Inventory` rows are typed by `inventoryType`: `REGULAR_MEDICINE_STOCK` (per-user allocation) vs `ADMIN_MEDICINE_STOCK` (system/master stock). `ReportService` valuation excludes admin stock from user-facing totals. The same (user, medicine) pair can have both types simultaneously — this is why the unique constraint is `(user_id, medicine_id, inventory_type)`, not just `(user_id, medicine_id)`.
+### Dual medicine stock model
+`MedicineStock` rows are typed by `medicineStockType`: `REGULAR_MEDICINE_STOCK` (per-user allocation) vs `ADMIN_MEDICINE_STOCK` (system/master stock). `ReportService` valuation excludes admin stock from user-facing totals. The same (user, medicine) pair can have both types simultaneously — this is why the unique constraint is `(user_id, medicine_id, medicine_stock_type)`, not just `(user_id, medicine_id)`.
 
 ### Current stock is forward-reconstructed, not cached
-`CurrentStockCalculator` computes "available now" by summing `InventoryAdjustment` + non-rejected `Transaction` history from scratch — it does **not** trust `Inventory.quantity` as a cache. This is deliberate: a cached-field approach previously drifted from reality in production (the drift was root-caused and fixed). If you ever see `Inventory.quantity` disagree with reconstructed stock, the reconstruction is the source of truth — reconcile via a direct `UPDATE`, never by inserting a synthetic adjustment row to explain away the drift (that double-counts). Every seeded/backfilled `Inventory` row must have a matching genesis `InventoryAdjustment`, or it's invisible to reconstruction and shows as 0 available.
+`CurrentStockCalculator` computes "available now" by summing `MedicineStockAdjustment` + non-rejected `Transaction` history from scratch — it does **not** trust `MedicineStock.quantity` as a cache. This is deliberate: a cached-field approach previously drifted from reality in production (the drift was root-caused and fixed). If you ever see `MedicineStock.quantity` disagree with reconstructed stock, the reconstruction is the source of truth — reconcile via a direct `UPDATE`, never by inserting a synthetic adjustment row to explain away the drift (that double-counts). Every seeded/backfilled `MedicineStock` row must have a matching genesis `MedicineStockAdjustment`, or it's invisible to reconstruction and shows as 0 available.
 
 ### Transaction state machine
-`PENDING → APPROVED | REJECTED`, enforced in `TransactionService`; illegal transitions throw `InvalidStateTransitionException` (409). Approval triggers the actual inventory deduction/adjustment — submission itself only reserves against reconstructed settled stock, it does not move inventory.
+`PENDING → APPROVED | REJECTED`, enforced in `TransactionService`; illegal transitions throw `InvalidStateTransitionException` (409). Approval triggers the actual medicine stock deduction/adjustment — submission itself only reserves against reconstructed settled stock, it does not move medicine stock.
 
 ### Quantities vs money
 Quantities are `BigDecimal` scale-1 (`NUMERIC(10,1)` in Postgres), rounded HALF_UP via `QuantityUtil.round()` — submitted values are rounded, never rejected for having extra decimals. Money is always a whole number (`long`, rupees) — every `price × quantity` calculation rounds HALF_UP to an integer; there's no shared money-rounding helper yet (duplicated per report method in `ReportService`, a known cleanup target). `BigDecimal.equals()` is scale-sensitive (`new BigDecimal("10").equals(new BigDecimal("10.0"))` is `false`) — tests must use AssertJ's `.isEqualByComparingTo(...)`, not `.isEqualTo(...)`, for quantity assertions.
@@ -69,7 +69,7 @@ JWT (HS256, self-issued) stored in a cookie set by the backend; frontend also ke
 ### Production database
 Postgres runs on a self-hosted Compute Engine VM (`pharmatrack-db-vm`, `us-central1-a`, GCP Always-Free-tier `e2-micro`), not Cloud SQL. Facts that aren't derivable from application code:
 - No public IP. Cloud Run reaches it over a private Serverless VPC Access connector (`pharmatrack-connector`, `asia-south1`); SSH is IAP-tunnel-only (`gcloud compute ssh pharmatrack-db-vm --zone=us-central1-a --tunnel-through-iap`).
-- `DB_URL` is plain TCP JDBC (`jdbc:postgresql://10.128.0.2:5432/pharma_inventory`), no Cloud SQL socket factory.
+- `DB_URL` is plain TCP JDBC (`jdbc:postgresql://10.128.0.2:5432/pharma_inventory`), no Cloud SQL socket factory. The Postgres *database* name (`pharma_inventory`) was deliberately left unchanged during the Inventory→MedicineStock rename — renaming a live database requires dropping all connections first, meaningfully more disruptive than the table/column renames that were in scope. Only tables/columns inside it (`medicine_stock`, `medicine_stock_adjustments`, `*.medicine_stock_type`) were renamed.
 - **All Cloud Run env vars/secrets/VPC config are declared explicitly in `.github/workflows/ci-cd.yml`'s `deploy-cloud-run` job** (`flags` for plain env vars via `--set-env-vars` with a custom delimiter, `secrets` for Secret Manager refs) — this is the source of truth, not the live service. If you hotfix live via `gcloud run services update`, update `ci-cd.yml` to match or the next deploy silently reverts it. The `env_vars` input on `deploy-cloudrun@v3` is deliberately unused — it splits on commas even inside a single entry, which once silently corrupted a comma-joined value.
 - The VM sits in `us-central1` (not `asia-south1`, where Cloud Run/users are) purely because Compute Engine's free tier is US-only — an accepted latency-for-cost tradeoff.
 - Daily `pg_dump` backups via cron on the VM (`/etc/cron.d/pharmatrack-db-backup`), 7-day local rotation, disk-local only (no offsite copy).
