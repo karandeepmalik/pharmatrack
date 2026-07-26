@@ -1,6 +1,7 @@
 package com.pharma.medicinestock.service;
 
 import com.pharma.medicinestock.config.DataInitializer;
+import com.pharma.medicinestock.entity.MedicineStock;
 import com.pharma.medicinestock.entity.MedicineStock.MedicineStockType;
 import com.pharma.medicinestock.repository.MedicineStockRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,11 +10,16 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration tests for DataMigrationService run against a real H2 in-memory database.
@@ -166,6 +172,53 @@ class DataMigrationServiceTest {
             dataMigrationService.onStartup();
 
             assertThat(medicineStockRepository.count()).isEqualTo(before);
+        }
+    }
+
+    // ── Index optimization ─────────────────────────────────────────────────
+
+    @Nested @DisplayName("Index optimization")
+    class IndexOptimization {
+
+        @Test @DisplayName("duplicate unique-constraint cleanup does not remove the last remaining constraint")
+        void duplicateConstraintCleanupNeverDropsTheOnlyConstraint() {
+            // Even if this specific H2 database never reproduces the two-duplicates scenario seen
+            // in production, dropDuplicateMedicineStockUniqueConstraint() must never touch a table
+            // that only has one (user_id, medicine_id, medicine_stock_type) constraint — verified
+            // by confirming the constraint enforcing that uniqueness still works after onStartup().
+            dataMigrationService.onStartup();
+
+            MedicineStock existing = medicineStockRepository.findAll().stream()
+                    .filter(m -> m.getQuantity().signum() > 0)
+                    .findFirst().orElseThrow();
+
+            MedicineStock duplicate = MedicineStock.builder()
+                    .user(existing.getUser()).medicine(existing.getMedicine())
+                    .medicineStockType(existing.getMedicineStockType())
+                    .quantity(existing.getQuantity()).lastUpdated(existing.getLastUpdated())
+                    .build();
+
+            assertThatThrownBy(() -> medicineStockRepository.saveAndFlush(duplicate))
+                    .as("Unique constraint on (user_id, medicine_id, medicine_stock_type) must still be enforced")
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+
+        @Test @DisplayName("onStartup() ensures the new foreign-key and composite indexes without error")
+        void newIndexesAreCreatedWithoutError() {
+            assertThatNoException().isThrownBy(() -> dataMigrationService.onStartup());
+
+            List<String> indexNames = jdbc.queryForList(
+                "SELECT index_name FROM information_schema.indexes " +
+                "WHERE table_name IN ('TRANSACTIONS', 'MEDICINE_STOCK_ADJUSTMENTS', 'MEDICINE_STOCK', 'MEDICINES')",
+                String.class);
+            List<String> upper = indexNames.stream().map(String::toUpperCase).toList();
+
+            assertThat(upper).as("new indexes should exist (case-insensitive)")
+                    .anyMatch(n -> n.contains("IDX_TX_APPROVED_BY"))
+                    .anyMatch(n -> n.contains("IDX_ADJ_ADJUSTED_BY_ID"))
+                    .anyMatch(n -> n.contains("IDX_MS_MEDICINE_ID"))
+                    .anyMatch(n -> n.contains("IDX_MED_PHARMA_COMPANY_ID"))
+                    .anyMatch(n -> n.contains("IDX_TX_SUBMITTED_BY_STATUS_AT"));
         }
     }
 

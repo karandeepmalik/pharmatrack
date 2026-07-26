@@ -17,8 +17,12 @@ import java.util.List;
 @Table(name = "transactions", indexes = {
     @Index(name = "idx_tx_status",        columnList = "status"),
     @Index(name = "idx_tx_submitted_at",  columnList = "submitted_at"),
-    @Index(name = "idx_tx_submitted_by",  columnList = "submitted_by"),
     @Index(name = "idx_tx_medicine_id",   columnList = "medicine_id"),
+    @Index(name = "idx_tx_approved_by",   columnList = "approved_by"),
+    // Serves findNonRejectedSubmittedUpToForUser (CurrentStockCalculator's hot path, run on
+    // every transaction submission) in one index scan; supersedes a standalone index on
+    // submitted_by alone via leftmost-prefix matching — see DataMigrationService.
+    @Index(name = "idx_tx_submitted_by_status_at", columnList = "submitted_by, status, submitted_at"),
 })
 @Data
 @NoArgsConstructor

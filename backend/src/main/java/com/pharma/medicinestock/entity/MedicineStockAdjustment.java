@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
     @Index(name = "idx_adj_adjusted_at",  columnList = "adjusted_at"),
     @Index(name = "idx_adj_user_id",      columnList = "user_id"),
     @Index(name = "idx_adj_medicine_id",  columnList = "medicine_id"),
+    @Index(name = "idx_adj_adjusted_by_id", columnList = "adjusted_by_id"),
 })
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class MedicineStockAdjustment {
