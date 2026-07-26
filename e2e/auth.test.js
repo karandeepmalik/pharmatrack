@@ -1582,9 +1582,9 @@ async function run() {
 
   await test('GET /transactions/history (admin past dispatches) reports medicineStockType', async () => {
     const today = istDateString(new Date());
-    const r = await apiGet(`${API}/transactions/history?from=${today}&to=${today}&status=PENDING`, adminToken);
+    const r = await apiGet(`${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
-    const adminTx = r.data.find(t => t.id === adminStockTxId);
+    const adminTx = r.data.content.find(t => t.id === adminStockTxId);
     assert(adminTx, `Admin-stock transaction #${adminStockTxId} not found in history`);
     assert(adminTx.medicineStockType === 'ADMIN_MEDICINE_STOCK',
       `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.medicineStockType}`);

@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import { medicineStockTypeLabel } from '../../constants';
+
+const PAGE_SIZE = 10;
 
 // Default date range: last 7 days
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -30,8 +32,10 @@ export default function ViewPastTransactions() {
     const [to, setTo]                 = useState(todayStr());
     const [status, setStatus]         = useState('APPROVED');
     const [transactions, setTransactions] = useState([]);
+    const [hasMore, setHasMore]       = useState(false);
     const [searched, setSearched]     = useState(false);
     const [loading, setLoading]       = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError]           = useState('');
 
     const [users, setUsers]           = useState([]);
@@ -39,6 +43,13 @@ export default function ViewPastTransactions() {
     const [userFilter, setUserFilter] = useState('ALL');
     const [medicineFilter, setMedicineFilter] = useState('ALL');
     const [notesSearch, setNotesSearch] = useState('');
+
+    const sentinelRef = useRef(null);
+    const pageRef      = useRef(0);
+    const loadingRef   = useRef(false);
+    // The from/to/status a page-0 search was run with — scroll-triggered loads of
+    // subsequent pages must keep using these, not whatever the form currently shows.
+    const searchParamsRef = useRef({ from, to, status });
 
     useEffect(() => {
         api.getUsers().then(r => setUsers(
@@ -49,20 +60,60 @@ export default function ViewPastTransactions() {
 
     const isValid = Boolean(from) && Boolean(to) && from <= to;
 
-    const handleSearch = async () => {
-        if (!isValid) return;
-        setLoading(true);
-        setError('');
-        try {
-            const res = await api.getTransactionHistory(from, to, status);
-            setTransactions(res.data);
-            setSearched(true);
-        } catch {
-            setError('Failed to load transactions. Please try again.');
-        } finally {
-            setLoading(false);
+    const loadPage = useCallback((pg, params) => {
+        if (loadingRef.current) return;
+        loadingRef.current = true;
+        if (pg === 0) {
+            setLoading(true);
+            setTransactions([]);
+            setHasMore(false);
+            setError('');
+        } else {
+            setLoadingMore(true);
         }
+
+        api.getTransactionHistory(params.from, params.to, params.status, pg, PAGE_SIZE)
+            .then((r) => {
+                const content = r.data?.content;
+                const last    = r.data?.last ?? true;
+                const safe    = Array.isArray(content) ? content : [];
+                setTransactions((prev) => pg === 0 ? safe : [...prev, ...safe]);
+                setHasMore(!last);
+                pageRef.current = pg;
+            })
+            .catch(() => setError('Failed to load transactions. Please try again.'))
+            .finally(() => {
+                loadingRef.current = false;
+                setLoading(false);
+                setLoadingMore(false);
+            });
+    }, []);
+
+    const handleSearch = () => {
+        if (!isValid) return;
+        const params = { from, to, status };
+        searchParamsRef.current = params;
+        pageRef.current = 0;
+        setSearched(true);
+        loadPage(0, params);
     };
+
+    // Infinite-scroll sentinel — (re)attaches whenever the sentinel enters the DOM.
+    // hasMore must be in deps: at mount/reset hasMore=false so the sentinel isn't
+    // rendered yet and sentinelRef.current is null. The effect re-runs when hasMore
+    // flips true and the sentinel is in the DOM.
+    useEffect(() => {
+        if (!hasMore) return;
+        const el = sentinelRef.current;
+        if (!el) return;
+        const obs = new IntersectionObserver(([entry]) => {
+            if (entry.isIntersecting && !loadingRef.current) {
+                loadPage(pageRef.current + 1, searchParamsRef.current);
+            }
+        }, { threshold: 0 });
+        obs.observe(el);
+        return () => obs.disconnect();
+    }, [hasMore, loadPage]);
 
     // Client-side filters applied on top of the fetched results
     const displayedTransactions = transactions
@@ -177,7 +228,9 @@ export default function ViewPastTransactions() {
             </div>
 
             {searched && (
-                displayedTransactions.length === 0 ? (
+                loading ? (
+                    <p className="loading">Searching…</p>
+                ) : displayedTransactions.length === 0 ? (
                     <p className="empty-state">No transactions found for the selected criteria.</p>
                 ) : (
                     <div className="form-section" style={{ marginTop: '1.5rem' }}>
@@ -226,6 +279,18 @@ export default function ViewPastTransactions() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {hasMore && (
+                            <div ref={sentinelRef} className="scroll-sentinel">
+                                {loadingMore && <div className="loading">Loading more…</div>}
+                            </div>
+                        )}
+
+                        {!hasMore && !loadingMore && (
+                            <p className="all-loaded-msg" aria-live="polite">
+                                All {transactions.length} transactions loaded.
+                            </p>
+                        )}
                     </div>
                 )
             )}

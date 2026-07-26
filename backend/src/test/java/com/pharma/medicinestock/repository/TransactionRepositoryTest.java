@@ -90,10 +90,10 @@ class TransactionRepositoryTest {
         }
 
         @Test
-        @DisplayName("returns IDs in ASC submittedAt order (oldest sent for approval first)")
-        void returnsAscOrder() {
+        @DisplayName("returns IDs in DESC submittedAt order (most recently submitted first)")
+        void returnsDescOrder() {
             Page<Long> page = repo.findAllIds(PageRequest.of(0, 20));
-            assertThat(page.getContent()).containsExactly(tx1.getId(), tx2.getId(), tx3.getId());
+            assertThat(page.getContent()).containsExactly(tx3.getId(), tx2.getId(), tx1.getId());
         }
 
         @Test
@@ -110,7 +110,7 @@ class TransactionRepositoryTest {
         @DisplayName("last page has remaining items")
         void lastPageHasRemainder() {
             Page<Long> page = repo.findAllIds(PageRequest.of(1, 2));
-            assertThat(page.getContent()).containsExactly(tx3.getId());
+            assertThat(page.getContent()).containsExactly(tx1.getId());
             assertThat(page.isLast()).isTrue();
         }
     }
@@ -145,10 +145,10 @@ class TransactionRepositoryTest {
         }
 
         @Test
-        @DisplayName("PENDING results are in ASC submittedAt order (oldest sent for approval first)")
-        void pendingInAscOrder() {
+        @DisplayName("PENDING results are in DESC submittedAt order (most recently submitted first)")
+        void pendingInDescOrder() {
             Page<Long> page = repo.findIdsByStatus(Transaction.TransactionStatus.PENDING, PageRequest.of(0, 20));
-            assertThat(page.getContent()).containsExactly(tx1.getId(), tx3.getId());
+            assertThat(page.getContent()).containsExactly(tx3.getId(), tx1.getId());
         }
     }
 
@@ -295,28 +295,42 @@ class TransactionRepositoryTest {
         @Test @DisplayName("returns all transactions in [start, end) regardless of status")
         void returnsAllStatusesInRange() {
             // [Jan 1 00:00, Jan 3 00:00) → tx1 (Jan 1) and tx2 (Jan 2) but NOT tx3 (Jan 3 10:00 is NOT < Jan 3 00:00)
-            List<Transaction> result = repo.findBySubmittedAtBetween(
+            Page<Transaction> result = repo.findBySubmittedAtBetween(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
-                    LocalDateTime.of(2024, 1, 3, 0, 0));
-            assertThat(result).extracting(Transaction::getId)
+                    LocalDateTime.of(2024, 1, 3, 0, 0),
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
         }
 
         @Test @DisplayName("excludes transaction at or after the exclusive end boundary")
         void excludesAfterEnd() {
-            List<Transaction> result = repo.findBySubmittedAtBetween(
+            Page<Transaction> result = repo.findBySubmittedAtBetween(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
-                    LocalDateTime.of(2024, 1, 3, 0, 0));
-            assertThat(result).noneMatch(t -> t.getId().equals(tx3.getId()));
+                    LocalDateTime.of(2024, 1, 3, 0, 0),
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).noneMatch(t -> t.getId().equals(tx3.getId()));
         }
 
         @Test @DisplayName("ordered DESC by submittedAt")
         void orderedDesc() {
-            List<Transaction> result = repo.findBySubmittedAtBetween(
+            Page<Transaction> result = repo.findBySubmittedAtBetween(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
-                    LocalDateTime.of(2024, 1, 4, 0, 0));
-            assertThat(result).extracting(Transaction::getId)
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactly(tx3.getId(), tx2.getId(), tx1.getId());
+        }
+
+        @Test @DisplayName("paginates correctly — page 0 of size 2 returns 2 items, totalElements still 3")
+        void paginatesCorrectly() {
+            Page<Transaction> result = repo.findBySubmittedAtBetween(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    PageRequest.of(0, 2));
+            assertThat(result.getContent()).hasSize(2);
+            assertThat(result.getTotalElements()).isEqualTo(3);
+            assertThat(result.isLast()).isFalse();
         }
     }
 
@@ -327,30 +341,33 @@ class TransactionRepositoryTest {
 
         @Test @DisplayName("filters by status within date range")
         void filtersByStatus() {
-            List<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+            Page<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING);
-            assertThat(result).extracting(Transaction::getId)
+                    Transaction.TransactionStatus.PENDING,
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactlyInAnyOrder(tx1.getId(), tx3.getId());
         }
 
         @Test @DisplayName("excludes transactions of a different status")
         void excludesDifferentStatus() {
-            List<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+            Page<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING);
-            assertThat(result).noneMatch(t -> t.getStatus() == Transaction.TransactionStatus.APPROVED);
+                    Transaction.TransactionStatus.PENDING,
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).noneMatch(t -> t.getStatus() == Transaction.TransactionStatus.APPROVED);
         }
 
         @Test @DisplayName("returns empty when status matches but none fall in range")
         void emptyWhenNoneInRange() {
-            List<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+            Page<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
                     LocalDateTime.of(2025, 1, 1, 0, 0),
                     LocalDateTime.of(2025, 2, 1, 0, 0),
-                    Transaction.TransactionStatus.PENDING);
-            assertThat(result).isEmpty();
+                    Transaction.TransactionStatus.PENDING,
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).isEmpty();
         }
     }
 

@@ -24,6 +24,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -431,9 +432,9 @@ class TransactionServiceTest {
 
         @Test @DisplayName("preserves submission-order id sequence even when findByIdsWithDetails returns a different order")
         void getAllPaged_reordersEntitiesToMatchIdPageOrder() {
-            // findAllIds returns ids in oldest-submitted-first (ASC) order — the order requests
-            // were sent for approval. findByIdsWithDetails has its own unrelated ORDER BY and
-            // here returns the entities in the opposite order, simulating that mismatch.
+            // findAllIds returns ids in most-recently-submitted-first (DESC) order.
+            // findByIdsWithDetails has its own unrelated ORDER BY and here returns the entities
+            // in the opposite order, simulating that mismatch.
             Transaction t1 = savedTx(buildReq("First submitted, sent for approval earliest"));
             Transaction t2 = savedTx(buildReq("Second submitted, sent for approval later"));
             t2.setId(2L);
@@ -489,6 +490,60 @@ class TransactionServiceTest {
 
             Page<TransactionResponse> result = transactionService.getByUserPaged("john.doe", 0, 20);
             assertThat(result.getContent().get(0).getScreenshots()).isEmpty();
+        }
+    }
+
+    // ── getHistory() ──────────────────────────────────────────────────
+
+    @Nested @DisplayName("getHistory()")
+    class GetHistory {
+
+        private final LocalDate from = LocalDate.of(2026, 5, 1);
+        private final LocalDate to   = LocalDate.of(2026, 5, 4);
+
+        @Test @DisplayName("returns empty page when no transactions in range")
+        void getHistory_noTransactions_returnsEmpty() {
+            when(transactionRepository.findBySubmittedAtBetween(any(), any(), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            Page<TransactionResponse> result = transactionService.getHistory(from, to, "ALL", 0, 10);
+            assertThat(result.getContent()).isEmpty();
+        }
+
+        @Test @DisplayName("routes to findBySubmittedAtBetweenAndStatus when status is not ALL")
+        void getHistory_withStatus_routesToFilteredQuery() {
+            when(transactionRepository.findBySubmittedAtBetweenAndStatus(
+                    any(), any(), eq(TransactionStatus.APPROVED), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getHistory(from, to, "APPROVED", 0, 10);
+            verify(transactionRepository).findBySubmittedAtBetweenAndStatus(
+                    any(), any(), eq(TransactionStatus.APPROVED), any(Pageable.class));
+            verify(transactionRepository, never()).findBySubmittedAtBetween(any(), any(), any());
+        }
+
+        @Test @DisplayName("passes the requested page and size through as a Pageable")
+        void getHistory_pageAndSize_passedAsPageable() {
+            when(transactionRepository.findBySubmittedAtBetween(any(), any(), eq(PageRequest.of(1, 10))))
+                    .thenReturn(Page.empty());
+            transactionService.getHistory(from, to, "ALL", 1, 10);
+            verify(transactionRepository).findBySubmittedAtBetween(any(), any(), eq(PageRequest.of(1, 10)));
+        }
+
+        @Test @DisplayName("maps transactions via mapper and preserves total count")
+        void getHistory_multipleTransactions_mapsAllAndPreservesCount() {
+            Transaction t1 = savedTx(buildReq("First dispatch note in range"));
+            Transaction t2 = savedTx(buildReq("Second dispatch note in range"));
+            t2.setId(2L);
+            TransactionResponse r1 = stubResponse(t1);
+            TransactionResponse r2 = stubResponse(t2);
+
+            when(transactionRepository.findBySubmittedAtBetween(any(), any(), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(t1, t2), PageRequest.of(0, 10), 2));
+            when(transactionMapper.toResponse(t1)).thenReturn(r1);
+            when(transactionMapper.toResponse(t2)).thenReturn(r2);
+
+            Page<TransactionResponse> result = transactionService.getHistory(from, to, "ALL", 0, 10);
+            assertThat(result.getContent()).containsExactly(r1, r2);
+            assertThat(result.getTotalElements()).isEqualTo(2);
         }
     }
 

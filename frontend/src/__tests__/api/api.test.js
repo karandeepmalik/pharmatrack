@@ -229,19 +229,19 @@ describe('api.js', () => {
       mockGet.mockResolvedValue({ data: [] });
     });
 
-    test('calls GET /transactions/history with from/to/status params', async () => {
-      await getTransactionHistory('2026-05-01', '2026-05-07', 'APPROVED');
+    test('calls GET /transactions/history with from/to/status/page/size params', async () => {
+      await getTransactionHistory('2026-05-01', '2026-05-07', 'APPROVED', 1, 10);
       expect(mockGet).toHaveBeenCalledWith(
         '/transactions/history',
-        { params: { from: '2026-05-01', to: '2026-05-07', status: 'APPROVED' } }
+        { params: { from: '2026-05-01', to: '2026-05-07', status: 'APPROVED', page: 1, size: 10 } }
       );
     });
 
-    test('defaults status to ALL when not provided', async () => {
+    test('defaults status to ALL and page/size to 0/10 when not provided', async () => {
       await getTransactionHistory('2026-05-01', '2026-05-07');
       expect(mockGet).toHaveBeenCalledWith(
         '/transactions/history',
-        { params: { from: '2026-05-01', to: '2026-05-07', status: 'ALL' } }
+        { params: { from: '2026-05-01', to: '2026-05-07', status: 'ALL', page: 0, size: 10 } }
       );
     });
   });

@@ -402,15 +402,16 @@ class TransactionControllerTest {
         @DisplayName("returns transactions for given date range and ALL status")
         void history_allStatus_200() throws Exception {
             sampleResponse.setStatus("APPROVED");
-            when(transactionService.getHistory(any(), any(), eq("ALL")))
-                    .thenReturn(List.of(sampleResponse));
+            Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt()))
+                    .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
                     .param("from", "2026-05-01")
                     .param("to", "2026-05-04")
                     .param("status", "ALL"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].status").value("APPROVED"));
+                    .andExpect(jsonPath("$.content[0].status").value("APPROVED"));
         }
 
         @Test
@@ -418,15 +419,16 @@ class TransactionControllerTest {
         @DisplayName("returns only APPROVED transactions when status=APPROVED")
         void history_approvedStatus_200() throws Exception {
             sampleResponse.setStatus("APPROVED");
-            when(transactionService.getHistory(any(), any(), eq("APPROVED")))
-                    .thenReturn(List.of(sampleResponse));
+            Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(transactionService.getHistory(any(), any(), eq("APPROVED"), anyInt(), anyInt()))
+                    .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
                     .param("from", "2026-05-01")
                     .param("to", "2026-05-04")
                     .param("status", "APPROVED"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].status").value("APPROVED"));
+                    .andExpect(jsonPath("$.content[0].status").value("APPROVED"));
         }
 
         @Test
@@ -453,15 +455,34 @@ class TransactionControllerTest {
         @DisplayName("response includes medicineStockType so the admin can tell regular vs admin stock dispatches apart")
         void history_includesMedicineStockType() throws Exception {
             sampleResponse.setMedicineStockType("REGULAR_MEDICINE_STOCK");
-            when(transactionService.getHistory(any(), any(), eq("ALL")))
-                    .thenReturn(List.of(sampleResponse));
+            Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt()))
+                    .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
                     .param("from", "2026-05-01")
                     .param("to", "2026-05-04")
                     .param("status", "ALL"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].medicineStockType").value("REGULAR_MEDICINE_STOCK"));
+                    .andExpect(jsonPath("$.content[0].medicineStockType").value("REGULAR_MEDICINE_STOCK"));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("accepts page and size query params")
+        void history_pageParams_passedToService() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of());
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt()))
+                    .thenReturn(page);
+
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04")
+                    .param("page", "1")
+                    .param("size", "10"))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).getHistory(any(), any(), anyString(), eq(1), eq(10));
         }
     }
 
