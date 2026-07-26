@@ -242,7 +242,10 @@ describe('ViewPastTransactions — search', () => {
         expect.any(String),
         'APPROVED',
         0,
-        10
+        10,
+        undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -260,7 +263,10 @@ describe('ViewPastTransactions — search', () => {
         expect.any(String),
         'ALL',
         0,
-        10
+        10,
+        undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -299,7 +305,7 @@ describe('ViewPastTransactions — pagination', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined
       )
     );
   });
@@ -317,7 +323,7 @@ describe('ViewPastTransactions — pagination', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 1, 10
+        expect.any(String), expect.any(String), expect.any(String), 1, 10, undefined, undefined, undefined
       )
     );
     await waitFor(() => screen.getByText('Second page dispatch'));
@@ -391,175 +397,118 @@ describe('ViewPastTransactions — stock type column', () => {
 });
 
 // ── User filter ──────────────────────────────────────────────────────────
+//
+// All filters below are sent to the backend as query params and take effect only after
+// pressing Search again (consistent with From/To/Status) — this is a deliberate change from
+// the previous client-side-only filtering, which silently missed real matches once results
+// spanned more than one scroll-loaded page. See ViewPastTransactions.jsx's invalidateSearch.
 
 describe('ViewPastTransactions — user filter', () => {
   const johnTx  = makeTx({ id: 1, submittedByUsername: 'john.doe',   notes: 'John note' });
   const janeTx  = makeTx({ id: 2, submittedByUsername: 'jane.smith', notes: 'Jane note' });
 
-  beforeEach(() => {
-    api.getTransactionHistory.mockResolvedValue(mkPage([johnTx, janeTx]));
-  });
-
-  test('All Users shows all transactions', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-
-    await waitFor(() => screen.getByText('John note'));
-    expect(screen.getByText('Jane note')).toBeInTheDocument();
-  });
-
-  test('filtering by john.doe hides jane.smith transactions', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('John note'));
-
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-
-    expect(screen.getByText('John note')).toBeInTheDocument();
-    expect(screen.queryByText('Jane note')).not.toBeInTheDocument();
-  });
-
-  test('filtering by jane.smith hides john.doe transactions', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('John note'));
-
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'jane.smith');
-
-    expect(screen.getByText('Jane note')).toBeInTheDocument();
-    expect(screen.queryByText('John note')).not.toBeInTheDocument();
-  });
-
-  test('result count updates when user filter is applied', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText(/results \(2\)/i));
-
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-
-    expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
-  });
-
-  test('shows empty state when user filter matches no results', async () => {
+  test('selecting a user and searching sends it as the username query param', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([johnTx]));
     renderPage();
+    await waitFor(() => screen.getByLabelText(/^user$/i));
+
+    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('John note'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'jane.smith');
-
-    expect(screen.getByText(/no transactions found/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, 'john.doe', undefined, undefined
+      )
+    );
   });
 
-  test('switching back to All Users restores all results', async () => {
+  test('All Users omits the username param (undefined)', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([johnTx, janeTx]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined
+      )
+    );
+  });
+
+  test('changing the user filter after a search hides results until Search is pressed again', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([johnTx, janeTx]));
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByText('John note'));
 
     await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'ALL');
 
-    expect(screen.getByText('John note')).toBeInTheDocument();
-    expect(screen.getByText('Jane note')).toBeInTheDocument();
-  });
-
-  test('user filter does not trigger a new API call', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('John note'));
-
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(api.getTransactionHistory).toHaveBeenCalledTimes(1);
+  });
+
+  test('server-side filtering finds a match even when the admin never scrolled past page 0 — '
+      + 'the exact case that broke under client-side-only filtering', async () => {
+    // Page 0 returns only johnTx (as the real paginated backend would); janeTx is a real match
+    // that exists server-side but was never loaded into the browser's state.
+    api.getTransactionHistory.mockResolvedValueOnce(mkPage([johnTx], { last: false }));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByText('John note'));
+
+    // Now filter by jane.smith and search again — the backend (not the browser) does the
+    // filtering, so it can return janeTx even though it was never in loaded state.
+    api.getTransactionHistory.mockResolvedValueOnce(mkPage([janeTx], { last: true }));
+    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'jane.smith');
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(screen.getByText('Jane note')).toBeInTheDocument());
+    expect(screen.queryByText('John note')).not.toBeInTheDocument();
   });
 });
 
 // ── Medicine filter ──────────────────────────────────────────────────────
 
 describe('ViewPastTransactions — medicine filter', () => {
-  const vial10Tx = makeTx({ id: 1, medicineId: 10, medicineName: 'Vial 10 ml', medicineType: 'VIAL',   specification: 10, notes: 'Vial 10 note' });
-  const vial5Tx  = makeTx({ id: 2, medicineId: 20, medicineName: 'Vial 5 ml',  medicineType: 'VIAL',   specification: 5,  notes: 'Vial 5 note' });
-  const tabTx    = makeTx({ id: 3, medicineId: 30, medicineName: 'Tab 25 mg',  medicineType: 'TABLET', specification: 25, notes: 'Tablet note' });
+  const vial10Tx = makeTx({ id: 1, medicineId: 10, medicineName: 'Vial 10 ml', medicineType: 'VIAL', specification: 10, notes: 'Vial 10 note' });
 
-  beforeEach(() => {
-    api.getTransactionHistory.mockResolvedValue(mkPage([vial10Tx, vial5Tx, tabTx]));
-  });
-
-  test('All Medicines shows all transactions', async () => {
+  test('selecting a medicine and searching sends it as the medicineId query param', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([vial10Tx]));
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-
-    await waitFor(() => screen.getByText('Vial 10 note'));
-    expect(screen.getByText('Vial 5 note')).toBeInTheDocument();
-    expect(screen.getByText('Tablet note')).toBeInTheDocument();
-  });
-
-  test('filtering by Vial 10 ml hides other medicines', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('Vial 10 note'));
+    await waitFor(() => screen.getByLabelText(/medicine spec/i));
 
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
-
-    expect(screen.getByText('Vial 10 note')).toBeInTheDocument();
-    expect(screen.queryByText('Vial 5 note')).not.toBeInTheDocument();
-    expect(screen.queryByText('Tablet note')).not.toBeInTheDocument();
-  });
-
-  test('filtering by Vial 5 ml shows only 5 ml transactions', async () => {
-    renderPage();
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('Vial 5 note'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '20');
-
-    expect(screen.getByText('Vial 5 note')).toBeInTheDocument();
-    expect(screen.queryByText('Vial 10 note')).not.toBeInTheDocument();
-    expect(screen.queryByText('Tablet note')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, '10', undefined
+      )
+    );
   });
 
-  test('result count updates when medicine filter is applied', async () => {
+  test('All Medicines omits the medicineId param (undefined)', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([vial10Tx]));
     renderPage();
+
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText(/results \(3\)/i));
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
-
-    expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined
+      )
+    );
   });
 
-  test('shows empty state when medicine filter matches no results', async () => {
+  test('changing the medicine filter after a search hides results until Search is pressed again', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([vial10Tx]));
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByText('Vial 10 note'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '20');
-
-    expect(screen.getByText(/no transactions found/i)).toBeInTheDocument();
-  });
-
-  test('switching back to All Medicines restores all results', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('Vial 10 note'));
-
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), 'ALL');
-
-    expect(screen.getByText('Vial 10 note')).toBeInTheDocument();
-    expect(screen.getByText('Vial 5 note')).toBeInTheDocument();
-    expect(screen.getByText('Tablet note')).toBeInTheDocument();
-  });
-
-  test('medicine filter does not trigger a new API call', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('Vial 10 note'));
-
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
 
-    expect(api.getTransactionHistory).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 });
 
@@ -567,116 +516,66 @@ describe('ViewPastTransactions — medicine filter', () => {
 
 describe('ViewPastTransactions — notes search', () => {
   const clinicTx = makeTx({ id: 1, notes: 'Dispatched to Clinic B for FIP treatment' });
-  const wardTx   = makeTx({ id: 2, notes: 'Restocking Ward 3 monthly supply' });
 
-  beforeEach(() => {
-    api.getTransactionHistory.mockResolvedValue(mkPage([clinicTx, wardTx]));
-  });
-
-  test('empty search shows all transactions', async () => {
+  test('typing a note filter and searching sends it as the (trimmed) notes query param', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([clinicTx]));
     renderPage();
+    await waitFor(() => screen.getByLabelText(/search notes/i));
+
+    await userEvent.type(screen.getByLabelText(/search notes/i), '  clinic  ');
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
-    await waitFor(() => screen.getByText(clinicTx.notes));
-    expect(screen.getByText(wardTx.notes)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, 'clinic'
+      )
+    );
   });
 
-  test('searching by note text filters to matching rows only', async () => {
+  test('empty notes search omits the notes param (undefined)', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([clinicTx]));
     renderPage();
+
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText(clinicTx.notes));
 
-    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
-
-    expect(screen.getByText(clinicTx.notes)).toBeInTheDocument();
-    expect(screen.queryByText(wardTx.notes)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined
+      )
+    );
   });
 
-  test('note search is case-insensitive', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText(clinicTx.notes));
-
-    await userEvent.type(screen.getByLabelText(/search notes/i), 'CLINIC');
-
-    expect(screen.getByText(clinicTx.notes)).toBeInTheDocument();
-    expect(screen.queryByText(wardTx.notes)).not.toBeInTheDocument();
-  });
-
-  test('note search matching no rows shows empty state', async () => {
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText(clinicTx.notes));
-
-    await userEvent.type(screen.getByLabelText(/search notes/i), 'nonexistent note text');
-
-    expect(screen.getByText(/no transactions found/i)).toBeInTheDocument();
-  });
-
-  test('note search combines with user filter', async () => {
-    const johnClinic = makeTx({ id: 3, submittedByUsername: 'john.doe', notes: 'Clinic B dispatch for john' });
-    const janeClinic  = makeTx({ id: 4, submittedByUsername: 'jane.smith', notes: 'Clinic B dispatch for jane' });
-    api.getTransactionHistory.mockResolvedValue(mkPage([johnClinic, janeClinic]));
-
-    renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText(johnClinic.notes));
-
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic b');
-
-    expect(screen.getByText(johnClinic.notes)).toBeInTheDocument();
-    expect(screen.queryByText(janeClinic.notes)).not.toBeInTheDocument();
-  });
-
-  test('note search does not trigger a new API call', async () => {
+  test('typing into notes search after a search hides results until Search is pressed again', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([clinicTx]));
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByText(clinicTx.notes));
 
     await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
 
-    expect(api.getTransactionHistory).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 });
 
 // ── Combined filters ─────────────────────────────────────────────────────
 
-describe('ViewPastTransactions — combined user + medicine filter', () => {
-  const tx1 = makeTx({ id: 1, submittedByUsername: 'john.doe',   medicineId: 10, notes: 'John Vial10' });
-  const tx2 = makeTx({ id: 2, submittedByUsername: 'john.doe',   medicineId: 20, notes: 'John Vial5' });
-  const tx3 = makeTx({ id: 3, submittedByUsername: 'jane.smith', medicineId: 10, notes: 'Jane Vial10' });
-  const tx4 = makeTx({ id: 4, submittedByUsername: 'jane.smith', medicineId: 20, notes: 'Jane Vial5' });
-
-  beforeEach(() => {
-    api.getTransactionHistory.mockResolvedValue(mkPage([tx1, tx2, tx3, tx4]));
-  });
-
-  test('user + medicine filter shows only matching row', async () => {
+describe('ViewPastTransactions — combined filters', () => {
+  test('user, medicine, and notes filters are all sent together in one search', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([
+      makeTx({ id: 1, submittedByUsername: 'john.doe', medicineId: 10, notes: 'Clinic B note' }),
+    ]));
     renderPage();
-    await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText('John Vial10'));
+    await waitFor(() => screen.getByLabelText(/^user$/i));
 
     await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
-
-    expect(screen.getByText('John Vial10')).toBeInTheDocument();
-    expect(screen.queryByText('John Vial5')).not.toBeInTheDocument();
-    expect(screen.queryByText('Jane Vial10')).not.toBeInTheDocument();
-    expect(screen.queryByText('Jane Vial5')).not.toBeInTheDocument();
-    expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
-  });
-
-  test('user filter shows 2 rows, medicine filter further narrows to 1', async () => {
-    renderPage();
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic b');
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
-    await waitFor(() => screen.getByText(/results \(4\)/i));
 
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'jane.smith');
-    expect(screen.getByText(/results \(2\)/i)).toBeInTheDocument();
-
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '20');
-    expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
-    expect(screen.getByText('Jane Vial5')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, 'john.doe', '10', 'clinic b'
+      )
+    );
   });
 });

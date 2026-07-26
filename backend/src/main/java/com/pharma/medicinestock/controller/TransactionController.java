@@ -80,11 +80,17 @@ public class TransactionController {
     }
 
     /**
-     * Admin endpoint to browse transaction history by date range and status.
+     * Admin endpoint to browse transaction history by date range, with optional filters.
+     * All filters are applied server-side so they're correct regardless of pagination —
+     * a filter that only matched against whatever page happened to be loaded client-side would
+     * silently miss real results.
      *
-     * @param from   start date inclusive (YYYY-MM-DD)
-     * @param to     end date inclusive (YYYY-MM-DD)
-     * @param status ALL | APPROVED | REJECTED  (default ALL)
+     * @param from       start date inclusive (YYYY-MM-DD)
+     * @param to         end date inclusive (YYYY-MM-DD)
+     * @param status     ALL | APPROVED | REJECTED  (default ALL)
+     * @param username   optional exact submittedBy username filter
+     * @param medicineId optional exact medicine filter
+     * @param notes      optional case-insensitive notes substring filter
      */
     @GetMapping("/history")
     @PreAuthorize("hasRole('ADMIN')")
@@ -93,8 +99,12 @@ public class TransactionController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(defaultValue = "ALL") String status,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(PagedResponse.of(transactionService.getHistory(from, to, status, page, size)));
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) Long medicineId,
+            @RequestParam(required = false) String notes) {
+        return ResponseEntity.ok(PagedResponse.of(
+                transactionService.getHistory(from, to, status, page, size, username, medicineId, notes)));
     }
 
     @PostMapping("/{id}/approve")

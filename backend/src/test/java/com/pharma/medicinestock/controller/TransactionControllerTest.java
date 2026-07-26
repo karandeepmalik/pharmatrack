@@ -403,7 +403,7 @@ class TransactionControllerTest {
         void history_allStatus_200() throws Exception {
             sampleResponse.setStatus("APPROVED");
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt()))
+            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -420,7 +420,7 @@ class TransactionControllerTest {
         void history_approvedStatus_200() throws Exception {
             sampleResponse.setStatus("APPROVED");
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getHistory(any(), any(), eq("APPROVED"), anyInt(), anyInt()))
+            when(transactionService.getHistory(any(), any(), eq("APPROVED"), anyInt(), anyInt(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -456,7 +456,7 @@ class TransactionControllerTest {
         void history_includesMedicineStockType() throws Exception {
             sampleResponse.setMedicineStockType("REGULAR_MEDICINE_STOCK");
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt()))
+            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -472,7 +472,7 @@ class TransactionControllerTest {
         @DisplayName("accepts page and size query params")
         void history_pageParams_passedToService() throws Exception {
             Page<TransactionResponse> page = new PageImpl<>(List.of());
-            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt()))
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -482,7 +482,44 @@ class TransactionControllerTest {
                     .param("size", "10"))
                     .andExpect(status().isOk());
 
-            verify(transactionService).getHistory(any(), any(), anyString(), eq(1), eq(10));
+            verify(transactionService).getHistory(any(), any(), anyString(), eq(1), eq(10), any(), any(), any());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("passes username, medicineId and notes query params through to the service")
+        void history_optionalFilters_passedToService() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of());
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+                    .thenReturn(page);
+
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04")
+                    .param("username", "john.doe")
+                    .param("medicineId", "7")
+                    .param("notes", "clinic"))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).getHistory(
+                    any(), any(), anyString(), anyInt(), anyInt(), eq("john.doe"), eq(7L), eq("clinic"));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("omitting username, medicineId and notes passes nulls through to the service")
+        void history_optionalFiltersOmitted_passesNulls() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of());
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+                    .thenReturn(page);
+
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04"))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).getHistory(
+                    any(), any(), anyString(), anyInt(), anyInt(), isNull(), isNull(), isNull());
         }
     }
 
