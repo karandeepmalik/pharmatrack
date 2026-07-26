@@ -156,18 +156,23 @@ public class TransactionService {
     }
 
     @Transactional(readOnly = true)
-    public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status, int page, int size) {
+    public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status, int page, int size,
+                                                 String username, Long medicineId, String notes) {
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end   = to.plusDays(1).atStartOfDay();
         PageRequest pageable = PageRequest.of(page, size);
 
-        Page<Transaction> txPage;
-        if ("ALL".equalsIgnoreCase(status)) {
-            txPage = transactionRepository.findBySubmittedAtBetween(start, end, pageable);
-        } else {
-            TransactionStatus txStatus = TransactionStatus.valueOf(status.toUpperCase());
-            txPage = transactionRepository.findBySubmittedAtBetweenAndStatus(start, end, txStatus, pageable);
-        }
+        TransactionStatus txStatus = (status == null || "ALL".equalsIgnoreCase(status))
+                ? null : TransactionStatus.valueOf(status.toUpperCase());
+        String usernameFilter = (username == null || username.isBlank() || "ALL".equalsIgnoreCase(username))
+                ? null : username;
+        // Built as a complete LIKE pattern here, not passed raw — see searchHistory's Javadoc for
+        // why binding a raw substring through LOWER(CONCAT(...)) at the SQL level breaks on Postgres.
+        String notesPattern = (notes == null || notes.isBlank())
+                ? null : "%" + notes.trim().toLowerCase() + "%";
+
+        Page<Transaction> txPage = transactionRepository.searchHistory(
+                start, end, txStatus, usernameFilter, medicineId, notesPattern, pageable);
         return txPage.map(transactionMapper::toResponse);
     }
 

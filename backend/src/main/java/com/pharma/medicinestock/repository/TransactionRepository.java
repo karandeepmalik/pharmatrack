@@ -59,7 +59,24 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("end") LocalDateTime end);
 
     /**
-     * All transactions submitted in a date range — used by the paginated history endpoint.
+     * All transactions submitted in a date range, with optional status/username/medicine/notes
+     * filters — backs the paginated admin history endpoint ("View Past Medicine Dispatches").
+     * Every filter param is nullable: passing null for a param makes its "(:param IS NULL OR ...)"
+     * clause always true, so the caller only needs one method regardless of which filters are
+     * actually in use. Filtering happens here (server-side, against the full matching set) rather
+     * than being left to the frontend to apply against whatever page happens to be loaded —
+     * without this, a wide date range with more results than one page would silently hide
+     * real matches that just hadn't been scrolled into view yet.
+     *
+     * notesPattern must arrive pre-built as a full lowercased LIKE pattern (e.g. "%clinic%"), not
+     * as a raw substring wrapped in LOWER(CONCAT(...)) here: Postgres's JDBC driver can't infer a
+     * type for a bind parameter passed as an argument to CONCAT/LOWER when its value is null
+     * (which it is on every call where no notes filter is active) and defaults it to bytea,
+     * producing "ERROR: function lower(bytea) does not exist" at query-prepare time — confirmed
+     * live against Postgres (H2, used in tests, does not reproduce this). Building the whole
+     * pattern in Java and binding it as a plain string against the LIKE operator avoids the
+     * ambiguity entirely.
+     *
      * Safe to paginate directly (no two-query workaround needed): every JOIN FETCH here is a
      * to-one association, so there's no collection-fetch + firstResult/maxResults conflict.
      */
@@ -67,25 +84,24 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
            "LEFT JOIN FETCH t.approvedBy " +
            "WHERE t.submittedAt >= :start AND t.submittedAt < :end " +
-           "ORDER BY t.submittedAt DESC",
-           countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.submittedAt >= :start AND t.submittedAt < :end")
-    Page<Transaction> findBySubmittedAtBetween(
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end,
-            Pageable pageable);
-
-    /** Transactions of a specific status submitted in a date range — used by the paginated history endpoint. */
-    @Query(value = "SELECT t FROM Transaction t " +
-           "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
-           "LEFT JOIN FETCH t.approvedBy " +
-           "WHERE t.submittedAt >= :start AND t.submittedAt < :end AND t.status = :status " +
+           "AND (:status IS NULL OR t.status = :status) " +
+           "AND (:username IS NULL OR u.username = :username) " +
+           "AND (:medicineId IS NULL OR m.id = :medicineId) " +
+           "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern) " +
            "ORDER BY t.submittedAt DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t " +
-           "WHERE t.submittedAt >= :start AND t.submittedAt < :end AND t.status = :status")
-    Page<Transaction> findBySubmittedAtBetweenAndStatus(
+           "WHERE t.submittedAt >= :start AND t.submittedAt < :end " +
+           "AND (:status IS NULL OR t.status = :status) " +
+           "AND (:username IS NULL OR t.submittedBy.username = :username) " +
+           "AND (:medicineId IS NULL OR t.medicine.id = :medicineId) " +
+           "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern)")
+    Page<Transaction> searchHistory(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
             @Param("status") Transaction.TransactionStatus status,
+            @Param("username") String username,
+            @Param("medicineId") Long medicineId,
+            @Param("notesPattern") String notesPattern,
             Pageable pageable);
 
     /**

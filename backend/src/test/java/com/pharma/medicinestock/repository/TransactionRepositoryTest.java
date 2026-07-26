@@ -34,6 +34,8 @@ class TransactionRepositoryTest {
 
     private User user1;
     private User user2;
+    private Medicine medicine;
+    private Medicine medicine2;
     private Transaction tx1; // user1, PENDING,  oldest
     private Transaction tx2; // user1, APPROVED, middle
     private Transaction tx3; // user2, PENDING,  newest
@@ -44,7 +46,7 @@ class TransactionRepositoryTest {
         company.setName("Cipla");
         em.persist(company);
 
-        Medicine medicine = Medicine.builder()
+        medicine = Medicine.builder()
                 .name("Paracetamol")
                 .type(Medicine.MedicineType.TABLET)
                 .specification(500.0)
@@ -52,6 +54,15 @@ class TransactionRepositoryTest {
                 .pharmaCompany(company)
                 .build();
         em.persist(medicine);
+
+        medicine2 = Medicine.builder()
+                .name("Ibuprofen")
+                .type(Medicine.MedicineType.TABLET)
+                .specification(400.0)
+                .price(15)
+                .pharmaCompany(company)
+                .build();
+        em.persist(medicine2);
 
         user1 = buildUser("alice", "alice@test.com");
         user2 = buildUser("bob",   "bob@test.com");
@@ -68,7 +79,7 @@ class TransactionRepositoryTest {
                 .submittedAt(LocalDateTime.of(2024, 1, 2, 10, 0))
                 .approvedAt(LocalDateTime.of(2024, 1, 2, 12, 0))
                 .build();
-        tx3 = buildTx(user2, medicine, Transaction.TransactionStatus.PENDING,
+        tx3 = buildTx(user2, medicine2, Transaction.TransactionStatus.PENDING,
                 LocalDateTime.of(2024, 1, 3, 10, 0));
         em.persist(tx1);
         em.persist(tx2);
@@ -287,17 +298,18 @@ class TransactionRepositoryTest {
         }
     }
 
-    // ── findBySubmittedAtBetween ─────────────────────────────────────────────
+    // ── searchHistory ─────────────────────────────────────────────────────────
 
-    @Nested @DisplayName("findBySubmittedAtBetween")
-    class FindBySubmittedAtBetween {
+    @Nested @DisplayName("searchHistory")
+    class SearchHistory {
 
-        @Test @DisplayName("returns all transactions in [start, end) regardless of status")
+        @Test @DisplayName("returns all transactions in [start, end) regardless of status when status is null")
         void returnsAllStatusesInRange() {
             // [Jan 1 00:00, Jan 3 00:00) → tx1 (Jan 1) and tx2 (Jan 2) but NOT tx3 (Jan 3 10:00 is NOT < Jan 3 00:00)
-            Page<Transaction> result = repo.findBySubmittedAtBetween(
+            Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 3, 0, 0),
+                    null, null, null, null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
@@ -305,18 +317,20 @@ class TransactionRepositoryTest {
 
         @Test @DisplayName("excludes transaction at or after the exclusive end boundary")
         void excludesAfterEnd() {
-            Page<Transaction> result = repo.findBySubmittedAtBetween(
+            Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 3, 0, 0),
+                    null, null, null, null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).noneMatch(t -> t.getId().equals(tx3.getId()));
         }
 
         @Test @DisplayName("ordered DESC by submittedAt")
         void orderedDesc() {
-            Page<Transaction> result = repo.findBySubmittedAtBetween(
+            Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
+                    null, null, null, null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactly(tx3.getId(), tx2.getId(), tx1.getId());
@@ -324,27 +338,22 @@ class TransactionRepositoryTest {
 
         @Test @DisplayName("paginates correctly — page 0 of size 2 returns 2 items, totalElements still 3")
         void paginatesCorrectly() {
-            Page<Transaction> result = repo.findBySubmittedAtBetween(
+            Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
+                    null, null, null, null,
                     PageRequest.of(0, 2));
             assertThat(result.getContent()).hasSize(2);
             assertThat(result.getTotalElements()).isEqualTo(3);
             assertThat(result.isLast()).isFalse();
         }
-    }
-
-    // ── findBySubmittedAtBetweenAndStatus ────────────────────────────────────
-
-    @Nested @DisplayName("findBySubmittedAtBetweenAndStatus")
-    class FindBySubmittedAtBetweenAndStatus {
 
         @Test @DisplayName("filters by status within date range")
         void filtersByStatus() {
-            Page<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+            Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING,
+                    Transaction.TransactionStatus.PENDING, null, null, null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactlyInAnyOrder(tx1.getId(), tx3.getId());
@@ -352,22 +361,82 @@ class TransactionRepositoryTest {
 
         @Test @DisplayName("excludes transactions of a different status")
         void excludesDifferentStatus() {
-            Page<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+            Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING,
+                    Transaction.TransactionStatus.PENDING, null, null, null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).noneMatch(t -> t.getStatus() == Transaction.TransactionStatus.APPROVED);
         }
 
         @Test @DisplayName("returns empty when status matches but none fall in range")
         void emptyWhenNoneInRange() {
-            Page<Transaction> result = repo.findBySubmittedAtBetweenAndStatus(
+            Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2025, 1, 1, 0, 0),
                     LocalDateTime.of(2025, 2, 1, 0, 0),
-                    Transaction.TransactionStatus.PENDING,
+                    Transaction.TransactionStatus.PENDING, null, null, null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).isEmpty();
+        }
+
+        @Test @DisplayName("filters by exact username")
+        void filtersByUsername() {
+            Page<Transaction> result = repo.searchHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    null, "bob", null, null,
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx3.getId());
+        }
+
+        @Test @DisplayName("filters by exact medicineId")
+        void filtersByMedicineId() {
+            Page<Transaction> result = repo.searchHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    null, null, medicine2.getId(), null,
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx3.getId());
+        }
+
+        @Test @DisplayName("filters by a pre-built LIKE pattern, case-insensitively")
+        void filtersByNotes() {
+            // notesPattern arrives as a complete, already-lowercased LIKE pattern (built by the
+            // service layer) — the query itself does no LOWER()/CONCAT() on the bind parameter.
+            // See searchHistory's Javadoc for why: doing that at the SQL level breaks on Postgres
+            // when the parameter is null, which H2 (used here) doesn't reproduce.
+            Page<Transaction> result = repo.searchHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    null, null, null, "%approved%",
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
+        }
+
+        @Test @DisplayName("combines username and status filters")
+        void combinesUsernameAndStatus() {
+            Page<Transaction> result = repo.searchHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    Transaction.TransactionStatus.PENDING, "alice", null, null,
+                    PageRequest.of(0, 20));
+            assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx1.getId());
+        }
+
+        @Test
+        @DisplayName("a filter that matches nothing on the current page still matches records beyond it — "
+                + "the whole point of doing this server-side instead of client-side against loaded pages only")
+        void filterMatchesRecordOutsideFirstPage() {
+            // page size 1: tx3 (newest) is the only item on page 0. Filtering by "bob" (only on
+            // tx3) still finds it even at a page size that would otherwise paginate it out —
+            // proving the filter runs against the full server-side result set, not just page 0.
+            Page<Transaction> result = repo.searchHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    null, "alice", null, null,
+                    PageRequest.of(0, 1));
+            assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
+            assertThat(result.getTotalElements()).isEqualTo(2); // tx1 + tx2, both alice
         }
     }
 

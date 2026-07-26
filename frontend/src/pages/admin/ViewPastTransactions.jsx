@@ -47,9 +47,10 @@ export default function ViewPastTransactions() {
     const sentinelRef = useRef(null);
     const pageRef      = useRef(0);
     const loadingRef   = useRef(false);
-    // The from/to/status a page-0 search was run with — scroll-triggered loads of
-    // subsequent pages must keep using these, not whatever the form currently shows.
-    const searchParamsRef = useRef({ from, to, status });
+    // The exact filters a page-0 search was run with — scroll-triggered loads of subsequent
+    // pages must keep using these, not whatever the form currently shows (the admin may have
+    // changed a filter without pressing Search again yet).
+    const searchParamsRef = useRef({ from, to, status, userFilter, medicineFilter, notesSearch });
 
     useEffect(() => {
         api.getUsers().then(r => setUsers(
@@ -72,7 +73,11 @@ export default function ViewPastTransactions() {
             setLoadingMore(true);
         }
 
-        api.getTransactionHistory(params.from, params.to, params.status, pg, PAGE_SIZE)
+        const username   = params.userFilter === 'ALL' ? undefined : params.userFilter;
+        const medicineId = params.medicineFilter === 'ALL' ? undefined : params.medicineFilter;
+        const notes      = params.notesSearch.trim() ? params.notesSearch.trim() : undefined;
+
+        api.getTransactionHistory(params.from, params.to, params.status, pg, PAGE_SIZE, username, medicineId, notes)
             .then((r) => {
                 const content = r.data?.content;
                 const last    = r.data?.last ?? true;
@@ -91,7 +96,7 @@ export default function ViewPastTransactions() {
 
     const handleSearch = () => {
         if (!isValid) return;
-        const params = { from, to, status };
+        const params = { from, to, status, userFilter, medicineFilter, notesSearch };
         searchParamsRef.current = params;
         pageRef.current = 0;
         setSearched(true);
@@ -115,19 +120,19 @@ export default function ViewPastTransactions() {
         return () => obs.disconnect();
     }, [hasMore, loadPage]);
 
-    // Client-side filters applied on top of the fetched results
-    const displayedTransactions = transactions
-        .filter(tx => userFilter === 'ALL' || tx.submittedByUsername === userFilter)
-        .filter(tx => medicineFilter === 'ALL' || String(tx.medicineId) === medicineFilter)
-        .filter(tx => !notesSearch.trim() ||
-            (tx.notes || '').toLowerCase().includes(notesSearch.trim().toLowerCase()));
-
     const statusBadge = (s) => {
         const cls = s === 'APPROVED' ? 'badge-approved'
                   : s === 'REJECTED' ? 'badge-rejected'
                   : 'badge-pending';
         return <span className={`status-badge ${cls}`}>{s}</span>;
     };
+
+    // Any filter change invalidates the currently-displayed (already-searched) results — the
+    // admin must press Search again for it to take effect, consistent with From/To/Status.
+    // All filters run server-side against the full matching set (see api.getTransactionHistory),
+    // not just whatever page has been scroll-loaded so far — a client-side-only filter would
+    // silently miss real matches that hadn't been loaded yet once results span multiple pages.
+    const invalidateSearch = () => setSearched(false);
 
     return (
         <div className="page">
@@ -146,7 +151,7 @@ export default function ViewPastTransactions() {
                             id="from-date"
                             type="date"
                             value={from}
-                            onChange={e => { setFrom(e.target.value); setSearched(false); }}
+                            onChange={e => { setFrom(e.target.value); invalidateSearch(); }}
                         />
                     </div>
                     <div className="form-group">
@@ -155,7 +160,7 @@ export default function ViewPastTransactions() {
                             id="to-date"
                             type="date"
                             value={to}
-                            onChange={e => { setTo(e.target.value); setSearched(false); }}
+                            onChange={e => { setTo(e.target.value); invalidateSearch(); }}
                         />
                     </div>
                     <div className="form-group">
@@ -163,7 +168,7 @@ export default function ViewPastTransactions() {
                         <select
                             id="status-filter"
                             value={status}
-                            onChange={e => { setStatus(e.target.value); setSearched(false); }}>
+                            onChange={e => { setStatus(e.target.value); invalidateSearch(); }}>
                             {STATUS_OPTIONS.map(o => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
                             ))}
@@ -177,7 +182,7 @@ export default function ViewPastTransactions() {
                         <select
                             id="user-filter"
                             value={userFilter}
-                            onChange={e => setUserFilter(e.target.value)}>
+                            onChange={e => { setUserFilter(e.target.value); invalidateSearch(); }}>
                             <option value="ALL">All Users</option>
                             {users.map(u => (
                                 <option key={u.id} value={u.username}>
@@ -191,7 +196,7 @@ export default function ViewPastTransactions() {
                         <select
                             id="medicine-filter"
                             value={medicineFilter}
-                            onChange={e => setMedicineFilter(e.target.value)}>
+                            onChange={e => { setMedicineFilter(e.target.value); invalidateSearch(); }}>
                             <option value="ALL">All Medicines</option>
                             {medicines.map(m => (
                                 <option key={m.id} value={String(m.id)}>
@@ -207,7 +212,7 @@ export default function ViewPastTransactions() {
                             type="text"
                             placeholder="Search by dispatch note…"
                             value={notesSearch}
-                            onChange={e => setNotesSearch(e.target.value)}
+                            onChange={e => { setNotesSearch(e.target.value); invalidateSearch(); }}
                         />
                     </div>
                 </div>
@@ -230,11 +235,11 @@ export default function ViewPastTransactions() {
             {searched && (
                 loading ? (
                     <p className="loading">Searching…</p>
-                ) : displayedTransactions.length === 0 ? (
+                ) : transactions.length === 0 ? (
                     <p className="empty-state">No transactions found for the selected criteria.</p>
                 ) : (
                     <div className="form-section" style={{ marginTop: '1.5rem' }}>
-                        <h2>Results ({displayedTransactions.length})</h2>
+                        <h2>Results ({transactions.length})</h2>
                         <div className="table-wrapper">
                             <table className="data-table">
                                 <thead>
@@ -252,7 +257,7 @@ export default function ViewPastTransactions() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {displayedTransactions.map(tx => (
+                                    {transactions.map(tx => (
                                         <tr key={tx.id}>
                                             <td>{tx.submittedAt
                                                 ? new Date(tx.submittedAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
