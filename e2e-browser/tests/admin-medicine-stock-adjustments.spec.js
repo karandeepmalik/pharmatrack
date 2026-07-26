@@ -46,4 +46,60 @@ test.describe('Medicine Stock Modifications History', () => {
 
     await expect(page.getByText(/no stock modifications found for the selected date range/i)).toBeVisible({ timeout: 10000 });
   });
+
+  test.describe('delete flow', () => {
+    async function createAdjustment(page, note) {
+      await page.goto('/admin/modify-medicine-stock');
+      await page.locator('#user-select').selectOption({ index: 1 });
+      await page.locator('#medicine-select').selectOption({ index: 1 });
+      await page.locator('#type-select').selectOption('ADD');
+      await page.locator('#qty-input').fill('1');
+      await page.locator('#note-input').fill(note);
+      await page.getByRole('button', { name: /add medicine stock/i }).click();
+      await expect(page.getByRole('alert')).toContainText(/added successfully/i, { timeout: 10000 });
+    }
+
+    async function findRow(page, note) {
+      await page.goto('/admin/medicine-stock-adjustments');
+      await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+      await page.getByRole('button', { name: /^search$/i }).click();
+      await expect(page.getByText(note)).toBeVisible({ timeout: 10000 });
+      return page.getByRole('row', { name: new RegExp(note) });
+    }
+
+    test('clicking Delete shows an inline confirmation with a warning about reversal', async ({ page }) => {
+      const note = `Delete-confirm note ${Date.now()}`;
+      await createAdjustment(page, note);
+      const row = await findRow(page, note);
+
+      await row.getByRole('button', { name: /^delete$/i }).click();
+
+      await expect(row.getByText(/this will reverse the medicinestock change/i)).toBeVisible();
+      await expect(row.getByRole('button', { name: /confirm delete/i })).toBeVisible();
+      await expect(row.getByRole('button', { name: /^cancel$/i })).toBeVisible();
+    });
+
+    test('clicking Cancel dismisses the confirmation without deleting', async ({ page }) => {
+      const note = `Delete-cancel note ${Date.now()}`;
+      await createAdjustment(page, note);
+      const row = await findRow(page, note);
+
+      await row.getByRole('button', { name: /^delete$/i }).click();
+      await row.getByRole('button', { name: /^cancel$/i }).click();
+
+      await expect(row.getByRole('button', { name: /^delete$/i })).toBeVisible();
+      await expect(page.getByText(note)).toBeVisible();
+    });
+
+    test('confirming Delete removes the record from the list', async ({ page }) => {
+      const note = `Delete-confirmed note ${Date.now()}`;
+      await createAdjustment(page, note);
+      const row = await findRow(page, note);
+
+      await row.getByRole('button', { name: /^delete$/i }).click();
+      await row.getByRole('button', { name: /confirm delete/i }).click();
+
+      await expect(page.getByText(note)).not.toBeVisible({ timeout: 10000 });
+    });
+  });
 });

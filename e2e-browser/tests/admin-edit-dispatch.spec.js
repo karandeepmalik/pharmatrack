@@ -73,4 +73,75 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
 
     await expect(firstRow.getByText(newNote)).toBeVisible({ timeout: 10000 });
   });
+
+  test('clicking Cancel on an in-progress edit discards the change', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/admin/dispatch-records');
+    await page.locator('#from-date').fill('2020-01-01');
+    await page.getByRole('button', { name: /^search$/i }).click();
+    await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 });
+
+    const firstRow = page.getByRole('row').nth(1);
+    const originalNote = await firstRow.locator('td').nth(5).innerText();
+    await firstRow.getByRole('button', { name: /edit notes/i }).click();
+    await firstRow.getByRole('textbox', { name: /edit notes/i }).fill('This should not be saved');
+    await firstRow.getByRole('button', { name: /^cancel$/i }).click();
+
+    await expect(firstRow.getByRole('textbox', { name: /edit notes/i })).not.toBeVisible();
+    await expect(firstRow.getByText(originalNote, { exact: true })).toBeVisible();
+  });
+
+  test.describe('delete flow', () => {
+    async function submitAndFindRow(page, note) {
+      await loginAsUser(page, 'john');
+      await page.goto('/user/submit');
+      await page.locator('#pharma-select').selectOption({ index: 1 });
+      await page.locator('#type-select').selectOption({ index: 1 });
+      await page.locator('#spec-select').selectOption({ index: 1 });
+      await page.locator('#quantity-input').fill('0.1');
+      await page.locator('#notes-input').fill(note);
+      await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+      await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+      await expect(page.getByRole('alert')).toContainText(/submitted successfully/i, { timeout: 10000 });
+
+      await loginAsAdmin(page);
+      await page.goto('/admin/dispatch-records');
+      await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+      await page.getByRole('button', { name: /^search$/i }).click();
+      await expect(page.getByText(note)).toBeVisible({ timeout: 10000 });
+      return page.getByRole('row', { name: new RegExp(note) });
+    }
+
+    test('clicking Delete shows an inline confirmation', async ({ page }) => {
+      const note = `Dispatch delete-confirm ${Date.now()}`;
+      const row = await submitAndFindRow(page, note);
+
+      await row.getByRole('button', { name: /^delete$/i }).click();
+
+      await expect(row.getByText(/are you sure/i)).toBeVisible();
+      await expect(row.getByRole('button', { name: /confirm delete/i })).toBeVisible();
+      await expect(row.getByRole('button', { name: /^cancel$/i })).toBeVisible();
+    });
+
+    test('clicking Cancel dismisses the confirmation without deleting', async ({ page }) => {
+      const note = `Dispatch delete-cancel ${Date.now()}`;
+      const row = await submitAndFindRow(page, note);
+
+      await row.getByRole('button', { name: /^delete$/i }).click();
+      await row.getByRole('button', { name: /^cancel$/i }).click();
+
+      await expect(row.getByRole('button', { name: /^delete$/i })).toBeVisible();
+      await expect(page.getByText(note)).toBeVisible();
+    });
+
+    test('confirming Delete removes the dispatch record from the list', async ({ page }) => {
+      const note = `Dispatch delete-confirmed ${Date.now()}`;
+      const row = await submitAndFindRow(page, note);
+
+      await row.getByRole('button', { name: /^delete$/i }).click();
+      await row.getByRole('button', { name: /confirm delete/i }).click();
+
+      await expect(page.getByText(note)).not.toBeVisible({ timeout: 10000 });
+    });
+  });
 });
