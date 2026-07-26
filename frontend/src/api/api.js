@@ -18,7 +18,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
-    if (status === 401) {
+    // A 401 from /auth/login itself means "wrong credentials", not "session expired" —
+    // redirecting here would hard-reload the login page and wipe out the error message
+    // the Login component is about to render before the user ever sees it.
+    const isLoginAttempt = error.config?.url?.includes('/auth/login');
+    if (status === 401 && !isLoginAttempt) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.replace('/login');

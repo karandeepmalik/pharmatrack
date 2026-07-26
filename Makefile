@@ -3,7 +3,7 @@
 #  Run `make help` to see all available commands.
 # ─────────────────────────────────────────────────────────────────────
 
-.PHONY: help up down build logs test test-backend test-frontend \
+.PHONY: help up down build logs test test-backend test-frontend test-e2e-browser \
         shell-backend shell-db clean seed secret deploy-railway \
         deploy-fly deploy-render
 
@@ -59,6 +59,9 @@ test-frontend: ## Run Jest unit tests
 
 test-frontend-coverage: ## Run Jest with coverage report
 	cd frontend && npm run test:unit:coverage
+
+test-e2e-browser: ## Run Playwright browser e2e tests against the local stack (needs `make up` first)
+	cd e2e-browser && FRONTEND_URL=http://localhost npx playwright test
 
 # ── Development utilities ─────────────────────────────────────────────
 shell-backend: ## Open a shell in the running backend container

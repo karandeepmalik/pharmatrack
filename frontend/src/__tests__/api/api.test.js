@@ -139,6 +139,30 @@ describe('api.js', () => {
       const error = { response: { status: 422 }, message: 'Unprocessable' };
       await expect(capturedResponseError(error)).rejects.toBe(error);
     });
+
+    test('401 from /auth/login does NOT redirect (wrong credentials, not session expiry)', async () => {
+      await expect(
+        capturedResponseError({ response: { status: 401 }, config: { url: '/auth/login' } })
+      ).rejects.toBeDefined();
+      expect(window.location.replace).not.toHaveBeenCalled();
+    });
+
+    test('401 from /auth/login does NOT clear an existing token/user', async () => {
+      localStorage.setItem('token', 'still-valid-elsewhere');
+      localStorage.setItem('user', JSON.stringify({ id: 1 }));
+      await expect(
+        capturedResponseError({ response: { status: 401 }, config: { url: '/auth/login' } })
+      ).rejects.toBeDefined();
+      expect(localStorage.getItem('token')).toBe('still-valid-elsewhere');
+      expect(localStorage.getItem('user')).not.toBeNull();
+    });
+
+    test('401 from any other endpoint still redirects to /login', async () => {
+      await expect(
+        capturedResponseError({ response: { status: 401 }, config: { url: '/transactions/my' } })
+      ).rejects.toBeDefined();
+      expect(window.location.replace).toHaveBeenCalledWith('/login');
+    });
   });
 
   // ── submitTransaction — FormData ────────────────────────────────────

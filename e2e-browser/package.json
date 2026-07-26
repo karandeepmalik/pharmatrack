@@ -1,0 +1,16 @@
+{
+  "name": "pharmatrack-e2e-browser",
+  "version": "1.0.0",
+  "description": "Browser-driven end-to-end tests for PharmaTrack (Playwright). Distinct from ../e2e, which is a zero-dependency Node.js HTTP-only test suite against the backend API — this suite renders the real frontend in a browser and clicks through it, so it can catch frontend rendering/wiring bugs that pure API tests structurally cannot.",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  },
+  "engines": { "node": ">=18" }
+}
