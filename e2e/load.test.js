@@ -184,16 +184,16 @@ async function run() {
             `error rate ${(sgMonthlyResult.errorRate * 100).toFixed(1)}% exceeds 2% SLO`);
     });
 
-    // ── Inventory by user ────────────────────────────────────────────────
-    console.log('\n-- Inventory-by-user (30 requests, concurrency 5)');
-    const invResult = await loadTest(
-        'GET /api/reports/inventory-by-user',
-        () => apiFetch(`${API}/reports/inventory-by-user`, { headers: authHeader }),
+    // ── Medicine stock by user ─────────────────────────────────────────────
+    console.log('\n-- Medicine-stock-by-user (30 requests, concurrency 5)');
+    const msResult = await loadTest(
+        'GET /api/reports/medicine-stock-by-user',
+        () => apiFetch(`${API}/reports/medicine-stock-by-user`, { headers: authHeader }),
         { total: 30, concurrency: 5 }
     );
-    await test('Inventory-by-user p95 < 2 000ms', () => {
-        assert(invResult.stats.p95 < 2000,
-            `p95=${invResult.stats.p95}ms exceeds 2 000ms SLO`);
+    await test('Medicine-stock-by-user p95 < 2 000ms', () => {
+        assert(msResult.stats.p95 < 2000,
+            `p95=${msResult.stats.p95}ms exceeds 2 000ms SLO`);
     });
 
     // ── Telemetry throughput (fire-and-forget from many users) ───────────

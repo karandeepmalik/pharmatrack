@@ -5,7 +5,7 @@ import React from 'react';
  * Extracted from SubmitTransaction to uphold SRP.
  *
  * @param {Object}   props
- * @param {Object}   props.item           - selected inventory item
+ * @param {Object}   props.item           - selected medicineStock item
  * @param {string}   props.quantity       - quantity string from form input
  * @param {string}   props.notes          - adjustment notes text
  * @param {number}   props.screenshotCount - number of valid screenshots attached

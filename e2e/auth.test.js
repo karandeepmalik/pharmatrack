@@ -15,6 +15,13 @@ async function test(name, fn) {
 
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 
+// The backend interprets/stores dates in Asia/Kolkata — Date#toISOString() returns UTC, which
+// is a different calendar day from IST for roughly 5.5 hours after UTC midnight, causing
+// "today"-relative date-range tests to spuriously miss same-day records. Use IST consistently.
+function istDateString(date) {
+  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+
 async function apiPost(url, body, token) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -66,8 +73,17 @@ async function apiPostForm(url, fields, token) {
   return { status: res.status, data };
 }
 
+// A real, decodable 2x2 PNG (verified against the backend's own ImageIO decoder before
+// use) — the backend now verifies upload magic bytes AND that the image actually decodes
+// (not just the Content-Type header), so a fake text payload declaring itself as image/png
+// is correctly rejected and won't pass here.
+const REAL_PNG_BYTES = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==',
+  'base64'
+);
+
 function makeFakePng(label = 'A') {
-  return new File([`fake-png-${label}`], `screenshot-${label}.png`, { type: 'image/png' });
+  return new File([REAL_PNG_BYTES], `screenshot-${label}.png`, { type: 'image/png' });
 }
 
 async function run() {
@@ -127,10 +143,10 @@ async function run() {
     const r = await apiPost(`${API}/auth/login`, { username: 'nobody', password: 'pass' });
     assert(r.status === 401, `Expected 401, got ${r.status}`);
   });
-  await test('lostinventory user no longer exists in seed', async () => {
+  await test('lostmedicinestock user no longer exists in seed', async () => {
     const r = await apiGet(`${API}/users`, adminToken);
-    const sysUser = r.data.find(u => u.username === 'lostinventory');
-    assert(!sysUser, 'lostinventory system user should not exist after reseed');
+    const sysUser = r.data.find(u => u.username === 'lostmedicinestock');
+    assert(!sysUser, 'lostmedicinestock system user should not exist after reseed');
   });
 
   // ── CORS ──────────────────────────────────────────────────────────────
@@ -174,23 +190,23 @@ async function run() {
   // ── Protected Routes ───────────────────────────────────────────��──────
   console.log('\n-- Protected Routes');
   await test('Admin-only endpoint rejects no token (401/403)', async () => {
-    const r = await apiGet(`${API}/inventory`);
+    const r = await apiGet(`${API}/medicine-stock`);
     assert(r.status === 401 || r.status === 403, `Expected 401/403, got ${r.status}`);
   });
-  await test('Admin can access /api/inventory with token', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  await test('Admin can access /api/medicine-stock with token', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
   });
-  await test('User can access /api/inventory/available with token', async () => {
-    const r = await apiGet(`${API}/inventory/available`, userToken);
+  await test('User can access /api/medicine-stock/available with token', async () => {
+    const r = await apiGet(`${API}/medicine-stock/available`, userToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
   });
-  await test('Non-admin cannot access /api/inventory (403)', async () => {
-    const r = await apiGet(`${API}/inventory`, userToken);
+  await test('Non-admin cannot access /api/medicine-stock (403)', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, userToken);
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
-  await test('/api/inventory/system endpoint no longer exists (404)', async () => {
-    const r = await apiGet(`${API}/inventory/system`, adminToken);
+  await test('/api/medicine-stock/system endpoint no longer exists (404)', async () => {
+    const r = await apiGet(`${API}/medicine-stock/system`, adminToken);
     assert(r.status === 404, `Expected 404 (removed), got ${r.status}`);
   });
 
@@ -255,76 +271,76 @@ async function run() {
     });
   });
 
-  // ── Inventory — user inventory ──────────────────────────────��───────
-  console.log('\n-- Inventory — user inventory');
+  // ── Medicine Stock — user medicine stock ─────────────────────────────────────
+  console.log('\n-- Medicine Stock — user medicine stock');
   await test('Admin can list all user inventories', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     assert(Array.isArray(r.data), 'Expected array');
   });
-  await test('Inventory records include price and specUnit fields', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  await test('MedicineStock records include price and specUnit fields', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     if (r.data.length === 0) return; // no allocations yet
     const item = r.data[0];
     assert(item.specUnit !== undefined, 'Missing specUnit');
     assert(item.price !== undefined, 'Missing price');
   });
-  await test('TABLET inventory items have specUnit mg (10 Tablets)', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  await test('TABLET medicineStock items have specUnit mg (10 Tablets)', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     const tablets = r.data.filter(i => i.medicineType === 'TABLET');
     tablets.forEach(t => {
       assert(t.specUnit === 'mg (10 Tablets)', `Expected 'mg (10 Tablets)', got: ${t.specUnit}`);
     });
   });
 
-  // ── Inventory type integrity ──────────────────────────────────────────
+  // ── MedicineStock type integrity ──────────────────────────────────────────
   // These tests guard against the production bug where DataMigrationService failed
-  // to rename legacy inventory_type values ('REGULAR', 'ADMIN_STOCK') because a
+  // to rename legacy medicineStock_type values ('REGULAR', 'ADMIN_STOCK') because a
   // Hibernate 6 CHECK constraint silently blocked the UPDATE. The symptom was that
   // JPQL queries for REGULAR_MEDICINE_STOCK returned zero rows, making all reports empty.
-  console.log('\n-- Inventory Type Integrity');
-  let allInventory;
-  await test('Admin can fetch all inventory rows', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  console.log('\n-- MedicineStock Type Integrity');
+  let allMedicineStock;
+  await test('Admin can fetch all medicineStock rows', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     assert(Array.isArray(r.data), 'Expected array');
-    allInventory = r.data;
+    allMedicineStock = r.data;
   });
-  await test('All inventory rows have an inventoryType field', async () => {
-    assert(allInventory && allInventory.length > 0, 'No inventory rows to check');
-    allInventory.forEach(i => {
-      assert(i.inventoryType !== undefined && i.inventoryType !== null,
-        `Row id=${i.id} is missing inventoryType field`);
+  await test('All medicineStock rows have an medicineStockType field', async () => {
+    assert(allMedicineStock && allMedicineStock.length > 0, 'No medicineStock rows to check');
+    allMedicineStock.forEach(i => {
+      assert(i.medicineStockType !== undefined && i.medicineStockType !== null,
+        `Row id=${i.id} is missing medicineStockType field`);
     });
   });
-  await test('No legacy inventory_type values exist (REGULAR or ADMIN_STOCK)', async () => {
-    const legacyRows = allInventory.filter(i =>
-      i.inventoryType === 'REGULAR' || i.inventoryType === 'ADMIN_STOCK');
+  await test('No legacy medicineStock_type values exist (REGULAR or ADMIN_STOCK)', async () => {
+    const legacyRows = allMedicineStock.filter(i =>
+      i.medicineStockType === 'REGULAR' || i.medicineStockType === 'ADMIN_STOCK');
     assert(legacyRows.length === 0,
-      `Found ${legacyRows.length} row(s) with legacy inventory_type: ` +
-      legacyRows.map(i => `id=${i.id} type=${i.inventoryType}`).join(', ') +
+      `Found ${legacyRows.length} row(s) with legacy medicineStock_type: ` +
+      legacyRows.map(i => `id=${i.id} type=${i.medicineStockType}`).join(', ') +
       ' — DataMigrationService rename may have been blocked by a CHECK constraint');
   });
   await test('REGULAR_MEDICINE_STOCK rows exist and have positive quantity', async () => {
-    const regularRows = allInventory.filter(i => i.inventoryType === 'REGULAR_MEDICINE_STOCK');
+    const regularRows = allMedicineStock.filter(i => i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
     assert(regularRows.length > 0,
-      'No REGULAR_MEDICINE_STOCK rows found — migration may have failed or inventory was not seeded');
+      'No REGULAR_MEDICINE_STOCK rows found — migration may have failed or medicineStock was not seeded');
     regularRows.forEach(i => {
       assert(i.quantity >= 0, `Row id=${i.id} has negative quantity: ${i.quantity}`);
     });
   });
   await test('ADMIN_MEDICINE_STOCK rows exist and are not wiped by startup', async () => {
-    const adminRows = allInventory.filter(i => i.inventoryType === 'ADMIN_MEDICINE_STOCK');
+    const adminRows = allMedicineStock.filter(i => i.medicineStockType === 'ADMIN_MEDICINE_STOCK');
     assert(adminRows.length > 0,
       'No ADMIN_MEDICINE_STOCK rows found — admin stock may have been wiped on startup ' +
-      '(removeAdminInventory bug) or inventory was not seeded');
+      '(removeAdminMedicineStock bug) or medicineStock was not seeded');
     const totalAdminQty = adminRows.reduce((sum, i) => sum + i.quantity, 0);
     assert(totalAdminQty > 0,
       `All ADMIN_MEDICINE_STOCK rows have quantity 0 — admin stock may have been wiped (total=${totalAdminQty})`);
   });
 
-  // ── Admin: Adjust User Inventory ───────────────────────────��────────
-  console.log('\n-- Admin: Adjust User Inventory');
+  // ── Admin: Adjust User MedicineStock ───────────────────────────��────────
+  console.log('\n-- Admin: Adjust User MedicineStock');
   let johnId;
   let adjustMedicineId;
   let quantityBeforeAdjust;
@@ -342,15 +358,15 @@ async function run() {
     adjustMedicineId = r.data[0].id;
   });
 
-  await test('Record john.doe current inventory before adjustment', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  await test('Record john.doe current medicineStock before adjustment', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     quantityBeforeAdjust = inv ? inv.quantity : 0;
     assert(quantityBeforeAdjust >= 0, 'Expected non-negative quantity');
   });
 
-  await test('Admin can ADD inventory to user with note', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Admin can ADD medicineStock to user with note', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -362,8 +378,8 @@ async function run() {
       `Expected ${quantityBeforeAdjust + 10}, got ${r.data.quantity}`);
   });
 
-  await test('Admin can REDUCE inventory from user with note', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Admin can REDUCE medicineStock from user with note', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
@@ -375,8 +391,8 @@ async function run() {
       `Expected ${quantityBeforeAdjust + 5}, got ${r.data.quantity}`);
   });
 
-  await test('Adjust inventory without note returns 400', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Adjust medicineStock without note returns 400', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -385,8 +401,8 @@ async function run() {
     assert(r.status === 400, `Expected 400, got ${r.status}`);
   });
 
-  await test('Adjust inventory with note too short returns 400', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Adjust medicineStock with note too short returns 400', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -396,8 +412,8 @@ async function run() {
     assert(r.status === 400, `Expected 400, got ${r.status}`);
   });
 
-  await test('Adjust inventory with quantity 0 returns 400', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Adjust medicineStock with quantity 0 returns 400', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -408,7 +424,7 @@ async function run() {
   });
 
   await test('Reducing more than available returns 409', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
@@ -418,8 +434,8 @@ async function run() {
     assert(r.status === 409, `Expected 409, got ${r.status}`);
   });
 
-  await test('Non-admin cannot adjust inventory (401/403)', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Non-admin cannot adjust medicineStock (401/403)', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -429,11 +445,11 @@ async function run() {
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
-  await test('Admin can adjust inventory with a specific past adjustmentDate', async () => {
+  await test('Admin can adjust medicineStock with a specific past adjustmentDate', async () => {
     const pastDate = new Date();
     pastDate.setDate(pastDate.getDate() - 7);
-    const dateStr = pastDate.toISOString().slice(0, 10);
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const dateStr = istDateString(pastDate);
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -443,7 +459,7 @@ async function run() {
     }, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     // restore immediately
-    await apiPost(`${API}/inventory/adjust`, {
+    await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
@@ -452,11 +468,11 @@ async function run() {
     }, adminToken);
   });
 
-  await test('Adjust inventory with future adjustmentDate returns 400', async () => {
+  await test('Adjust medicineStock with future adjustmentDate returns 400', async () => {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 1);
-    const dateStr = futureDate.toISOString().slice(0, 10);
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const dateStr = istDateString(futureDate);
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -467,8 +483,8 @@ async function run() {
     assert(r.status === 400, `Expected 400, got ${r.status}`);
   });
 
-  await test('Admin can ADD inventory with inTransit=true', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Admin can ADD medicineStock with inTransit=true', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -478,7 +494,7 @@ async function run() {
     }, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     // Restore immediately
-    await apiPost(`${API}/inventory/adjust`, {
+    await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
@@ -487,8 +503,8 @@ async function run() {
     }, adminToken);
   });
 
-  await test('Admin can ADD inventory with inTransit=false (explicit default)', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Admin can ADD medicineStock with inTransit=false (explicit default)', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -498,7 +514,7 @@ async function run() {
     }, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     // Restore immediately
-    await apiPost(`${API}/inventory/adjust`, {
+    await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
@@ -514,38 +530,38 @@ async function run() {
     assert(r.data.content.includes('DAILY REPORT'), 'Expected DAILY REPORT header');
   });
 
-  // ── TEARDOWN: Restore john.doe inventory to original ─────────────────
+  // ── TEARDOWN: Restore john.doe medicineStock to original ─────────────────
   // Net change so far: +10 ADD then -5 REDUCE = net +5 above original
   // Restore: REDUCE 5 to get back to quantityBeforeAdjust
-  await test('[TEARDOWN] Restore john.doe inventory to pre-test level', async () => {
-    const currentR = await apiGet(`${API}/inventory`, adminToken);
+  await test('[TEARDOWN] Restore john.doe medicineStock to pre-test level', async () => {
+    const currentR = await apiGet(`${API}/medicine-stock`, adminToken);
     const current = currentR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     const currentQty = current ? current.quantity : 0;
     if (currentQty === quantityBeforeAdjust) return; // already correct
     const diff = currentQty - quantityBeforeAdjust;
     if (diff > 0) {
-      const r = await apiPost(`${API}/inventory/adjust`, {
+      const r = await apiPost(`${API}/medicine-stock/adjust`, {
         userId: johnId,
         medicineId: adjustMedicineId,
         adjustmentType: 'REDUCE',
         quantity: diff,
-        note: 'E2E test teardown — restoring original inventory level',
+        note: 'E2E test teardown — restoring original medicineStock level',
       }, adminToken);
       assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
     } else {
-      const r = await apiPost(`${API}/inventory/adjust`, {
+      const r = await apiPost(`${API}/medicine-stock/adjust`, {
         userId: johnId,
         medicineId: adjustMedicineId,
         adjustmentType: 'ADD',
         quantity: Math.abs(diff),
-        note: 'E2E test teardown — restoring original inventory level',
+        note: 'E2E test teardown — restoring original medicineStock level',
       }, adminToken);
       assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
     }
   });
 
-  await test('[VERIFY TEARDOWN] john.doe inventory restored to original', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  await test('[VERIFY TEARDOWN] john.doe medicineStock restored to original', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     const restored = inv ? inv.quantity : 0;
     assert(restored === quantityBeforeAdjust,
@@ -555,8 +571,8 @@ async function run() {
   // ── Decimal Quantity Precision ──────────────────────────────────────────
   console.log('\n-- Decimal Quantity Precision');
 
-  await test('Admin can ADD inventory with a fractional quantity (0.3)', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('Admin can ADD medicineStock with a fractional quantity (0.3)', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -568,7 +584,7 @@ async function run() {
     assert(Math.abs(r.data.quantity - expected) < 0.001,
       `Expected ~${expected}, got ${r.data.quantity}`);
     // Restore immediately
-    const restoreR = await apiPost(`${API}/inventory/adjust`, {
+    const restoreR = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
@@ -579,7 +595,7 @@ async function run() {
   });
 
   await test('Admin ADD with over-precision quantity 1.25 rounds to 1.3 (HALF_UP)', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -591,7 +607,7 @@ async function run() {
     assert(Math.abs(r.data.quantity - expected) < 0.001,
       `Expected quantity rounded to a 1.3 increase (~${expected}), got ${r.data.quantity}`);
     // Restore immediately — reduce by the rounded 1.3, not the submitted 1.25
-    const restoreR = await apiPost(`${API}/inventory/adjust`, {
+    const restoreR = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
@@ -601,8 +617,8 @@ async function run() {
     assert(restoreR.status === 200, `Restore failed: ${restoreR.status}`);
   });
 
-  await test('[VERIFY] john.doe inventory still restored after decimal ADD/REDUCE tests', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  await test('[VERIFY] john.doe medicineStock still restored after decimal ADD/REDUCE tests', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     const restored = inv ? inv.quantity : 0;
     assert(Math.abs(restored - quantityBeforeAdjust) < 0.001,
@@ -611,7 +627,7 @@ async function run() {
 
   let decimalTxId;
   await test('[SETUP] Allocate stock for fractional-quantity transaction test', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -626,7 +642,7 @@ async function run() {
       medicineId: String(adjustMedicineId),
       quantity: '1.5',
       notes: 'E2E fractional quantity dispatch test',
-      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('D')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
@@ -650,35 +666,35 @@ async function run() {
     }
   });
 
-  await test('[TEARDOWN] Restore john.doe inventory after decimal transaction test', async () => {
-    const currentR = await apiGet(`${API}/inventory`, adminToken);
+  await test('[TEARDOWN] Restore john.doe medicineStock after decimal transaction test', async () => {
+    const currentR = await apiGet(`${API}/medicine-stock`, adminToken);
     const current = currentR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     const currentQty = current ? current.quantity : 0;
     const diff = currentQty - quantityBeforeAdjust;
     if (Math.abs(diff) < 0.001) return; // already correct
     if (diff > 0) {
-      const r = await apiPost(`${API}/inventory/adjust`, {
+      const r = await apiPost(`${API}/medicine-stock/adjust`, {
         userId: johnId,
         medicineId: adjustMedicineId,
         adjustmentType: 'REDUCE',
         quantity: diff,
-        note: 'E2E decimal test teardown — restoring original inventory level',
+        note: 'E2E decimal test teardown — restoring original medicineStock level',
       }, adminToken);
       assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
     } else {
-      const r = await apiPost(`${API}/inventory/adjust`, {
+      const r = await apiPost(`${API}/medicine-stock/adjust`, {
         userId: johnId,
         medicineId: adjustMedicineId,
         adjustmentType: 'ADD',
         quantity: Math.abs(diff),
-        note: 'E2E decimal test teardown — restoring original inventory level',
+        note: 'E2E decimal test teardown — restoring original medicineStock level',
       }, adminToken);
       assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
     }
   });
 
-  await test('[VERIFY TEARDOWN] john.doe inventory restored after decimal transaction test', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  await test('[VERIFY TEARDOWN] john.doe medicineStock restored after decimal transaction test', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     const restored = inv ? inv.quantity : 0;
     assert(Math.abs(restored - quantityBeforeAdjust) < 0.001,
@@ -816,14 +832,14 @@ async function run() {
     deleteTestUserId = r.data.id;
   });
 
-  await test('Admin can add inventory to user before deletion (for cascade test)', async () => {
+  await test('Admin can add medicineStock to user before deletion (for cascade test)', async () => {
     if (!deleteTestUserId || !adjustMedicineId) return;
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: deleteTestUserId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
       quantity: 5,
-      note: 'E2E test inventory for delete cascade test',
+      note: 'E2E test medicineStock for delete cascade test',
     }, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
   });
@@ -845,10 +861,10 @@ async function run() {
     assert(r.status === 401, `Expected 401 for deleted user, got ${r.status}`);
   });
 
-  await test('Deleted user inventory is also removed (cascade)', async () => {
-    const r = await apiGet(`${API}/inventory`, adminToken);
+  await test('Deleted user medicineStock is also removed (cascade)', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
     const found = r.data.find(i => i.userId === deleteTestUserId);
-    assert(!found, `Expected inventory for deleted user to be removed`);
+    assert(!found, `Expected medicineStock for deleted user to be removed`);
   });
 
   await test('Delete non-existent user returns 404', async () => {
@@ -861,8 +877,8 @@ async function run() {
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
-  // ── Admin: Modify own (admin) inventory ──────────────────────────────
-  console.log('\n-- Admin: Modify Own Inventory');
+  // ── Admin: Modify own (admin) medicineStock ──────────────────────────────
+  console.log('\n-- Admin: Modify Own MedicineStock');
 
   // Resolve the admin user's id from the users list
   let adminUserId;
@@ -874,61 +890,61 @@ async function run() {
     adminUserId = adminUser.id;
   });
 
-  await test('Admin cannot add inventory to own account (admin has no personal inventory)', async () => {
+  await test('Admin cannot add medicineStock to own account (admin has no personal medicineStock)', async () => {
     assert(adminUserId, 'No adminUserId');
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: adminUserId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
       quantity: 3,
-      note: 'E2E test — admin adding inventory to own account should be blocked',
+      note: 'E2E test — admin adding medicineStock to own account should be blocked',
     }, adminToken);
-    assert(r.status === 400, `Expected 400 (admin cannot hold inventory), got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.status === 400, `Expected 400 (admin cannot hold medicineStock), got ${r.status}: ${JSON.stringify(r.data)}`);
   });
 
   // ── Admin: Reports ────────────────────────────────────────────────────
   console.log('\n-- Admin: Reports');
 
-  await test('Admin can access inventory-by-user report', async () => {
-    const r = await apiGet(`${API}/reports/inventory-by-user`, adminToken);
+  await test('Admin can access medicine-stock-by-user report', async () => {
+    const r = await apiGet(`${API}/reports/medicine-stock-by-user`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
-    assert(r.data.reportType === 'INVENTORY_BY_USER', `Expected INVENTORY_BY_USER, got ${r.data.reportType}`);
+    assert(r.data.reportType === 'MEDICINE_STOCK_BY_USER', `Expected MEDICINE_STOCK_BY_USER, got ${r.data.reportType}`);
     assert(typeof r.data.content === 'string' && r.data.content.length > 0, 'Expected non-empty content');
     assert(r.data.content.includes('CURRENT MEDICINE STOCK PER USER'), 'Expected report header');
   });
 
   // Report content quality — verifies the JPQL enum queries used by ReportService
-  // actually return rows. If inventory_type column holds legacy values ('REGULAR'),
+  // actually return rows. If medicineStock_type column holds legacy values ('REGULAR'),
   // the JPQL query for REGULAR_MEDICINE_STOCK returns nothing and the report shows
   // empty sections. This is the production bug that caused "(none) / TOTAL: 0".
-  await test('Inventory-by-user report lists actual seeded users', async () => {
-    const r = await apiGet(`${API}/reports/inventory-by-user`, adminToken);
+  await test('MedicineStock-by-user report lists actual seeded users', async () => {
+    const r = await apiGet(`${API}/reports/medicine-stock-by-user`, adminToken);
     assert(r.status === 200, `Got ${r.status}`);
     const content = r.data.content;
     assert(
       content.includes('john.doe') || content.includes('jane.smith') || content.includes('John') || content.includes('Jane'),
-      'Inventory-by-user report must list at least one seeded user — if empty, JPQL enum query returned zero rows'
+      'MedicineStock-by-user report must list at least one seeded user — if empty, JPQL enum query returned zero rows'
     );
   });
 
-  await test('Admin can access inventory-valuation report', async () => {
-    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+  await test('Admin can access medicine-stock-valuation report', async () => {
+    const r = await apiGet(`${API}/reports/medicine-stock-valuation`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
-    assert(r.data.reportType === 'INVENTORY_VALUATION', `Expected INVENTORY_VALUATION, got ${r.data.reportType}`);
+    assert(r.data.reportType === 'MEDICINE_STOCK_VALUATION', `Expected MEDICINE_STOCK_VALUATION, got ${r.data.reportType}`);
     assert(r.data.content.includes('MEDICINE STOCK VALUATION'), 'Expected report header');
     assert(r.data.content.includes('TOTAL VALUATION'), 'Expected total valuation line');
   });
 
-  await test('inventory-valuation report with date param returns 200', async () => {
-    const r = await apiGet(`${API}/reports/inventory-valuation?date=2026-01-01`, adminToken);
+  await test('medicine-stock-valuation report with date param returns 200', async () => {
+    const r = await apiGet(`${API}/reports/medicine-stock-valuation?date=2026-01-01`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
-    assert(r.data.reportType === 'INVENTORY_VALUATION', `Got ${r.data.reportType}`);
+    assert(r.data.reportType === 'MEDICINE_STOCK_VALUATION', `Got ${r.data.reportType}`);
     assert(r.data.content.includes('MEDICINE STOCK VALUATION'), 'Expected MEDICINE STOCK VALUATION header');
     assert(r.data.content.includes('As of:'), 'Expected As of: date line');
   });
 
-  await test('Inventory-valuation total is non-zero', async () => {
-    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+  await test('MedicineStock-valuation total is non-zero', async () => {
+    const r = await apiGet(`${API}/reports/medicine-stock-valuation`, adminToken);
     assert(r.status === 200, `Got ${r.status}`);
     // Extract the TOTAL VALUATION line and verify it is not zero
     const match = r.data.content.match(/TOTAL VALUATION[^\n]*Rs\s*([\d,]+)/);
@@ -936,11 +952,11 @@ async function run() {
     const total = parseInt(match[1].replace(/,/g, ''), 10);
     assert(total > 0,
       `TOTAL VALUATION is Rs ${total} — expected > 0. If zero, JPQL valuation query returned no rows ` +
-      '(possible inventory_type enum mismatch in DB)');
+      '(possible medicineStock_type enum mismatch in DB)');
   });
 
-  await test('inventory-valuation report has per-spec Valuation line format', async () => {
-    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+  await test('medicine-stock-valuation report has per-spec Valuation line format', async () => {
+    const r = await apiGet(`${API}/reports/medicine-stock-valuation`, adminToken);
     assert(r.status === 200, `Got ${r.status}`);
     assert(
       r.data.content.includes('Valuation:') && r.data.content.includes('units x Rs'),
@@ -952,8 +968,8 @@ async function run() {
     );
   });
 
-  await test('inventory-valuation report shows in-transit stock with + notation when present', async () => {
-    const r = await apiGet(`${API}/reports/inventory-valuation`, adminToken);
+  await test('medicine-stock-valuation report shows in-transit stock with + notation when present', async () => {
+    const r = await apiGet(`${API}/reports/medicine-stock-valuation`, adminToken);
     assert(r.status === 200, `Got ${r.status}`);
     if (r.data.content.includes('(in transit)')) {
       const match = r.data.content.match(/\d+(\.\d+)? \+ \d+(\.\d+)? \(in transit\)/);
@@ -990,8 +1006,8 @@ async function run() {
     assert(r.data.content.includes('REGULAR MEDICINE STOCK'), 'Expected regular medicine stock section');
     assert(r.data.content.includes('ADMIN MEDICINE STOCK'), 'Expected admin medicine stock section');
     assert(r.data.content.includes('DAILY TRANSACTION SUMMARY'), 'Expected transactions section');
-    assert(r.data.content.includes('Vial 10 ml'), 'Expected 10ml vial in inventory section');
-    assert(r.data.content.includes('Vial 5 ml'), 'Expected 5ml vial in inventory section');
+    assert(r.data.content.includes('Vial 10 ml'), 'Expected 10ml vial in medicineStock section');
+    assert(r.data.content.includes('Vial 5 ml'), 'Expected 5ml vial in medicineStock section');
     // Admin stock must appear before transactions
     assert(r.data.content.indexOf('ADMIN MEDICINE STOCK') < r.data.content.indexOf('DAILY TRANSACTION SUMMARY'),
       'Expected ADMIN MEDICINE STOCK before DAILY TRANSACTION SUMMARY');
@@ -999,7 +1015,7 @@ async function run() {
     // 10ml must appear before 5ml
     assert(r.data.content.indexOf('Vial 10 ml') < r.data.content.indexOf('Vial 5 ml'),
       'Expected 10ml vial before 5ml vial');
-    // Pharma name must appear inside each inventory section (not just anywhere)
+    // Pharma name must appear inside each medicineStock section (not just anywhere)
     const regularIdx = r.data.content.indexOf('REGULAR MEDICINE STOCK');
     const adminIdx   = r.data.content.indexOf('ADMIN MEDICINE STOCK');
     const txIdx      = r.data.content.indexOf('DAILY TRANSACTION SUMMARY');
@@ -1025,7 +1041,7 @@ async function run() {
     assert(
       !content.includes('(none)'),
       'Daily report contains "(none)" — the regular/admin medicine stock section is empty. ' +
-      'Likely cause: inventory_type column holds legacy values not matched by JPQL enum query.'
+      'Likely cause: medicineStock_type column holds legacy values not matched by JPQL enum query.'
     );
     // Verify the regular stock section actually has a TOTAL line with a positive number
     const regularIdx  = content.indexOf('REGULAR MEDICINE STOCK');
@@ -1034,7 +1050,7 @@ async function run() {
     assert(
       regularSection.includes('TOTAL:') && !regularSection.match(/TOTAL:\s*0\b/),
       'Daily report REGULAR MEDICINE STOCK section has TOTAL: 0 or no TOTAL line — ' +
-      'JPQL query may be returning no rows (inventory_type enum mismatch)'
+      'JPQL query may be returning no rows (medicineStock_type enum mismatch)'
     );
   });
 
@@ -1058,12 +1074,12 @@ async function run() {
   });
 
   await test('Non-admin cannot access reports (401/403)', async () => {
-    const r = await apiGet(`${API}/reports/inventory-by-user`, userToken);
+    const r = await apiGet(`${API}/reports/medicine-stock-by-user`, userToken);
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
   await test('Unauthenticated cannot access reports (401)', async () => {
-    const r = await apiGet(`${API}/reports/inventory-valuation`);
+    const r = await apiGet(`${API}/reports/medicine-stock-valuation`);
     assert(r.status === 401 || r.status === 403, `Expected 401, got ${r.status}`);
   });
 
@@ -1166,19 +1182,19 @@ async function run() {
     assert(r.status === 401, `Expected 401, got ${r.status}`);
   });
 
-  // ── Inventory Adjustments — GET & DELETE ─────────────────────────────
-  console.log('\n-- Inventory Adjustments (GET & DELETE)');
-  const today = new Date().toISOString().slice(0, 10);
+  // ── MedicineStock Adjustments — GET & DELETE ─────────────────────────────
+  console.log('\n-- MedicineStock Adjustments (GET & DELETE)');
+  const today = istDateString(new Date());
   let adjustmentIdForDelete;
 
-  await test('Admin can list inventory adjustments for a date range', async () => {
-    const r = await apiGet(`${API}/inventory/adjustments?from=${today}&to=${today}`, adminToken);
+  await test('Admin can list medicineStock adjustments for a date range', async () => {
+    const r = await apiGet(`${API}/medicine-stock/adjustments?from=${today}&to=${today}`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     assert(Array.isArray(r.data), 'Expected array response');
   });
 
   await test('Adjustment list entries have expected fields', async () => {
-    const r = await apiGet(`${API}/inventory/adjustments?from=2026-01-01&to=${today}`, adminToken);
+    const r = await apiGet(`${API}/medicine-stock/adjustments?from=2026-01-01&to=${today}`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     if (r.data.length === 0) return;
     const a = r.data[0];
@@ -1189,19 +1205,19 @@ async function run() {
     assert(a.adjustedAt !== undefined, 'Missing adjustedAt');
   });
 
-  await test('Non-admin cannot list inventory adjustments (401/403)', async () => {
-    const r = await apiGet(`${API}/inventory/adjustments?from=${today}&to=${today}`, userToken);
+  await test('Non-admin cannot list medicineStock adjustments (401/403)', async () => {
+    const r = await apiGet(`${API}/medicine-stock/adjustments?from=${today}&to=${today}`, userToken);
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
   await test('Missing from/to params returns 400', async () => {
-    const r = await apiGet(`${API}/inventory/adjustments`, adminToken);
+    const r = await apiGet(`${API}/medicine-stock/adjustments`, adminToken);
     assert(r.status === 400, `Expected 400, got ${r.status}`);
   });
 
   await test('[SETUP] Create adjustment for deletion test', async () => {
     assert(johnId && adjustMedicineId, 'Need johnId and adjustMedicineId');
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -1209,21 +1225,21 @@ async function run() {
       note: 'E2E test adjustment for deletion test',
     }, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
-    const adjR = await apiGet(`${API}/inventory/adjustments?from=${today}&to=${today}`, adminToken);
+    const adjR = await apiGet(`${API}/medicine-stock/adjustments?from=${today}&to=${today}`, adminToken);
     assert(adjR.status === 200, `Could not fetch adjustments: ${adjR.status}`);
     const adj = adjR.data.find(a => a.username === 'john.doe' && a.adjustmentType === 'ADD' && a.quantity === 2);
     assert(adj, 'Could not find newly created adjustment in list');
     adjustmentIdForDelete = adj.id;
   });
 
-  await test('Admin can delete an inventory adjustment and stock is reversed', async () => {
+  await test('Admin can delete an medicineStock adjustment and stock is reversed', async () => {
     assert(adjustmentIdForDelete, 'No adjustmentIdForDelete — setup test must have passed');
-    const beforeR = await apiGet(`${API}/inventory`, adminToken);
+    const beforeR = await apiGet(`${API}/medicine-stock`, adminToken);
     const before = beforeR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     const beforeQty = before ? before.quantity : 0;
-    const r = await apiDelete(`${API}/inventory/adjustments/${adjustmentIdForDelete}`, adminToken);
+    const r = await apiDelete(`${API}/medicine-stock/adjustments/${adjustmentIdForDelete}`, adminToken);
     assert(r.status === 204, `Expected 204, got ${r.status}`);
-    const afterR = await apiGet(`${API}/inventory`, adminToken);
+    const afterR = await apiGet(`${API}/medicine-stock`, adminToken);
     const after = afterR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     const afterQty = after ? after.quantity : 0;
     assert(afterQty === beforeQty - 2, `Expected qty ${beforeQty - 2} after reversal, got ${afterQty}`);
@@ -1231,19 +1247,19 @@ async function run() {
 
   await test('Deleted adjustment no longer appears in list', async () => {
     if (!adjustmentIdForDelete) return;
-    const r = await apiGet(`${API}/inventory/adjustments?from=${today}&to=${today}`, adminToken);
+    const r = await apiGet(`${API}/medicine-stock/adjustments?from=${today}&to=${today}`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     const found = r.data.find(a => a.id === adjustmentIdForDelete);
     assert(!found, `Expected adjustment ${adjustmentIdForDelete} to be gone from list`);
   });
 
   await test('Delete non-existent adjustment returns 404', async () => {
-    const r = await apiDelete(`${API}/inventory/adjustments/999999`, adminToken);
+    const r = await apiDelete(`${API}/medicine-stock/adjustments/999999`, adminToken);
     assert(r.status === 404, `Expected 404, got ${r.status}`);
   });
 
-  await test('Non-admin cannot delete an inventory adjustment (401/403)', async () => {
-    const r = await apiDelete(`${API}/inventory/adjustments/1`, userToken);
+  await test('Non-admin cannot delete an medicineStock adjustment (401/403)', async () => {
+    const r = await apiDelete(`${API}/medicine-stock/adjustments/1`, userToken);
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
@@ -1251,9 +1267,9 @@ async function run() {
   console.log('\n-- Multi-Screenshot Transactions');
 
   // Ensure john.doe has at least 5 units of REGULAR_MEDICINE_STOCK to submit transactions against
-  await test('[SETUP] Allocate inventory to john.doe for transaction tests', async () => {
+  await test('[SETUP] Allocate medicineStock to john.doe for transaction tests', async () => {
     assert(johnId && adjustMedicineId, 'johnId and adjustMedicineId must be resolved');
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -1265,11 +1281,11 @@ async function run() {
 
   // Find a medicine the user (john.doe) has access to
   let txMedicineId;
-  await test('User has available inventory to submit against', async () => {
-    const r = await apiGet(`${API}/inventory/available`, userToken);
+  await test('User has available medicineStock to submit against', async () => {
+    const r = await apiGet(`${API}/medicine-stock/available`, userToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
-    const item = r.data.find(i => i.quantity >= 2 && i.inventoryType === 'REGULAR_MEDICINE_STOCK');
-    assert(item, 'No REGULAR_MEDICINE_STOCK inventory item with qty >= 2 found for user');
+    const item = r.data.find(i => i.quantity >= 2 && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    assert(item, 'No REGULAR_MEDICINE_STOCK medicineStock item with qty >= 2 found for user');
     txMedicineId = item.medicineId;
   });
 
@@ -1280,7 +1296,7 @@ async function run() {
       medicineId: String(txMedicineId),
       quantity: '1',
       notes: 'E2E single-screenshot test',
-      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('1')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
@@ -1297,7 +1313,8 @@ async function run() {
     assert(Array.isArray(tx.screenshots), 'screenshots field should be an array');
     assert(tx.screenshots.length === 1, `Expected 1 screenshot, got ${tx.screenshots.length}`);
     assert(tx.screenshots[0].data, 'Screenshot entry missing data field');
-    assert(tx.screenshots[0].mimeType === 'image/png', `Expected image/png, got ${tx.screenshots[0].mimeType}`);
+    // Backend compresses and re-encodes valid non-GIF/WebP images as JPEG (see ScreenshotProcessor).
+    assert(tx.screenshots[0].mimeType === 'image/jpeg', `Expected image/jpeg, got ${tx.screenshots[0].mimeType}`);
   });
 
   let multiShotTxId;
@@ -1307,7 +1324,7 @@ async function run() {
       medicineId: String(txMedicineId),
       quantity: '1',
       notes: 'E2E multi-screenshot test two files',
-      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('A'), makeFakePng('B')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
@@ -1341,12 +1358,12 @@ async function run() {
       medicineId: String(txMedicineId),
       quantity: '1',
       notes: 'E2E no-screenshot test should fail',
-      inventoryType: 'REGULAR',
+      medicineStockType: 'REGULAR',
     }, userToken);
     assert(r.status === 400, `Expected 400, got ${r.status}: ${JSON.stringify(r.data)}`);
   });
 
-  // TEARDOWN: Reject created test transactions so inventory is freed
+  // TEARDOWN: Reject created test transactions so medicineStock is freed
   await test('[TEARDOWN] Admin rejects screenshot test transactions', async () => {
     for (const txId of [singleShotTxId, multiShotTxId]) {
       if (!txId) continue;
@@ -1365,7 +1382,7 @@ async function run() {
       medicineId: String(txMedicineId),
       quantity: '1',
       notes: 'E2E self-delete test dispatch',
-      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('D')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
@@ -1398,7 +1415,7 @@ async function run() {
       medicineId: String(txMedicineId),
       quantity: '1',
       notes: 'E2E ownership check dispatch',
-      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('E')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
@@ -1432,20 +1449,20 @@ async function run() {
   });
 
   // ── In-Transit Stock Excluded From Dispatchable "Available" Quantity ──
-  // Regression test for the bug where /inventory/available showed a "max" that
+  // Regression test for the bug where /medicine-stock/available showed a "max" that
   // included not-yet-arrived in-transit stock, letting a user believe (and even
   // attempt) they could dispatch more than was physically on hand.
-  console.log('\n-- In-Transit Stock Exclusion (available inventory)');
+  console.log('\n-- In-Transit Stock Exclusion (available medicineStock)');
 
   let beforeAvailableQty;
   await test('[SETUP] Record available quantity before adding in-transit stock', async () => {
-    const r = await apiGet(`${API}/inventory/available`, userToken);
-    const item = r.data.find(i => i.medicineId === adjustMedicineId && i.inventoryType === 'REGULAR_MEDICINE_STOCK');
+    const r = await apiGet(`${API}/medicine-stock/available`, userToken);
+    const item = r.data.find(i => i.medicineId === adjustMedicineId && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
     beforeAvailableQty = item ? item.quantity : 0;
   });
 
   await test('Admin adds in-transit stock (should not inflate dispatchable quantity)', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
@@ -1457,9 +1474,9 @@ async function run() {
   });
 
   await test('Available quantity for user is unchanged by in-transit stock', async () => {
-    const r = await apiGet(`${API}/inventory/available`, userToken);
-    const item = r.data.find(i => i.medicineId === adjustMedicineId && i.inventoryType === 'REGULAR_MEDICINE_STOCK');
-    assert(item, 'Expected inventory item to exist');
+    const r = await apiGet(`${API}/medicine-stock/available`, userToken);
+    const item = r.data.find(i => i.medicineId === adjustMedicineId && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    assert(item, 'Expected medicineStock item to exist');
     assert(item.quantity === beforeAvailableQty,
       `Expected available quantity to stay at ${beforeAvailableQty} (in-transit stock excluded), got ${item.quantity}`);
   });
@@ -1470,14 +1487,14 @@ async function run() {
       medicineId: String(adjustMedicineId),
       quantity: String(requestQty),
       notes: 'E2E test — should be rejected, exceeds settled stock',
-      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('F')],
     }, userToken);
     assert(r.status === 409, `Expected 409, got ${r.status}: ${JSON.stringify(r.data)}`);
   });
 
   await test('[TEARDOWN] Admin removes the in-transit test stock', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
@@ -1487,22 +1504,22 @@ async function run() {
     assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
   });
 
-  // ── Stock Type (inventoryType) on Transaction Responses ────────────────
+  // ── Stock Type (medicineStockType) on Transaction Responses ────────────────
   // Regression coverage for surfacing whether a dispatch drew from a user's
   // regular allocation or an admin-designated bucket — the admin and user
   // dispatch-history pages, and the admin stock-modification history page,
   // all now display this alongside each record.
-  console.log('\n-- Stock Type (inventoryType) on Transaction Responses');
+  console.log('\n-- Stock Type (medicineStockType) on Transaction Responses');
 
   let adminStockTxId;
-  await test('[SETUP] Admin allocates ADMIN_MEDICINE_STOCK inventory to john.doe', async () => {
-    const r = await apiPost(`${API}/inventory/adjust`, {
+  await test('[SETUP] Admin allocates ADMIN_MEDICINE_STOCK medicineStock to john.doe', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'ADD',
       quantity: 5,
-      note: 'E2E setup — allocating admin-stock bucket for inventoryType test',
-      inventoryType: 'ADMIN_MEDICINE_STOCK',
+      note: 'E2E setup — allocating admin-stock bucket for medicineStockType test',
+      medicineStockType: 'ADMIN_MEDICINE_STOCK',
     }, adminToken);
     assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
   });
@@ -1511,13 +1528,13 @@ async function run() {
     const r = await apiPostForm(`${API}/transactions`, {
       medicineId: String(adjustMedicineId),
       quantity: '1',
-      notes: 'E2E inventoryType test — dispatch from admin stock',
-      inventoryType: 'ADMIN_MEDICINE_STOCK',
+      notes: 'E2E medicineStockType test — dispatch from admin stock',
+      medicineStockType: 'ADMIN_MEDICINE_STOCK',
       screenshots: [makeFakePng('S')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
-    assert(r.data.inventoryType === 'ADMIN_MEDICINE_STOCK',
-      `Expected inventoryType ADMIN_MEDICINE_STOCK on submit response, got ${r.data.inventoryType}`);
+    assert(r.data.medicineStockType === 'ADMIN_MEDICINE_STOCK',
+      `Expected medicineStockType ADMIN_MEDICINE_STOCK on submit response, got ${r.data.medicineStockType}`);
     adminStockTxId = r.data.id;
   });
 
@@ -1526,17 +1543,17 @@ async function run() {
     const r = await apiPostForm(`${API}/transactions`, {
       medicineId: String(adjustMedicineId),
       quantity: '1',
-      notes: 'E2E inventoryType test — dispatch from regular stock',
-      inventoryType: 'REGULAR_MEDICINE_STOCK',
+      notes: 'E2E medicineStockType test — dispatch from regular stock',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
       screenshots: [makeFakePng('R')],
     }, userToken);
     assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
-    assert(r.data.inventoryType === 'REGULAR_MEDICINE_STOCK',
-      `Expected inventoryType REGULAR_MEDICINE_STOCK on submit response, got ${r.data.inventoryType}`);
+    assert(r.data.medicineStockType === 'REGULAR_MEDICINE_STOCK',
+      `Expected medicineStockType REGULAR_MEDICINE_STOCK on submit response, got ${r.data.medicineStockType}`);
     regularStockTxId = r.data.id;
   });
 
-  await test('GET /transactions/my (user dispatch history) reports inventoryType for both buckets', async () => {
+  await test('GET /transactions/my (user dispatch history) reports medicineStockType for both buckets', async () => {
     assert(adminStockTxId && regularStockTxId, 'both transaction ids must be resolved');
     const r = await apiGet(`${API}/transactions/my`, userToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
@@ -1544,36 +1561,36 @@ async function run() {
     const regularTx = r.data.content.find(t => t.id === regularStockTxId);
     assert(adminTx, `Admin-stock transaction #${adminStockTxId} not found in user history`);
     assert(regularTx, `Regular-stock transaction #${regularStockTxId} not found in user history`);
-    assert(adminTx.inventoryType === 'ADMIN_MEDICINE_STOCK',
-      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.inventoryType}`);
-    assert(regularTx.inventoryType === 'REGULAR_MEDICINE_STOCK',
-      `Expected REGULAR_MEDICINE_STOCK, got ${regularTx.inventoryType}`);
+    assert(adminTx.medicineStockType === 'ADMIN_MEDICINE_STOCK',
+      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.medicineStockType}`);
+    assert(regularTx.medicineStockType === 'REGULAR_MEDICINE_STOCK',
+      `Expected REGULAR_MEDICINE_STOCK, got ${regularTx.medicineStockType}`);
   });
 
-  await test('GET /transactions (admin dispatch list) reports inventoryType for both buckets', async () => {
+  await test('GET /transactions (admin dispatch list) reports medicineStockType for both buckets', async () => {
     const r = await apiGet(`${API}/transactions?status=PENDING&size=100`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     const adminTx = r.data.content.find(t => t.id === adminStockTxId);
     const regularTx = r.data.content.find(t => t.id === regularStockTxId);
     assert(adminTx, `Admin-stock transaction #${adminStockTxId} not found in admin list`);
     assert(regularTx, `Regular-stock transaction #${regularStockTxId} not found in admin list`);
-    assert(adminTx.inventoryType === 'ADMIN_MEDICINE_STOCK',
-      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.inventoryType}`);
-    assert(regularTx.inventoryType === 'REGULAR_MEDICINE_STOCK',
-      `Expected REGULAR_MEDICINE_STOCK, got ${regularTx.inventoryType}`);
+    assert(adminTx.medicineStockType === 'ADMIN_MEDICINE_STOCK',
+      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.medicineStockType}`);
+    assert(regularTx.medicineStockType === 'REGULAR_MEDICINE_STOCK',
+      `Expected REGULAR_MEDICINE_STOCK, got ${regularTx.medicineStockType}`);
   });
 
-  await test('GET /transactions/history (admin past dispatches) reports inventoryType', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+  await test('GET /transactions/history (admin past dispatches) reports medicineStockType', async () => {
+    const today = istDateString(new Date());
     const r = await apiGet(`${API}/transactions/history?from=${today}&to=${today}&status=PENDING`, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     const adminTx = r.data.find(t => t.id === adminStockTxId);
     assert(adminTx, `Admin-stock transaction #${adminStockTxId} not found in history`);
-    assert(adminTx.inventoryType === 'ADMIN_MEDICINE_STOCK',
-      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.inventoryType}`);
+    assert(adminTx.medicineStockType === 'ADMIN_MEDICINE_STOCK',
+      `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.medicineStockType}`);
   });
 
-  await test('[TEARDOWN] Admin rejects both inventoryType-test transactions', async () => {
+  await test('[TEARDOWN] Admin rejects both medicineStockType-test transactions', async () => {
     const r1 = await apiPost(`${API}/transactions/${adminStockTxId}/approve`, { approved: false }, adminToken);
     assert(r1.status === 200, `Reject failed: ${r1.status} ${JSON.stringify(r1.data)}`);
     const r2 = await apiPost(`${API}/transactions/${regularStockTxId}/approve`, { approved: false }, adminToken);
@@ -1583,13 +1600,13 @@ async function run() {
   await test('[TEARDOWN] Admin removes the leftover ADMIN_MEDICINE_STOCK allocation', async () => {
     // The rejected admin-stock dispatch already restored its 1 unit, so the full 5
     // originally allocated is back — remove all 5 to leave no test residue.
-    const r = await apiPost(`${API}/inventory/adjust`, {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
       userId: johnId,
       medicineId: adjustMedicineId,
       adjustmentType: 'REDUCE',
       quantity: 5,
-      note: 'E2E teardown — removing admin-stock bucket allocation for inventoryType test',
-      inventoryType: 'ADMIN_MEDICINE_STOCK',
+      note: 'E2E teardown — removing admin-stock bucket allocation for medicineStockType test',
+      medicineStockType: 'ADMIN_MEDICINE_STOCK',
     }, adminToken);
     assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
   });

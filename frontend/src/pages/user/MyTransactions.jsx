@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
-import { inventoryTypeLabel } from '../../constants';
+import { medicineStockTypeLabel } from '../../constants';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 const specLabel = (tx) => tx.medicineType === 'VIAL'
   ? `${tx.concentrationMgPerMl ?? tx.specification ?? '?'} mg/ml`
@@ -69,8 +69,12 @@ export default function MyTransactions() {
     }
   };
 
-  // Infinite-scroll sentinel
+  // Infinite-scroll sentinel — (re)attaches whenever the sentinel enters the DOM.
+  // hasMore must be in deps: at mount hasMore=false so the sentinel isn't rendered
+  // yet and sentinelRef.current is null. The effect re-runs when hasMore flips true
+  // and the sentinel is in the DOM.
   useEffect(() => {
+    if (!hasMore) return;
     const el = sentinelRef.current;
     if (!el) return;
     const obs = new IntersectionObserver(([entry]) => {
@@ -80,7 +84,7 @@ export default function MyTransactions() {
     }, { threshold: 0 });
     obs.observe(el);
     return () => obs.disconnect();
-  }, [loadPage]);
+  }, [hasMore, loadPage]);
 
   // Unique medicine specs present in the loaded dispatches, for the spec filter dropdown
   const specOptions = [...new Map(
@@ -161,7 +165,7 @@ export default function MyTransactions() {
                   )}
                 </div>
                 <p><strong>Medicine:</strong> {tx.medicineName ?? 'Unknown'} ({tx.medicineType ?? 'Unknown'}, {specLabel(tx)})</p>
-                <p><strong>Stock Type:</strong> {inventoryTypeLabel(tx.inventoryType)}</p>
+                <p><strong>Stock Type:</strong> {medicineStockTypeLabel(tx.medicineStockType)}</p>
                 <p><strong>Quantity:</strong> {Number(tx.quantity).toFixed(1)}</p>
                 <p><strong>Note:</strong> {tx.notes}</p>
                 <p><strong>Submitted:</strong> {tx.submittedAt ? new Date(tx.submittedAt).toLocaleString() : '—'}</p>

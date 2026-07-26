@@ -7,10 +7,13 @@ import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
 
-// IntersectionObserver not available in JSDOM; stub so the sentinel hook doesn't throw
+// IntersectionObserver not available in JSDOM; stub so the sentinel hook doesn't throw.
+// Captures the callback passed by the component so tests can simulate the sentinel
+// scrolling into view by invoking it directly.
+let observerCallback;
 beforeAll(() => {
   global.IntersectionObserver = class {
-    constructor() {}
+    constructor(callback) { observerCallback = callback; }
     observe() {}
     unobserve() {}
     disconnect() {}
@@ -28,7 +31,7 @@ const makeTx = (overrides = {}) => ({
   notes: 'Clinic B dispatch note',
   submittedAt: '2026-05-01T10:00:00',
   screenshots: [],
-  inventoryType: 'REGULAR_MEDICINE_STOCK',
+  medicineStockType: 'REGULAR_MEDICINE_STOCK',
   ...overrides,
 });
 
@@ -104,6 +107,39 @@ describe('MyTransactions — page structure', () => {
     renderPage();
     await waitFor(() =>
       expect(screen.getByLabelText(/search notes/i)).toBeInTheDocument()
+    );
+  });
+});
+
+// ── Pagination (scroll-loaded pages) ──────────────────────────────────────
+
+describe('MyTransactions — pagination', () => {
+  test('requests page 0 with a page size of 10', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
+    renderPage();
+    await waitFor(() => expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10));
+  });
+
+  test('scrolling the sentinel into view loads the next page and appends its results', async () => {
+    const page0 = [makeTx({ id: 1, notes: 'First page dispatch' })];
+    const page1 = [makeTx({ id: 2, notes: 'Second page dispatch' })];
+    api.getMyTransactions.mockResolvedValueOnce(mkPage(page0, { last: false }));
+    const { container } = renderPage();
+    await waitFor(() => withinList(container).getByText('First page dispatch'));
+
+    api.getMyTransactions.mockResolvedValueOnce(mkPage(page1, { last: true }));
+    observerCallback([{ isIntersecting: true }]);
+
+    await waitFor(() => expect(api.getMyTransactions).toHaveBeenCalledWith(1, 10));
+    await waitFor(() => withinList(container).getByText('Second page dispatch'));
+    expect(withinList(container).getByText('First page dispatch')).toBeInTheDocument();
+  });
+
+  test('shows "all loaded" message once the last page has been fetched', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx()], { last: true }));
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/all 1 transactions loaded/i)).toBeInTheDocument()
     );
   });
 });
@@ -273,7 +309,7 @@ describe('MyTransactions — transaction display', () => {
 describe('MyTransactions — stock type display', () => {
   test('shows Regular Stock for a REGULAR_MEDICINE_STOCK dispatch', async () => {
     api.getMyTransactions.mockResolvedValue(
-      mkPage([makeTx({ inventoryType: 'REGULAR_MEDICINE_STOCK' })])
+      mkPage([makeTx({ medicineStockType: 'REGULAR_MEDICINE_STOCK' })])
     );
     renderPage();
     await waitFor(() =>
@@ -283,7 +319,7 @@ describe('MyTransactions — stock type display', () => {
 
   test('shows Admin Stock for an ADMIN_MEDICINE_STOCK dispatch', async () => {
     api.getMyTransactions.mockResolvedValue(
-      mkPage([makeTx({ inventoryType: 'ADMIN_MEDICINE_STOCK' })])
+      mkPage([makeTx({ medicineStockType: 'ADMIN_MEDICINE_STOCK' })])
     );
     renderPage();
     await waitFor(() =>
@@ -291,8 +327,8 @@ describe('MyTransactions — stock type display', () => {
     );
   });
 
-  test('renders "Regular Stock" for a dispatch with a null inventoryType (legacy fallback)', async () => {
-    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ inventoryType: null })]));
+  test('renders "Regular Stock" for a dispatch with a null medicineStockType (legacy fallback)', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([makeTx({ medicineStockType: null })]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByText('Regular Stock')).toBeInTheDocument()

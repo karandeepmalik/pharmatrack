@@ -60,7 +60,7 @@ describe('AdminDashboard — navigation cards', () => {
   test('has link to view medicine stock', () => {
     renderPage();
     expect(screen.getByRole('link', { name: /view available medicine stock/i }))
-      .toHaveAttribute('href', '/admin/inventory');
+      .toHaveAttribute('href', '/admin/medicine-stock');
   });
 
   test('has link to view reports', () => {
@@ -72,7 +72,7 @@ describe('AdminDashboard — navigation cards', () => {
   test('has link to modify medicine stock', () => {
     renderPage();
     expect(screen.getByRole('link', { name: /modify medicine stock/i }))
-      .toHaveAttribute('href', '/admin/modify-inventory');
+      .toHaveAttribute('href', '/admin/modify-medicine-stock');
   });
 
   test('has link to manage users', () => {
@@ -96,7 +96,7 @@ describe('AdminDashboard — navigation cards', () => {
   test('has link to medicine stock modifications history', () => {
     renderPage();
     expect(screen.getByRole('link', { name: /medicine stock modifications history/i }))
-      .toHaveAttribute('href', '/admin/inventory-adjustments');
+      .toHaveAttribute('href', '/admin/medicine-stock-adjustments');
   });
 });
 
