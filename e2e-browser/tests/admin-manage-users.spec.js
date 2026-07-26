@@ -75,4 +75,60 @@ test.describe('Manage Users', () => {
 
     await expect(page.getByRole('alert')).toContainText(/updated successfully/i, { timeout: 10000 });
   });
+
+  test.describe('delete user', () => {
+    async function createUser(page, username) {
+      await page.locator('#fullName').fill('Delete Flow User');
+      await page.locator('#username').fill(username);
+      await page.locator('#email').fill(`${username}@example.com`);
+      await page.locator('#password').fill('TestPass@123');
+      await page.getByRole('button', { name: /create user/i }).click();
+      await expect(page.getByRole('alert')).toContainText(/created successfully/i, { timeout: 10000 });
+    }
+
+    test('declining the confirm dialog leaves the user in the table', async ({ page }) => {
+      const username = `pw_delete_decline_${Date.now()}`;
+      await createUser(page, username);
+      const row = page.getByRole('row', { name: new RegExp(username) });
+
+      page.once('dialog', dialog => dialog.dismiss());
+      await row.getByRole('button', { name: /^delete$/i }).click();
+
+      await expect(page.getByRole('cell', { name: username, exact: true })).toBeVisible();
+    });
+
+    test('accepting the confirm dialog shows the right warning text and removes the user', async ({ page }) => {
+      const username = `pw_delete_accept_${Date.now()}`;
+      await createUser(page, username);
+      const row = page.getByRole('row', { name: new RegExp(username) });
+
+      page.once('dialog', dialog => {
+        expect(dialog.message()).toContain(username);
+        expect(dialog.message()).toMatch(/cannot be undone/i);
+        dialog.accept();
+      });
+      await row.getByRole('button', { name: /^delete$/i }).click();
+
+      await expect(page.getByRole('cell', { name: username, exact: true })).not.toBeVisible({ timeout: 10000 });
+    });
+
+    test('a deleted user can no longer log in', async ({ page }) => {
+      const username = `pw_delete_login_${Date.now()}`;
+      await createUser(page, username);
+
+      page.once('dialog', dialog => dialog.accept());
+      await page.getByRole('row', { name: new RegExp(username) }).getByRole('button', { name: /^delete$/i }).click();
+      await expect(page.getByRole('cell', { name: username, exact: true })).not.toBeVisible({ timeout: 10000 });
+
+      // "Sign Out" lives on the dashboard, not on this page — navigate there first.
+      await page.goto('/admin/dashboard');
+      await page.getByRole('button', { name: /sign out/i }).click();
+      await page.goto('/login');
+      await page.locator('#username').fill(username);
+      await page.locator('#password').fill('TestPass@123');
+      await page.getByRole('button', { name: /sign in/i }).click();
+
+      await expect(page.getByRole('alert')).toHaveText(/invalid username or password/i);
+    });
+  });
 });

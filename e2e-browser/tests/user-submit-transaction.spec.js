@@ -58,4 +58,51 @@ test.describe('Submit Medicine Dispatch', () => {
     await expect(page.getByText(/1 screenshot attached/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /remove screenshot 1/i })).toBeVisible();
   });
+
+  test('removing an attached screenshot updates the count and can bring it back to zero', async ({ page }) => {
+    await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+    await expect(page.getByText(/1 screenshot attached/i)).toBeVisible();
+
+    await page.getByRole('button', { name: /remove screenshot 1/i }).click();
+
+    await expect(page.getByText(/screenshot attached/i)).not.toBeVisible();
+    await expect(page.getByRole('button', { name: /submit medicine dispatch/i })).toBeDisabled();
+  });
+
+  test('uploading a second screenshot shows 2 attached and an "Add Another" option', async ({ page }) => {
+    await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+    await expect(page.getByText(/1 screenshot attached/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /add another payment screenshot/i })).toBeVisible();
+
+    await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+    await expect(page.getByText(/2 screenshots attached/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /remove screenshot 1/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /remove screenshot 2/i })).toBeVisible();
+  });
+
+  test('selecting an item reveals an editable Price per Unit field pre-filled from the medicine price', async ({ page }) => {
+    await expect(page.locator('#price-input')).not.toBeVisible();
+
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption({ index: 1 });
+    await page.locator('#spec-select').selectOption({ index: 1 });
+
+    const priceInput = page.locator('#price-input');
+    await expect(priceInput).toBeVisible();
+    const prefilled = await priceInput.inputValue();
+    expect(Number(prefilled)).toBeGreaterThan(0);
+  });
+
+  test('overriding Price per Unit is included in a successful submission', async ({ page }) => {
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption({ index: 1 });
+    await page.locator('#spec-select').selectOption({ index: 1 });
+    await page.locator('#quantity-input').fill('0.1');
+    await page.locator('#price-input').fill('12345');
+    await page.locator('#notes-input').fill(`Price override test ${Date.now()}`);
+    await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+    await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+
+    await expect(page.getByRole('alert')).toContainText(/pending admin approval/i, { timeout: 10000 });
+  });
 });
