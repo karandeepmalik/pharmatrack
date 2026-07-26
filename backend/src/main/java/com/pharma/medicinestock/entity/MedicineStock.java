@@ -4,7 +4,9 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-@Entity @Table(name="medicine_stock",uniqueConstraints=@UniqueConstraint(columnNames={"user_id","medicine_id","medicine_stock_type"}))
+@Entity @Table(name="medicine_stock",
+    uniqueConstraints=@UniqueConstraint(columnNames={"user_id","medicine_id","medicine_stock_type"}),
+    indexes=@Index(name = "idx_ms_medicine_id", columnList = "medicine_id"))
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class MedicineStock {
 

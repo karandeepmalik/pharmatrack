@@ -34,6 +34,91 @@ public class DataMigrationService {
         dropLegacyUniqueConstraint();
         createTransactionScreenshotsTable();
         widenQuantityColumnsToDecimal();
+        dropDuplicateMedicineStockUniqueConstraint();
+        addMissingForeignKeyIndexes();
+        addTransactionHotPathIndex();
+    }
+
+    /**
+     * The medicine_stock table ended up with two identical unique constraints on
+     * (user_id, medicine_id, medicine_stock_type) — ddl-auto=update created a new
+     * hash-named one during a past migration instead of recognizing the existing one as
+     * matching. Harmless for correctness (either one enforces the same rule) but doubles
+     * write overhead for zero benefit. Keeps the first (by name), drops the rest.
+     */
+    private void dropDuplicateMedicineStockUniqueConstraint() {
+        try {
+            List<String> names = jdbc.queryForList(
+                "SELECT tc.constraint_name " +
+                "FROM information_schema.table_constraints tc " +
+                "JOIN information_schema.key_column_usage kcu " +
+                "  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema " +
+                "WHERE tc.table_name = 'medicine_stock' AND tc.constraint_type = 'UNIQUE' " +
+                "GROUP BY tc.constraint_name " +
+                "HAVING COUNT(*) = 3 " +
+                "  AND bool_and(kcu.column_name IN ('user_id', 'medicine_id', 'medicine_stock_type')) " +
+                "ORDER BY tc.constraint_name",
+                String.class);
+            for (String name : names.subList(1, names.size())) {
+                jdbc.execute("ALTER TABLE medicine_stock DROP CONSTRAINT \"" + name + "\"");
+                log.info("DataMigration: dropped duplicate unique constraint '{}' on medicine_stock", name);
+            }
+        } catch (Exception e) {
+            log.debug("DataMigration: duplicate unique constraint cleanup skipped — {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Postgres does not auto-index foreign key columns. These two are read in real WHERE
+     * clauses on the user-deletion path (nullifyApprovedBy / nullifyAdjustedBy), which
+     * currently forces a full table scan on every user deletion; they also speed up the FK
+     * constraint check Postgres does whenever a referenced user/medicine row is deleted.
+     * Small tables today, but this is standard, low-cost insurance rather than a
+     * measurable win right now — see also addTransactionHotPathIndex() for the one index
+     * that actually matters at current scale.
+     */
+    private void addMissingForeignKeyIndexes() {
+        record IndexDef(String name, String table, String column) {}
+        List<IndexDef> indexes = List.of(
+            new IndexDef("idx_tx_approved_by", "transactions", "approved_by"),
+            new IndexDef("idx_adj_adjusted_by_id", "medicine_stock_adjustments", "adjusted_by_id"),
+            new IndexDef("idx_ms_medicine_id", "medicine_stock", "medicine_id"),
+            new IndexDef("idx_med_pharma_company_id", "medicines", "pharma_company_id")
+        );
+        for (IndexDef idx : indexes) {
+            try {
+                jdbc.execute("CREATE INDEX IF NOT EXISTS " + idx.name() + " ON " + idx.table() + "(" + idx.column() + ")");
+                log.info("DataMigration: ensured index {} on {}({})", idx.name(), idx.table(), idx.column());
+            } catch (Exception e) {
+                log.debug("DataMigration: index {} skipped — {}", idx.name(), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * CurrentStockCalculator.settledQuantity() runs findNonRejectedSubmittedUpToForUser on
+     * every transaction submission — the one genuinely hot path in this app. That query
+     * filters on (submitted_by, status, submitted_at) together; a composite index serves
+     * the whole WHERE clause in one index scan instead of Postgres bitmap-AND-ing three
+     * separate single-column indexes. idx_tx_submitted_by becomes redundant once this
+     * exists (leftmost-prefix matching covers the same lookups) and is dropped to avoid
+     * paying its write overhead twice for the same coverage.
+     */
+    private void addTransactionHotPathIndex() {
+        try {
+            jdbc.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tx_submitted_by_status_at " +
+                "ON transactions(submitted_by, status, submitted_at)");
+            log.info("DataMigration: ensured composite index idx_tx_submitted_by_status_at on transactions");
+        } catch (Exception e) {
+            log.debug("DataMigration: composite transaction index skipped — {}", e.getMessage());
+        }
+        try {
+            jdbc.execute("DROP INDEX IF EXISTS idx_tx_submitted_by");
+            log.info("DataMigration: dropped idx_tx_submitted_by (superseded by the composite index)");
+        } catch (Exception e) {
+            log.debug("DataMigration: idx_tx_submitted_by drop skipped — {}", e.getMessage());
+        }
     }
 
     /**
