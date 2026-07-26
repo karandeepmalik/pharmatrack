@@ -35,8 +35,8 @@ export default function AdminEditDispatch() {
         setEditState({});
         setDeleteState({});
         try {
-            const res = await api.getTransactionHistory(from, to, 'ALL');
-            setTransactions(res.data);
+            const res = await api.getTransactionHistory(from, to, 'ALL', 0, 1000);
+            setTransactions(res.data?.content ?? []);
             setSearched(true);
         } catch {
             setError('Failed to load records. Please try again.');

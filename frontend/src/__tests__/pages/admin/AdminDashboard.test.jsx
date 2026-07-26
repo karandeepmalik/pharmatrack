@@ -98,6 +98,23 @@ describe('AdminDashboard — navigation cards', () => {
     expect(screen.getByRole('link', { name: /medicine stock modifications history/i }))
       .toHaveAttribute('href', '/admin/medicine-stock-adjustments');
   });
+
+  test('renders nav cards in the requested sequence', () => {
+    renderPage();
+    const hrefs = screen.getAllByRole('link').map(link => link.getAttribute('href'));
+
+    expect(hrefs).toEqual([
+      '/admin/transactions',
+      '/admin/reports',
+      '/admin/past-transactions',
+      '/admin/dispatch-records',
+      '/admin/modify-medicine-stock',
+      '/admin/medicine-stock-adjustments',
+      '/admin/users',
+      '/admin/medicine-stock',
+      '/admin/medicines',
+    ]);
+  });
 });
 
 // ── Sign out ──────────────────────────────────────────────────────────────
