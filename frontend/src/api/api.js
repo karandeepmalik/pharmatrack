@@ -66,13 +66,15 @@ export const getAllTransactions  = (page = 0, size = 20, status = 'ALL') => api.
 export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/approve`, data);
 
 /**
- * Fetch transaction history for a date range.
+ * Fetch a page of transaction history for a date range.
  * @param {string} from   ISO date string YYYY-MM-DD (inclusive)
  * @param {string} to     ISO date string YYYY-MM-DD (inclusive)
  * @param {string} status ALL | APPROVED | REJECTED  (default ALL)
+ * @param {number} page   zero-based page number (default 0)
+ * @param {number} size   page size (default 10)
  */
-export const getTransactionHistory = (from, to, status = 'ALL') =>
-  api.get('/transactions/history', { params: { from, to, status } });
+export const getTransactionHistory = (from, to, status = 'ALL', page = 0, size = 10) =>
+  api.get('/transactions/history', { params: { from, to, status, page, size } });
 
 export const deleteTransaction  = (id)      => api.delete(`/transactions/${id}`);
 export const deleteMyTransaction = (id)     => api.delete(`/transactions/my/${id}`);

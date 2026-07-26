@@ -7,6 +7,19 @@ import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
 
+// IntersectionObserver not available in JSDOM; stub so the sentinel hook doesn't throw.
+// Captures the callback passed by the component so tests can simulate the sentinel
+// scrolling into view by invoking it directly.
+let observerCallback;
+beforeAll(() => {
+  global.IntersectionObserver = class {
+    constructor(callback) { observerCallback = callback; }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
+
 const renderPage = () =>
   render(
     <MemoryRouter>
@@ -31,6 +44,11 @@ const makeTx = (overrides = {}) => ({
   approvedByUsername: 'admin',
   medicineStockType: 'REGULAR_MEDICINE_STOCK',
   ...overrides,
+});
+
+// Wrap a list into the paginated response shape the component expects
+const mkPage = (items, { last = true } = {}) => ({
+  data: { content: items, last, totalElements: items.length },
 });
 
 const USERS = [
@@ -157,7 +175,7 @@ describe('ViewPastTransactions — dropdown population', () => {
 
 describe('ViewPastTransactions — search', () => {
   test('shows results table after successful search', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -169,7 +187,7 @@ describe('ViewPastTransactions — search', () => {
   });
 
   test('shows transaction username in results', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -180,7 +198,7 @@ describe('ViewPastTransactions — search', () => {
   });
 
   test('shows APPROVED status badge for approved transactions', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx({ status: 'APPROVED' })] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ status: 'APPROVED' })]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -191,7 +209,7 @@ describe('ViewPastTransactions — search', () => {
   });
 
   test('shows REJECTED status badge for rejected transactions', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx({ status: 'REJECTED' })] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ status: 'REJECTED' })]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -202,7 +220,7 @@ describe('ViewPastTransactions — search', () => {
   });
 
   test('shows empty state message when no transactions found', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -213,7 +231,7 @@ describe('ViewPastTransactions — search', () => {
   });
 
   test('calls API with APPROVED by default on first search', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -222,13 +240,15 @@ describe('ViewPastTransactions — search', () => {
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
-        'APPROVED'
+        'APPROVED',
+        0,
+        10
       )
     );
   });
 
   test('calls API with ALL when status changed to All', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
     await userEvent.selectOptions(screen.getByLabelText(/status/i), 'ALL');
@@ -238,7 +258,9 @@ describe('ViewPastTransactions — search', () => {
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
-        'ALL'
+        'ALL',
+        0,
+        10
       )
     );
   });
@@ -255,9 +277,7 @@ describe('ViewPastTransactions — search', () => {
   });
 
   test('shows result count in heading', async () => {
-    api.getTransactionHistory.mockResolvedValue({
-      data: [makeTx(), makeTx({ id: 2 })],
-    });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx(), makeTx({ id: 2 })]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -268,13 +288,60 @@ describe('ViewPastTransactions — search', () => {
   });
 });
 
+// ── Pagination (scroll-loaded pages) ──────────────────────────────────────
+
+describe('ViewPastTransactions — pagination', () => {
+  test('requests page 0 with a page size of 10', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10
+      )
+    );
+  });
+
+  test('scrolling the sentinel into view loads the next page and appends its results', async () => {
+    const page0 = [makeTx({ id: 1, notes: 'First page dispatch' })];
+    const page1 = [makeTx({ id: 2, notes: 'Second page dispatch' })];
+    api.getTransactionHistory.mockResolvedValueOnce(mkPage(page0, { last: false }));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByText('First page dispatch'));
+
+    api.getTransactionHistory.mockResolvedValueOnce(mkPage(page1, { last: true }));
+    observerCallback([{ isIntersecting: true }]);
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 1, 10
+      )
+    );
+    await waitFor(() => screen.getByText('Second page dispatch'));
+    expect(screen.getByText('First page dispatch')).toBeInTheDocument();
+  });
+
+  test('shows "all loaded" message once the last page has been fetched', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()], { last: true }));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/all 1 transactions loaded/i)).toBeInTheDocument()
+    );
+  });
+});
+
 // ── Stock Type column ───────────────────────────────────────────────────────
 
 describe('ViewPastTransactions — stock type column', () => {
   test('shows Regular Stock badge for a REGULAR_MEDICINE_STOCK dispatch', async () => {
-    api.getTransactionHistory.mockResolvedValue({
-      data: [makeTx({ medicineStockType: 'REGULAR_MEDICINE_STOCK' })],
-    });
+    api.getTransactionHistory.mockResolvedValue(
+      mkPage([makeTx({ medicineStockType: 'REGULAR_MEDICINE_STOCK' })])
+    );
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -285,9 +352,9 @@ describe('ViewPastTransactions — stock type column', () => {
   });
 
   test('shows Admin Stock badge for an ADMIN_MEDICINE_STOCK dispatch', async () => {
-    api.getTransactionHistory.mockResolvedValue({
-      data: [makeTx({ medicineStockType: 'ADMIN_MEDICINE_STOCK' })],
-    });
+    api.getTransactionHistory.mockResolvedValue(
+      mkPage([makeTx({ medicineStockType: 'ADMIN_MEDICINE_STOCK' })])
+    );
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -298,9 +365,7 @@ describe('ViewPastTransactions — stock type column', () => {
   });
 
   test('renders "Regular Stock" for a dispatch with a null medicineStockType (legacy fallback)', async () => {
-    api.getTransactionHistory.mockResolvedValue({
-      data: [makeTx({ medicineStockType: null })],
-    });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ medicineStockType: null })]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -311,12 +376,10 @@ describe('ViewPastTransactions — stock type column', () => {
   });
 
   test('shows both stock types when mixed dispatches are present', async () => {
-    api.getTransactionHistory.mockResolvedValue({
-      data: [
-        makeTx({ id: 1, medicineStockType: 'REGULAR_MEDICINE_STOCK' }),
-        makeTx({ id: 2, medicineStockType: 'ADMIN_MEDICINE_STOCK' }),
-      ],
-    });
+    api.getTransactionHistory.mockResolvedValue(mkPage([
+      makeTx({ id: 1, medicineStockType: 'REGULAR_MEDICINE_STOCK' }),
+      makeTx({ id: 2, medicineStockType: 'ADMIN_MEDICINE_STOCK' }),
+    ]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -334,7 +397,7 @@ describe('ViewPastTransactions — user filter', () => {
   const janeTx  = makeTx({ id: 2, submittedByUsername: 'jane.smith', notes: 'Jane note' });
 
   beforeEach(() => {
-    api.getTransactionHistory.mockResolvedValue({ data: [johnTx, janeTx] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([johnTx, janeTx]));
   });
 
   test('All Users shows all transactions', async () => {
@@ -378,7 +441,7 @@ describe('ViewPastTransactions — user filter', () => {
   });
 
   test('shows empty state when user filter matches no results', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [johnTx] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([johnTx]));
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByText('John note'));
@@ -419,7 +482,7 @@ describe('ViewPastTransactions — medicine filter', () => {
   const tabTx    = makeTx({ id: 3, medicineId: 30, medicineName: 'Tab 25 mg',  medicineType: 'TABLET', specification: 25, notes: 'Tablet note' });
 
   beforeEach(() => {
-    api.getTransactionHistory.mockResolvedValue({ data: [vial10Tx, vial5Tx, tabTx] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([vial10Tx, vial5Tx, tabTx]));
   });
 
   test('All Medicines shows all transactions', async () => {
@@ -466,7 +529,7 @@ describe('ViewPastTransactions — medicine filter', () => {
   });
 
   test('shows empty state when medicine filter matches no results', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [vial10Tx] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([vial10Tx]));
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByText('Vial 10 note'));
@@ -507,7 +570,7 @@ describe('ViewPastTransactions — notes search', () => {
   const wardTx   = makeTx({ id: 2, notes: 'Restocking Ward 3 monthly supply' });
 
   beforeEach(() => {
-    api.getTransactionHistory.mockResolvedValue({ data: [clinicTx, wardTx] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([clinicTx, wardTx]));
   });
 
   test('empty search shows all transactions', async () => {
@@ -553,7 +616,7 @@ describe('ViewPastTransactions — notes search', () => {
   test('note search combines with user filter', async () => {
     const johnClinic = makeTx({ id: 3, submittedByUsername: 'john.doe', notes: 'Clinic B dispatch for john' });
     const janeClinic  = makeTx({ id: 4, submittedByUsername: 'jane.smith', notes: 'Clinic B dispatch for jane' });
-    api.getTransactionHistory.mockResolvedValue({ data: [johnClinic, janeClinic] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([johnClinic, janeClinic]));
 
     renderPage();
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -586,7 +649,7 @@ describe('ViewPastTransactions — combined user + medicine filter', () => {
   const tx4 = makeTx({ id: 4, submittedByUsername: 'jane.smith', medicineId: 20, notes: 'Jane Vial5' });
 
   beforeEach(() => {
-    api.getTransactionHistory.mockResolvedValue({ data: [tx1, tx2, tx3, tx4] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([tx1, tx2, tx3, tx4]));
   });
 
   test('user + medicine filter shows only matching row', async () => {

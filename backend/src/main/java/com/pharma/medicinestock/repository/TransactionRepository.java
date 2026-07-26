@@ -26,13 +26,13 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
      * Step 1: fetch a page of IDs via lightweight scalar queries.
      * Step 2: fetch the full entity graph for those IDs (findByIdsWithDetails).
      */
-    /** Admin "Review Adjustments" queue — ASC so requests are reviewed in the order they were sent for approval. */
-    @Query(value = "SELECT t.id FROM Transaction t ORDER BY t.submittedAt ASC",
+    /** Admin "Review Adjustments" queue — DESC so the most recently submitted requests surface first. */
+    @Query(value = "SELECT t.id FROM Transaction t ORDER BY t.submittedAt DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t")
     Page<Long> findAllIds(Pageable pageable);
 
-    /** Admin "Review Adjustments" queue — ASC so requests are reviewed in the order they were sent for approval. */
-    @Query(value = "SELECT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt ASC",
+    /** Admin "Review Adjustments" queue — DESC so the most recently submitted requests surface first. */
+    @Query(value = "SELECT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.status = :status")
     Page<Long> findIdsByStatus(@Param("status") Transaction.TransactionStatus status, Pageable pageable);
 
@@ -58,26 +58,35 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
-    /** All transactions submitted in a date range — used by history endpoint. */
-    @Query("SELECT t FROM Transaction t " +
+    /**
+     * All transactions submitted in a date range — used by the paginated history endpoint.
+     * Safe to paginate directly (no two-query workaround needed): every JOIN FETCH here is a
+     * to-one association, so there's no collection-fetch + firstResult/maxResults conflict.
+     */
+    @Query(value = "SELECT t FROM Transaction t " +
            "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
            "LEFT JOIN FETCH t.approvedBy " +
            "WHERE t.submittedAt >= :start AND t.submittedAt < :end " +
-           "ORDER BY t.submittedAt DESC")
-    List<Transaction> findBySubmittedAtBetween(
+           "ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.submittedAt >= :start AND t.submittedAt < :end")
+    Page<Transaction> findBySubmittedAtBetween(
             @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
+            @Param("end") LocalDateTime end,
+            Pageable pageable);
 
-    /** Transactions of a specific status submitted in a date range — used by history endpoint. */
-    @Query("SELECT t FROM Transaction t " +
+    /** Transactions of a specific status submitted in a date range — used by the paginated history endpoint. */
+    @Query(value = "SELECT t FROM Transaction t " +
            "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
            "LEFT JOIN FETCH t.approvedBy " +
            "WHERE t.submittedAt >= :start AND t.submittedAt < :end AND t.status = :status " +
-           "ORDER BY t.submittedAt DESC")
-    List<Transaction> findBySubmittedAtBetweenAndStatus(
+           "ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(t) FROM Transaction t " +
+           "WHERE t.submittedAt >= :start AND t.submittedAt < :end AND t.status = :status")
+    Page<Transaction> findBySubmittedAtBetweenAndStatus(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
-            @Param("status") Transaction.TransactionStatus status);
+            @Param("status") Transaction.TransactionStatus status,
+            Pageable pageable);
 
     /**
      * All non-rejected transactions submitted before endExclusive.

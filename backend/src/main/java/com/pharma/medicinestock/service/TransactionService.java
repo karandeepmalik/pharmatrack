@@ -156,18 +156,19 @@ public class TransactionService {
     }
 
     @Transactional(readOnly = true)
-    public List<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status) {
+    public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status, int page, int size) {
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end   = to.plusDays(1).atStartOfDay();
+        PageRequest pageable = PageRequest.of(page, size);
 
-        List<Transaction> txList;
+        Page<Transaction> txPage;
         if ("ALL".equalsIgnoreCase(status)) {
-            txList = transactionRepository.findBySubmittedAtBetween(start, end);
+            txPage = transactionRepository.findBySubmittedAtBetween(start, end, pageable);
         } else {
             TransactionStatus txStatus = TransactionStatus.valueOf(status.toUpperCase());
-            txList = transactionRepository.findBySubmittedAtBetweenAndStatus(start, end, txStatus);
+            txPage = transactionRepository.findBySubmittedAtBetweenAndStatus(start, end, txStatus, pageable);
         }
-        return txList.stream().map(transactionMapper::toResponse).toList();
+        return txPage.map(transactionMapper::toResponse);
     }
 
     @Transactional

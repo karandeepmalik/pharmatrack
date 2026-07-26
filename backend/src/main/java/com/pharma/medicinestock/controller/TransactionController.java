@@ -88,11 +88,13 @@ public class TransactionController {
      */
     @GetMapping("/history")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<TransactionResponse>> getHistory(
+    public ResponseEntity<PagedResponse<TransactionResponse>> getHistory(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(defaultValue = "ALL") String status) {
-        return ResponseEntity.ok(transactionService.getHistory(from, to, status));
+            @RequestParam(defaultValue = "ALL") String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(PagedResponse.of(transactionService.getHistory(from, to, status, page, size)));
     }
 
     @PostMapping("/{id}/approve")
