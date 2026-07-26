@@ -1590,6 +1590,23 @@ async function run() {
       `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.medicineStockType}`);
   });
 
+  // Regression guard: /transactions/history was changed from returning a bare array to a
+  // PagedResponse ({content, last, totalElements, ...}). A frontend consumer of this endpoint
+  // (AdminEditDispatch.jsx, "Modify or Delete a Medicine Dispatch Record") was missed when that
+  // change shipped — it kept doing `setTransactions(res.data)` and treating the response as an
+  // array, so the page silently rendered nothing after Search. Locking in the exact response
+  // shape here so a future contract change can't regress every consumer silently again.
+  await test('GET /transactions/history returns a PagedResponse shape, not a bare array', async () => {
+    const today = istDateString(new Date());
+    const r = await apiGet(`${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(!Array.isArray(r.data),
+      'Response must be a PagedResponse object, not a bare array (regression: broke AdminEditDispatch.jsx)');
+    assert(Array.isArray(r.data.content), 'Response must have a content array');
+    assert(typeof r.data.last === 'boolean', 'Response must have a boolean last flag');
+    assert(typeof r.data.totalElements === 'number', 'Response must have a numeric totalElements');
+  });
+
   await test('[TEARDOWN] Admin rejects both medicineStockType-test transactions', async () => {
     const r1 = await apiPost(`${API}/transactions/${adminStockTxId}/approve`, { approved: false }, adminToken);
     assert(r1.status === 200, `Reject failed: ${r1.status} ${JSON.stringify(r1.data)}`);

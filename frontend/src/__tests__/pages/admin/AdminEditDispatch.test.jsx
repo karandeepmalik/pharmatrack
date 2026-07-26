@@ -20,6 +20,12 @@ const makeTx = (overrides = {}) => ({
   ...overrides,
 });
 
+// Wrap a list into the paginated response shape /transactions/history actually returns
+// (PagedResponse<TransactionResponse>, not a bare array) — a prior regression shipped
+// because this file's mocks used the old bare-array shape while the real endpoint had
+// already changed, so the mismatch was invisible to this test suite.
+const mkPage = (items) => ({ data: { content: items, last: true, totalElements: items.length } });
+
 const renderPage = () =>
   render(
     <MemoryRouter>
@@ -60,7 +66,7 @@ describe('AdminEditDispatch — render', () => {
 
 describe('AdminEditDispatch — search', () => {
   test('calls getTransactionHistory with ALL status after clicking Search', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -69,13 +75,15 @@ describe('AdminEditDispatch — search', () => {
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
         expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-        'ALL'
+        'ALL',
+        expect.any(Number),
+        expect.any(Number)
       )
     );
   });
 
   test('shows empty state when no records found', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -86,7 +94,7 @@ describe('AdminEditDispatch — search', () => {
   });
 
   test('shows results table with rows when records returned', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -106,13 +114,26 @@ describe('AdminEditDispatch — search', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/failed to load records/i)
     );
   });
+
+  test('does not crash and shows empty state when API returns a malformed (non-paginated) response', async () => {
+    // Regression guard: if a future backend change alters the response shape again,
+    // this must degrade to the empty state rather than crashing the page silently.
+    api.getTransactionHistory.mockResolvedValue({ data: null });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/no dispatch records found/i)).toBeInTheDocument()
+    );
+  });
 });
 
 // ── Edit notes ──────────────────────────────────────────────────────────
 
 describe('AdminEditDispatch — edit notes', () => {
   test('clicking Edit Notes shows textarea with current notes', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -124,7 +145,7 @@ describe('AdminEditDispatch — edit notes', () => {
   });
 
   test('clicking Cancel hides textarea and restores original notes', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -138,7 +159,7 @@ describe('AdminEditDispatch — edit notes', () => {
   });
 
   test('saving notes calls updateTransaction and updates row', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     api.updateTransaction.mockResolvedValue({
       data: { ...makeTx(), notes: 'Updated note here today' },
     });
@@ -162,7 +183,7 @@ describe('AdminEditDispatch — edit notes', () => {
   });
 
   test('shows inline error when save fails', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     api.updateTransaction.mockRejectedValue({
       response: { data: { message: 'Note must be between 5 and 500 characters' } },
     });
@@ -184,7 +205,7 @@ describe('AdminEditDispatch — edit notes', () => {
 
 describe('AdminEditDispatch — delete', () => {
   test('clicking Delete shows confirmation buttons', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -197,7 +218,7 @@ describe('AdminEditDispatch — delete', () => {
   });
 
   test('clicking Cancel on delete hides confirmation', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
@@ -210,7 +231,9 @@ describe('AdminEditDispatch — delete', () => {
   });
 
   test('confirming delete calls deleteTransaction and removes row', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx({ id: 1 }), makeTx({ id: 2, submittedByUsername: 'jane.smith' })] });
+    api.getTransactionHistory.mockResolvedValue(
+      mkPage([makeTx({ id: 1 }), makeTx({ id: 2, submittedByUsername: 'jane.smith' })])
+    );
     api.deleteTransaction.mockResolvedValue({});
     renderPage();
 
@@ -232,7 +255,7 @@ describe('AdminEditDispatch — delete', () => {
   });
 
   test('shows inline error when delete fails', async () => {
-    api.getTransactionHistory.mockResolvedValue({ data: [makeTx()] });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     api.deleteTransaction.mockRejectedValue({
       response: { data: { message: 'Failed to delete record.' } },
     });
