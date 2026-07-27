@@ -23,6 +23,7 @@ beforeAll(() => {
 const makeTx = (overrides = {}) => ({
   id: 1,
   status: 'APPROVED',
+  medicineId: 10,
   medicineName: 'Shield FX Vial',
   medicineType: 'VIAL',
   specification: 10,
@@ -40,6 +41,12 @@ const mkPage = (items, { last = true } = {}) => ({
   data: { content: items, last, totalElements: items.length },
 });
 
+const MEDICINES = [
+  { id: 10, name: 'Shield FX Vial 10 ml', type: 'VIAL', concentrationMgPerMl: 20, specification: 10 },
+  { id: 20, name: 'Shield FX Vial 5 ml', type: 'VIAL', concentrationMgPerMl: 20, specification: 5 },
+  { id: 30, name: 'Shield FX Tablet 25 mg', type: 'TABLET', specification: 25, concentrationMgPerMl: null },
+];
+
 const renderPage = () =>
   render(
     <MemoryRouter>
@@ -53,7 +60,10 @@ const renderPage = () =>
 // filter row.
 const withinList = (container) => within(container.querySelector('.transactions-list'));
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  api.getMedicines.mockResolvedValue({ data: MEDICINES });
+});
 
 // ── Loading & render ──────────────────────────────────────────────────────
 
@@ -94,12 +104,14 @@ describe('MyTransactions — page structure', () => {
     expect(screen.getByRole('button', { name: /^rejected$/i })).toBeInTheDocument();
   });
 
-  test('renders Medicine Spec filter dropdown', async () => {
+  test('renders Medicine Spec filter dropdown populated from the medicine catalog', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() =>
       expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument()
     );
+    expect(screen.getByRole('option', { name: /shield fx vial 10 ml/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /shield fx tablet 25 mg/i })).toBeInTheDocument();
   });
 
   test('renders Search Notes text input', async () => {
@@ -114,10 +126,12 @@ describe('MyTransactions — page structure', () => {
 // ── Pagination (scroll-loaded pages) ──────────────────────────────────────
 
 describe('MyTransactions — pagination', () => {
-  test('requests page 0 with a page size of 10', async () => {
+  test('requests page 0 with a page size of 10 and default (ALL) filters', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
-    await waitFor(() => expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10));
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', undefined, undefined)
+    );
   });
 
   test('scrolling the sentinel into view loads the next page and appends its results', async () => {
@@ -130,7 +144,9 @@ describe('MyTransactions — pagination', () => {
     api.getMyTransactions.mockResolvedValueOnce(mkPage(page1, { last: true }));
     observerCallback([{ isIntersecting: true }]);
 
-    await waitFor(() => expect(api.getMyTransactions).toHaveBeenCalledWith(1, 10));
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(1, 10, 'ALL', undefined, undefined)
+    );
     await waitFor(() => withinList(container).getByText('Second page dispatch'));
     expect(withinList(container).getByText('First page dispatch')).toBeInTheDocument();
   });
@@ -337,194 +353,197 @@ describe('MyTransactions — stock type display', () => {
 });
 
 // ── Filter tabs ───────────────────────────────────────────────────────────
+//
+// All filters below (status tab, medicine spec, notes) are sent to the backend as query params
+// and trigger a fresh page-0 fetch (debounced) rather than being applied client-side over
+// whatever's already loaded — this is a deliberate change from the previous client-side-only
+// filtering, which silently missed real matches once results spanned more than one scroll-loaded
+// page. See TransactionRepository.searchMyHistory's Javadoc and MyTransactions.jsx.
 
 describe('MyTransactions — filter tabs', () => {
-  const pending  = makeTx({ id: 1, status: 'PENDING',   notes: 'Pending note text here' });
-  const approved = makeTx({ id: 2, status: 'APPROVED',  notes: 'Approved note text here' });
-  const rejected = makeTx({ id: 3, status: 'REJECTED',  notes: 'Rejected note text here' });
+  test('clicking PENDING re-queries the server with status=PENDING', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
+    renderPage();
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', undefined, undefined)
+    );
 
-  beforeEach(() => {
-    // Client-side filter: load all transactions at once, filter in UI
-    api.getMyTransactions.mockResolvedValue(mkPage([pending, approved, rejected]));
+    await userEvent.click(screen.getByRole('button', { name: /^pending$/i }));
+
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'PENDING', undefined, undefined)
+    );
   });
 
-  test('ALL tab shows all three transactions by default', async () => {
+  test('PENDING tab renders only what the server returns for that status', async () => {
+    api.getMyTransactions.mockResolvedValueOnce(mkPage([
+      makeTx({ id: 1, status: 'PENDING', notes: 'Pending note text here' }),
+      makeTx({ id: 2, status: 'APPROVED', notes: 'Approved note text here' }),
+    ]));
     renderPage();
     await waitFor(() => screen.getByText('Pending note text here'));
-    expect(screen.getByText('Approved note text here')).toBeInTheDocument();
-    expect(screen.getByText('Rejected note text here')).toBeInTheDocument();
-  });
 
-  test('PENDING filter shows only the pending transaction', async () => {
-    renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /^pending$/i }));
+    api.getMyTransactions.mockResolvedValueOnce(
+      mkPage([makeTx({ id: 1, status: 'PENDING', notes: 'Pending note text here' })])
+    );
     await userEvent.click(screen.getByRole('button', { name: /^pending$/i }));
 
+    await waitFor(() => expect(screen.queryByText('Approved note text here')).not.toBeInTheDocument());
     expect(screen.getByText('Pending note text here')).toBeInTheDocument();
-    expect(screen.queryByText('Approved note text here')).not.toBeInTheDocument();
-    expect(screen.queryByText('Rejected note text here')).not.toBeInTheDocument();
   });
 
-  test('APPROVED filter shows only the approved transaction', async () => {
+  test('clicking ALL after a status filter re-queries with status=ALL', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() => screen.getByRole('button', { name: /^approved$/i }));
+
     await userEvent.click(screen.getByRole('button', { name: /^approved$/i }));
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'APPROVED', undefined, undefined)
+    );
 
-    expect(screen.getByText('Approved note text here')).toBeInTheDocument();
-    expect(screen.queryByText('Pending note text here')).not.toBeInTheDocument();
-    expect(screen.queryByText('Rejected note text here')).not.toBeInTheDocument();
-  });
-
-  test('REJECTED filter shows only the rejected transaction', async () => {
-    renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /^rejected$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^rejected$/i }));
-
-    expect(screen.getByText('Rejected note text here')).toBeInTheDocument();
-    expect(screen.queryByText('Pending note text here')).not.toBeInTheDocument();
-    expect(screen.queryByText('Approved note text here')).not.toBeInTheDocument();
-  });
-
-  test('clicking ALL after filtering restores all three transactions', async () => {
-    renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /^approved$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^approved$/i }));
     await userEvent.click(screen.getByRole('button', { name: /^all$/i }));
-
-    expect(screen.getByText('Pending note text here')).toBeInTheDocument();
-    expect(screen.getByText('Approved note text here')).toBeInTheDocument();
-    expect(screen.getByText('Rejected note text here')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', undefined, undefined)
+    );
   });
 
-  test('shows empty message when filtered result has no matches', async () => {
-    api.getMyTransactions.mockResolvedValue(mkPage([approved]));
+  test('shows empty message when the server returns no matches for a status', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() => screen.getByRole('button', { name: /^pending$/i }));
     await userEvent.click(screen.getByRole('button', { name: /^pending$/i }));
 
-    expect(screen.getByText(/no transactions found/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/no transactions found/i)).toBeInTheDocument());
+  });
+
+  test('a match beyond page 0 is found immediately on switching tabs, without scrolling — '
+      + 'the exact case that broke under client-side-only filtering', async () => {
+    // Page 0 of the ALL view returns only an APPROVED item, exactly as a real paginated
+    // backend would; the PENDING match below was never loaded into the browser's state.
+    api.getMyTransactions.mockResolvedValueOnce(
+      mkPage([makeTx({ id: 1, status: 'APPROVED', notes: 'Approved note' })], { last: false })
+    );
+    renderPage();
+    await waitFor(() => screen.getByText('Approved note'));
+
+    api.getMyTransactions.mockResolvedValueOnce(
+      mkPage([makeTx({ id: 2, status: 'PENDING', notes: 'Pending note found without scrolling' })])
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^pending$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Pending note found without scrolling')).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Approved note')).not.toBeInTheDocument();
   });
 });
 
 // ── Medicine spec filter ──────────────────────────────────────────────────
 
 describe('MyTransactions — medicine spec filter', () => {
-  const vial10 = makeTx({
-    id: 1, medicineId: 10, medicineName: 'Shield FX Vial 10 ml', medicineType: 'VIAL',
-    concentrationMgPerMl: 20, notes: 'Vial 10 dispatch note',
-  });
-  const vial5 = makeTx({
-    id: 2, medicineId: 20, medicineName: 'Shield FX Vial 5 ml', medicineType: 'VIAL',
-    concentrationMgPerMl: 20, notes: 'Vial 5 dispatch note',
-  });
-  const tablet = makeTx({
-    id: 3, medicineId: 30, medicineName: 'Shield FX Tablet 25 mg', medicineType: 'TABLET',
-    specification: 25, concentrationMgPerMl: null, notes: 'Tablet dispatch note',
-  });
-
-  beforeEach(() => {
-    api.getMyTransactions.mockResolvedValue(mkPage([vial10, vial5, tablet]));
-  });
-
-  test('All Medicines shows every dispatch by default', async () => {
-    renderPage();
-    await waitFor(() => screen.getByText(vial10.notes));
-    expect(screen.getByText(vial5.notes)).toBeInTheDocument();
-    expect(screen.getByText(tablet.notes)).toBeInTheDocument();
-  });
-
-  test('lists each distinct medicine once as a filter option', async () => {
+  test('selecting a medicine re-queries the server with the medicineId param', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() => screen.getByLabelText(/medicine spec/i));
-    expect(screen.getByRole('option', { name: /shield fx vial 10 ml/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /shield fx vial 5 ml/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /shield fx tablet 25 mg/i })).toBeInTheDocument();
-  });
-
-  test('filtering by a specific medicine hides the others', async () => {
-    renderPage();
-    await waitFor(() => screen.getByText(vial10.notes));
 
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
 
-    expect(screen.getByText(vial10.notes)).toBeInTheDocument();
-    expect(screen.queryByText(vial5.notes)).not.toBeInTheDocument();
-    expect(screen.queryByText(tablet.notes)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', '10', undefined)
+    );
   });
 
-  test('switching back to All Medicines restores all dispatches', async () => {
+  test('switching back to All Medicines omits the medicineId param', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
-    await waitFor(() => screen.getByText(vial10.notes));
+    await waitFor(() => screen.getByLabelText(/medicine spec/i));
 
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', '10', undefined)
+    );
+
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), 'ALL');
-
-    expect(screen.getByText(vial10.notes)).toBeInTheDocument();
-    expect(screen.getByText(vial5.notes)).toBeInTheDocument();
-    expect(screen.getByText(tablet.notes)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', undefined, undefined)
+    );
   });
 
-  test('spec filter combines with status filter tabs', async () => {
-    const pendingVial10 = makeTx({
-      id: 4, status: 'PENDING', medicineId: 10, medicineName: 'Shield FX Vial 10 ml',
-      medicineType: 'VIAL', concentrationMgPerMl: 20, notes: 'Pending vial 10 note',
-    });
-    api.getMyTransactions.mockResolvedValue(mkPage([vial10, pendingVial10, vial5]));
+  test('spec filter combines with the status tab in the same query', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
-    await waitFor(() => screen.getByText(vial10.notes));
+    await waitFor(() => screen.getByLabelText(/medicine spec/i));
 
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
     await userEvent.click(screen.getByRole('button', { name: /^pending$/i }));
 
-    expect(screen.getByText('Pending vial 10 note')).toBeInTheDocument();
-    expect(screen.queryByText(vial10.notes)).not.toBeInTheDocument();
-    expect(screen.queryByText(vial5.notes)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'PENDING', '10', undefined)
+    );
   });
 });
 
 // ── Notes search ─────────────────────────────────────────────────────────
 
 describe('MyTransactions — notes search', () => {
-  const clinicTx = makeTx({ id: 1, notes: 'Dispatched to Clinic B for FIP treatment' });
-  const wardTx   = makeTx({ id: 2, notes: 'Restocking Ward 3 monthly supply' });
-
-  beforeEach(() => {
-    api.getMyTransactions.mockResolvedValue(mkPage([clinicTx, wardTx]));
-  });
-
-  test('empty search shows all dispatches', async () => {
+  test('typing a note filter re-queries the server with the (trimmed) notes param', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
-    await waitFor(() => screen.getByText(clinicTx.notes));
-    expect(screen.getByText(wardTx.notes)).toBeInTheDocument();
-  });
-
-  test('searching by note text filters to matching rows only', async () => {
-    renderPage();
-    await waitFor(() => screen.getByText(clinicTx.notes));
+    await waitFor(() => screen.getByLabelText(/search notes/i));
 
     await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
 
-    expect(screen.getByText(clinicTx.notes)).toBeInTheDocument();
-    expect(screen.queryByText(wardTx.notes)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', undefined, 'clinic')
+    );
   });
 
-  test('note search is case-insensitive', async () => {
+  test('clearing the notes search omits the notes param', async () => {
+    api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
-    await waitFor(() => screen.getByText(clinicTx.notes));
+    await waitFor(() => screen.getByLabelText(/search notes/i));
 
-    await userEvent.type(screen.getByLabelText(/search notes/i), 'CLINIC');
+    const input = screen.getByLabelText(/search notes/i);
+    await userEvent.type(input, 'clinic');
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', undefined, 'clinic')
+    );
 
-    expect(screen.getByText(clinicTx.notes)).toBeInTheDocument();
-    expect(screen.queryByText(wardTx.notes)).not.toBeInTheDocument();
+    await userEvent.clear(input);
+    await waitFor(() =>
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', undefined, undefined)
+    );
   });
 
-  test('note search matching no rows shows empty state', async () => {
+  test('a match beyond page 0 is found by notes search without scrolling — '
+      + 'the exact case that broke under client-side-only filtering', async () => {
+    api.getMyTransactions.mockResolvedValueOnce(
+      mkPage([makeTx({ id: 1, notes: 'Unrelated note' })], { last: false })
+    );
     renderPage();
-    await waitFor(() => screen.getByText(clinicTx.notes));
+    await waitFor(() => screen.getByText('Unrelated note'));
 
+    api.getMyTransactions.mockResolvedValueOnce(
+      mkPage([makeTx({ id: 2, notes: 'Dispatched to Clinic B for FIP treatment' })])
+    );
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
+
+    await waitFor(() =>
+      expect(screen.getByText('Dispatched to Clinic B for FIP treatment')).toBeInTheDocument()
+    );
+    expect(screen.queryByText('Unrelated note')).not.toBeInTheDocument();
+  });
+
+  test('note search matching nothing on the server shows the empty state', async () => {
+    api.getMyTransactions.mockResolvedValueOnce(mkPage([makeTx({ notes: 'Something' })]));
+    renderPage();
+    await waitFor(() => screen.getByText('Something'));
+
+    api.getMyTransactions.mockResolvedValueOnce(mkPage([]));
     await userEvent.type(screen.getByLabelText(/search notes/i), 'nonexistent note text');
 
-    expect(screen.getByText(/no transactions found/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/no transactions found/i)).toBeInTheDocument());
   });
 });
 

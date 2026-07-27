@@ -130,17 +130,21 @@ public class TransactionService {
     }
 
     @Transactional(readOnly = true)
-    public Page<TransactionResponse> getByUserPaged(String username, int page, int size) {
+    public Page<TransactionResponse> getByUserPaged(String username, int page, int size,
+                                                      String status, Long medicineId, String notes) {
         User user = findUserByUsername(username);
         PageRequest pageable = PageRequest.of(page, size);
-        Page<Long> idPage = transactionRepository.findIdsByUser(user, pageable);
-        List<Long> ids = idPage.getContent();
-        if (ids.isEmpty()) {
-            return new PageImpl<>(List.of(), pageable, idPage.getTotalElements());
-        }
-        List<Transaction> txList = orderByIds(transactionRepository.findByIdsWithDetails(ids), ids);
-        List<TransactionResponse> content = txList.stream().map(transactionMapper::toResponse).toList();
-        return new PageImpl<>(content, pageable, idPage.getTotalElements());
+
+        TransactionStatus txStatus = (status == null || "ALL".equalsIgnoreCase(status))
+                ? null : TransactionStatus.valueOf(status.toUpperCase());
+        // Built as a complete LIKE pattern here, not passed raw — see searchMyHistory's Javadoc
+        // for why binding a raw substring through LOWER(CONCAT(...)) at the SQL level breaks on
+        // Postgres.
+        String notesPattern = (notes == null || notes.isBlank())
+                ? null : "%" + notes.trim().toLowerCase() + "%";
+
+        Page<Transaction> txPage = transactionRepository.searchMyHistory(user, txStatus, medicineId, notesPattern, pageable);
+        return txPage.map(transactionMapper::toResponse);
     }
 
     /**

@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT } = require('./helpers');
+const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible } = require('./helpers');
 
 // Submits a dispatch only — does NOT approve it. /admin/past-transactions' ALL status filter
 // includes every status (its "ALL" branch has no status predicate server-side), so a PENDING
@@ -27,6 +27,16 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     await expect(page.getByRole('table')).not.toBeVisible();
   });
 
+  test('a From date after the To date shows a validation error and disables Search', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/admin/past-transactions');
+    await page.locator('#from-date').fill('2026-01-10');
+    await page.locator('#to-date').fill('2026-01-01');
+
+    await expect(page.getByText(/"from" date must be before or equal to "to" date/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^search$/i })).toBeDisabled();
+  });
+
   test('searching over a wide date range renders a results table with a scroll sentinel', async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto('/admin/past-transactions');
@@ -40,9 +50,23 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
   });
 
   test('switching the status filter re-searches and updates results', async ({ page }) => {
+    // The page defaults its Status filter to APPROVED, and a freshly reset DB (make down-v) has
+    // no APPROVED transactions until something actually gets approved — earlier specs in this
+    // run may only ever leave PENDING records. Submit-and-approve one here so the default-status
+    // search below is guaranteed at least one match instead of depending on other spec files'
+    // incidental run order (which is what made this test rely on Playwright's CI-only retry to
+    // pass — it failed outright on a single-pass local run).
+    const note = `Status-switch note ${Date.now()}`;
+    await submitDispatch(page, note, new Date().toISOString().slice(0, 10));
     await loginAsAdmin(page);
-    await page.goto('/admin/past-transactions');
+    await page.goto('/admin/transactions');
+    await page.getByRole('button', { name: /^pending$/i }).click();
+    const card = page.locator('.transaction-card', { hasText: note });
+    await scrollUntilVisible(page, card, { maxScrolls: 60 });
+    await card.getByRole('button', { name: /approve/i }).click();
+    await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
 
+    await page.goto('/admin/past-transactions');
     await page.locator('#from-date').fill('2020-01-01');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByText(/^results \(\d+\)$/i)).toBeVisible({ timeout: 10000 });

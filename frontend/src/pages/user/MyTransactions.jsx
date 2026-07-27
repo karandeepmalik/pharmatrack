@@ -6,9 +6,17 @@ import { medicineStockTypeLabel } from '../../constants';
 
 const PAGE_SIZE = 10;
 
+// Debounce filter changes before re-querying — immediate on tab/dropdown clicks would be fine,
+// but notesSearch is free text and would otherwise fire a request per keystroke.
+const FILTER_DEBOUNCE_MS = 300;
+
 const specLabel = (tx) => tx.medicineType === 'VIAL'
   ? `${tx.concentrationMgPerMl ?? tx.specification ?? '?'} mg/ml`
   : `${tx.specification ?? '?'} mg`;
+
+const specLabelForMedicine = (m) => m.type === 'VIAL'
+  ? `${m.concentrationMgPerMl ?? m.specification ?? '?'} mg/ml`
+  : `${m.specification ?? '?'} mg`;
 
 export default function MyTransactions() {
   const [allTxs, setAllTxs]         = useState([]);
@@ -16,16 +24,26 @@ export default function MyTransactions() {
   const [filter, setFilter]         = useState('ALL');
   const [specFilter, setSpecFilter] = useState('ALL');
   const [notesSearch, setNotesSearch] = useState('');
+  const [medicines, setMedicines]   = useState([]);
   const [loading, setLoading]       = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError]           = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
   const sentinelRef = useRef(null);
-  const pageRef     = useRef(0);
-  const loadingRef  = useRef(false);
+  const pageRef      = useRef(0);
+  const loadingRef   = useRef(false);
+  const isFirstRender = useRef(true);
+  // The exact filters the currently-loaded page(s) were fetched with — scroll-triggered loads
+  // of subsequent pages must keep using these, not whatever the filters currently show (a filter
+  // change resets to page 0 via the effect below before this ref is updated again).
+  const filterParamsRef = useRef({ filter, specFilter, notesSearch });
 
-  const loadPage = useCallback((pg) => {
+  useEffect(() => {
+    api.getMedicines().then((r) => setMedicines(r.data || [])).catch(() => {});
+  }, []);
+
+  const loadPage = useCallback((pg, params) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     if (pg === 0) {
@@ -36,7 +54,10 @@ export default function MyTransactions() {
       setLoadingMore(true);
     }
 
-    api.getMyTransactions(pg, PAGE_SIZE)
+    const medicineId = params.specFilter === 'ALL' ? undefined : params.specFilter;
+    const notes      = params.notesSearch.trim() ? params.notesSearch.trim() : undefined;
+
+    api.getMyTransactions(pg, PAGE_SIZE, params.filter, medicineId, notes)
       .then((r) => {
         const content = r.data?.content;
         const last    = r.data?.last ?? true;
@@ -53,7 +74,28 @@ export default function MyTransactions() {
       });
   }, []);
 
-  useEffect(() => { loadPage(0); }, [loadPage]);
+  // Any filter change re-queries the server from page 0 — filtering client-side over only the
+  // scroll-loaded rows would silently miss real matches sitting on unloaded pages once results
+  // span more than one page (the exact bug this page used to have; see searchMyHistory's Javadoc
+  // in TransactionRepository). Debounced so notesSearch doesn't fire a request per keystroke;
+  // the initial mount load skips the debounce so first paint isn't delayed.
+  useEffect(() => {
+    const params = { filter, specFilter, notesSearch };
+    filterParamsRef.current = params;
+
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      pageRef.current = 0;
+      loadPage(0, params);
+      return;
+    }
+
+    const t = setTimeout(() => {
+      pageRef.current = 0;
+      loadPage(0, params);
+    }, FILTER_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [filter, specFilter, notesSearch, loadPage]);
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this dispatch record? This cannot be undone.')) return;
@@ -79,23 +121,20 @@ export default function MyTransactions() {
     if (!el) return;
     const obs = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting && !loadingRef.current) {
-        loadPage(pageRef.current + 1);
+        loadPage(pageRef.current + 1, filterParamsRef.current);
       }
     }, { threshold: 0 });
     obs.observe(el);
     return () => obs.disconnect();
   }, [hasMore, loadPage]);
 
-  // Unique medicine specs present in the loaded dispatches, for the spec filter dropdown
-  const specOptions = [...new Map(
-    allTxs.map((t) => [t.medicineId, { medicineId: t.medicineId, label: `${t.medicineName ?? 'Unknown'} — ${specLabel(t)}` }])
-  ).values()].sort((a, b) => a.label.localeCompare(b.label));
-
-  const filtered = allTxs
-    .filter((t) => filter === 'ALL' || t.status === filter)
-    .filter((t) => specFilter === 'ALL' || String(t.medicineId) === specFilter)
-    .filter((t) => !notesSearch.trim() ||
-      (t.notes || '').toLowerCase().includes(notesSearch.trim().toLowerCase()));
+  // Full medicine catalog, not just specs seen in the currently-loaded/filtered page(s) — a
+  // dropdown built from allTxs would shrink and reshuffle as the user filters, since allTxs now
+  // only ever holds the current filtered result set. Matches the convention used by the
+  // equivalent admin filter dropdowns (ViewPastTransactions, ViewMedicineStockAdjustments).
+  const specOptions = medicines
+    .map((m) => ({ id: m.id, label: `${m.name} — ${specLabelForMedicine(m)}` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   if (loading) return <div className="loading">Loading…</div>;
 
@@ -127,7 +166,7 @@ export default function MyTransactions() {
             onChange={(e) => setSpecFilter(e.target.value)}>
             <option value="ALL">All Medicines</option>
             {specOptions.map((o) => (
-              <option key={o.medicineId} value={String(o.medicineId)}>{o.label}</option>
+              <option key={o.id} value={String(o.id)}>{o.label}</option>
             ))}
           </select>
         </div>
@@ -143,11 +182,11 @@ export default function MyTransactions() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {allTxs.length === 0 ? (
         <p className="empty-message">No transactions found.</p>
       ) : (
         <div className="transactions-list">
-          {filtered.map((tx) => {
+          {allTxs.map((tx) => {
             const status = tx.status ?? 'UNKNOWN';
             return (
               <div key={tx.id} className={`transaction-card status-${status.toLowerCase()}`}>

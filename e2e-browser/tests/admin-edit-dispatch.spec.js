@@ -57,6 +57,17 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await expect(page.getByRole('table')).not.toBeVisible();
   });
 
+  test('a From date after the To date shows a validation error and disables Search', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/admin/dispatch-records');
+
+    await page.locator('#from-date').fill('2026-01-10');
+    await page.locator('#to-date').fill('2026-01-01');
+
+    await expect(page.getByText(/"from" date must be before or equal to "to" date/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^search$/i })).toBeDisabled();
+  });
+
   test('editing a dispatch record note persists after save', async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto('/admin/dispatch-records');

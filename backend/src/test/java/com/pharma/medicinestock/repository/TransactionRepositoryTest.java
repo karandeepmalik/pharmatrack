@@ -163,25 +163,26 @@ class TransactionRepositoryTest {
         }
     }
 
-    // ── findIdsByUser ────────────────────────────────────────────────────────
+    // ── searchMyHistory ──────────────────────────────────────────────────────
 
-    @Nested @DisplayName("findIdsByUser")
-    class FindIdsByUser {
+    @Nested @DisplayName("searchMyHistory")
+    class SearchMyHistory {
 
         @Test
         @DisplayName("filters to user1 transactions only")
         void filtersUser1() {
-            Page<Long> page = repo.findIdsByUser(user1, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user1, null, null, null, PageRequest.of(0, 20));
             assertThat(page.getTotalElements()).isEqualTo(2);
-            assertThat(page.getContent()).containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
+            assertThat(page.getContent()).extracting(Transaction::getId)
+                    .containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
         }
 
         @Test
         @DisplayName("filters to user2 transactions only")
         void filtersUser2() {
-            Page<Long> page = repo.findIdsByUser(user2, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user2, null, null, null, PageRequest.of(0, 20));
             assertThat(page.getTotalElements()).isEqualTo(1);
-            assertThat(page.getContent()).containsExactly(tx3.getId());
+            assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx3.getId());
         }
 
         @Test
@@ -191,7 +192,7 @@ class TransactionRepositoryTest {
             em.persist(user3);
             em.flush();
 
-            Page<Long> page = repo.findIdsByUser(user3, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user3, null, null, null, PageRequest.of(0, 20));
             assertThat(page.getTotalElements()).isZero();
             assertThat(page.getContent()).isEmpty();
         }
@@ -199,8 +200,54 @@ class TransactionRepositoryTest {
         @Test
         @DisplayName("user1 results are in DESC submittedAt order")
         void user1InDescOrder() {
-            Page<Long> page = repo.findIdsByUser(user1, PageRequest.of(0, 20));
-            assertThat(page.getContent()).containsExactly(tx2.getId(), tx1.getId());
+            Page<Transaction> page = repo.searchMyHistory(user1, null, null, null, PageRequest.of(0, 20));
+            assertThat(page.getContent()).extracting(Transaction::getId)
+                    .containsExactly(tx2.getId(), tx1.getId());
+        }
+
+        @Test
+        @DisplayName("filters by status within a user's own transactions")
+        void filtersByStatus() {
+            Page<Transaction> page = repo.searchMyHistory(
+                    user1, Transaction.TransactionStatus.APPROVED, null, null, PageRequest.of(0, 20));
+            assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
+        }
+
+        @Test
+        @DisplayName("filters by exact medicineId within a user's own transactions")
+        void filtersByMedicineId() {
+            Page<Transaction> page = repo.searchMyHistory(user1, null, medicine2.getId(), null, PageRequest.of(0, 20));
+            assertThat(page.getContent()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("filters by a pre-built LIKE pattern, case-insensitively")
+        void filtersByNotes() {
+            // notesPattern arrives as a complete, already-lowercased LIKE pattern (built by the
+            // service layer) — see searchHistory's Javadoc for why the query itself does no
+            // LOWER()/CONCAT() on the bind parameter.
+            Page<Transaction> page = repo.searchMyHistory(user1, null, null, "%approved%", PageRequest.of(0, 20));
+            assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
+        }
+
+        @Test
+        @DisplayName("never returns another user's transactions regardless of filters")
+        void neverLeaksOtherUsersTransactions() {
+            Page<Transaction> page = repo.searchMyHistory(user1, null, null, null, PageRequest.of(0, 20));
+            assertThat(page.getContent()).noneMatch(t -> t.getId().equals(tx3.getId()));
+        }
+
+        @Test
+        @DisplayName("a filter that matches nothing on the current page still matches records beyond it — "
+                + "the whole point of doing this server-side instead of client-side against loaded pages only")
+        void filterMatchesRecordOutsideFirstPage() {
+            // page size 1: tx2 (newest of user1's) is the only item on page 0. Filtering by
+            // PENDING (only matches tx1, the older one) still finds it even at a page size that
+            // would otherwise paginate it out.
+            Page<Transaction> page = repo.searchMyHistory(
+                    user1, Transaction.TransactionStatus.PENDING, null, null, PageRequest.of(0, 1));
+            assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx1.getId());
+            assertThat(page.getTotalElements()).isEqualTo(1);
         }
     }
 
