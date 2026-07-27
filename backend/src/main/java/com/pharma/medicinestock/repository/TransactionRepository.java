@@ -36,9 +36,41 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.status = :status")
     Page<Long> findIdsByStatus(@Param("status") Transaction.TransactionStatus status, Pageable pageable);
 
-    @Query(value = "SELECT t.id FROM Transaction t WHERE t.submittedBy = :user ORDER BY t.submittedAt DESC",
-           countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.submittedBy = :user")
-    Page<Long> findIdsByUser(@Param("user") User user, Pageable pageable);
+    /**
+     * A single user's own transactions, with optional status/medicine/notes filters — backs the
+     * paginated "Medicine Dispatch History" endpoint (GET /transactions/my). Same nullable-
+     * predicate pattern as searchHistory below: passing null for a filter makes its clause always
+     * true. Filtering happens here (server-side, against the full matching set) rather than
+     * client-side over whatever page the infinite-scroll happened to have loaded so far —
+     * MyTransactions.jsx had exactly the shipped-regression bug searchHistory's Javadoc
+     * describes for its own filters, fixed to match.
+     *
+     * notesPattern must arrive pre-built as a full lowercased LIKE pattern — see searchHistory's
+     * Javadoc for why (Postgres can't infer a type for a bind parameter used only as a LOWER()/
+     * CONCAT() argument when it's null, and 500s).
+     *
+     * Safe to paginate directly (no two-query id workaround needed, unlike findAllIds/
+     * findIdsByStatus above): every JOIN FETCH here is a to-one association.
+     */
+    @Query(value = "SELECT t FROM Transaction t " +
+           "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
+           "LEFT JOIN FETCH t.approvedBy " +
+           "WHERE t.submittedBy = :user " +
+           "AND (:status IS NULL OR t.status = :status) " +
+           "AND (:medicineId IS NULL OR m.id = :medicineId) " +
+           "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern) " +
+           "ORDER BY t.submittedAt DESC",
+           countQuery = "SELECT COUNT(t) FROM Transaction t " +
+           "WHERE t.submittedBy = :user " +
+           "AND (:status IS NULL OR t.status = :status) " +
+           "AND (:medicineId IS NULL OR t.medicine.id = :medicineId) " +
+           "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern)")
+    Page<Transaction> searchMyHistory(
+            @Param("user") User user,
+            @Param("status") Transaction.TransactionStatus status,
+            @Param("medicineId") Long medicineId,
+            @Param("notesPattern") String notesPattern,
+            Pageable pageable);
 
     @Query("SELECT DISTINCT t FROM Transaction t " +
            "JOIN FETCH t.submittedBy " +

@@ -109,6 +109,52 @@ test.describe('Modify Medicine Stock', () => {
     await expect(page.getByRole('alert')).toContainText(/added successfully/i, { timeout: 10000 });
   });
 
+  test('reducing more than the available quantity shows a 409 "Insufficient stock" error', async ({ page, context }) => {
+    await page.locator('#user-select').selectOption({ index: 1 });
+    await page.locator('#medicine-select').selectOption({ index: 1 });
+
+    const badgeText = await page.getByText(/current .*quantity for user/i).innerText();
+    const currentQty = Number(badgeText.match(/([\d.]+)\s*units/i)?.[1] ?? 0);
+    test.skip(currentQty < 0.2, 'not enough existing stock on this user/medicine to build the race below');
+
+    // The quantity field's max attribute mirrors currentQty, so the browser's native HTML5
+    // validation blocks ever submitting a raw over-limit value through this form — there's no
+    // way to reach the server-side 409 by just typing a bigger number. The only real path to it
+    // is a race: this tab's `max` is a snapshot from page load, so if the same stock gets
+    // reduced elsewhere (e.g. a second concurrent admin session) between that snapshot and this
+    // tab's submit, the still-valid-looking amount can exceed what's actually left server-side.
+    await page.locator('#type-select').selectOption('REDUCE');
+    await page.locator('#qty-input').fill(String(currentQty));
+    await page.locator('#note-input').fill(`Playwright race REDUCE ${Date.now()}`);
+
+    const page2 = await context.newPage();
+    await page2.goto('/admin/modify-medicine-stock');
+    await page2.locator('#user-select').selectOption({ index: 1 });
+    await page2.locator('#medicine-select').selectOption({ index: 1 });
+    await page2.locator('#type-select').selectOption('REDUCE');
+    await page2.locator('#qty-input').fill(String(currentQty));
+    await page2.locator('#note-input').fill(`Playwright race drain ${Date.now()}`);
+    await page2.getByRole('button', { name: /reduce medicine stock/i }).click();
+    await expect(page2.getByRole('alert')).toContainText(/reduced successfully/i, { timeout: 10000 });
+    await page2.close();
+
+    // page's form still shows the pre-drain max, so this submits successfully client-side —
+    // the server must be the one to catch that the stock is now gone.
+    await page.getByRole('button', { name: /reduce medicine stock/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/insufficient stock/i, { timeout: 10000 });
+
+    // Cleanup: page2's drain left this user/medicine at ~0, which is real state shared with
+    // every other spec that submits a dispatch via the same default cascading-select — restore
+    // it, or every later test submitting against this user/medicine finds Submit permanently
+    // disabled (maxQty=0). Mirrors the ADD-then-REDUCE pattern already used elsewhere in this
+    // file to guarantee enough stock to reduce.
+    await page.locator('#type-select').selectOption('ADD');
+    await page.locator('#qty-input').fill(String(currentQty));
+    await page.locator('#note-input').fill(`Playwright race cleanup restore ${Date.now()}`);
+    await page.getByRole('button', { name: /add medicine stock/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/added successfully/i, { timeout: 10000 });
+  });
+
   test('checking Internal Movement does not block a normal ADD submission', async ({ page }) => {
     await page.locator('#user-select').selectOption({ index: 1 });
     await page.locator('#medicine-select').selectOption({ index: 1 });

@@ -47,6 +47,14 @@ test.describe('Medicine Stock Modifications History', () => {
     await expect(page.getByText(/no stock modifications found for the selected date range/i)).toBeVisible({ timeout: 10000 });
   });
 
+  test('a From date after the To date shows a validation error and disables Search', async ({ page }) => {
+    await page.locator('#from-date').fill('2026-01-10');
+    await page.locator('#to-date').fill('2026-01-01');
+
+    await expect(page.getByText(/"from" date must be before or equal to "to" date/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^search$/i })).toBeDisabled();
+  });
+
   test.describe('delete flow', () => {
     async function createAdjustment(page, note) {
       await page.goto('/admin/modify-medicine-stock');

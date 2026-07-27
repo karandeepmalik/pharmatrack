@@ -329,7 +329,8 @@ class TransactionControllerTest {
             sampleResponse.setScreenshots(List.of(new ScreenshotDto(b64, "image/jpeg")));
 
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getByUserPaged(eq("john.doe"), anyInt(), anyInt())).thenReturn(page);
+            when(transactionService.getByUserPaged(eq("john.doe"), anyInt(), anyInt(), anyString(), any(), any()))
+                    .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/my"))
                     .andExpect(status().isOk())
@@ -342,12 +343,13 @@ class TransactionControllerTest {
         @DisplayName("accepts page and size query params")
         void getMy_pageParams_passedToService() throws Exception {
             Page<TransactionResponse> page = new PageImpl<>(List.of());
-            when(transactionService.getByUserPaged(anyString(), anyInt(), anyInt())).thenReturn(page);
+            when(transactionService.getByUserPaged(anyString(), anyInt(), anyInt(), anyString(), any(), any()))
+                    .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/my").param("page", "2").param("size", "5"))
                     .andExpect(status().isOk());
 
-            verify(transactionService).getByUserPaged(anyString(), eq(2), eq(5));
+            verify(transactionService).getByUserPaged(anyString(), eq(2), eq(5), anyString(), any(), any());
         }
 
         @Test
@@ -356,11 +358,29 @@ class TransactionControllerTest {
         void getMy_includesMedicineStockType() throws Exception {
             sampleResponse.setMedicineStockType("ADMIN_MEDICINE_STOCK");
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getByUserPaged(eq("john.doe"), anyInt(), anyInt())).thenReturn(page);
+            when(transactionService.getByUserPaged(eq("john.doe"), anyInt(), anyInt(), anyString(), any(), any()))
+                    .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/my"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content[0].medicineStockType").value("ADMIN_MEDICINE_STOCK"));
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("passes status, medicineId and notes query params through to the service")
+        void getMy_filterParams_passedToService() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of());
+            when(transactionService.getByUserPaged(eq("john.doe"), anyInt(), anyInt(), anyString(), any(), any()))
+                    .thenReturn(page);
+
+            mockMvc.perform(get("/api/transactions/my")
+                            .param("status", "PENDING")
+                            .param("medicineId", "7")
+                            .param("notes", "clinic"))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).getByUserPaged("john.doe", 0, 20, "PENDING", 7L, "clinic");
         }
     }
 

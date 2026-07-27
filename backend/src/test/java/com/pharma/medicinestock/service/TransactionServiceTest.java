@@ -461,16 +461,16 @@ class TransactionServiceTest {
         @Test @DisplayName("returns empty page when user has no transactions")
         void getByUserPaged_noTransactions_returnsEmpty() {
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
-            when(transactionRepository.findIdsByUser(eq(regularUser), any(Pageable.class)))
+            when(transactionRepository.searchMyHistory(eq(regularUser), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            Page<TransactionResponse> result = transactionService.getByUserPaged("john.doe", 0, 20);
+            Page<TransactionResponse> result = transactionService.getByUserPaged("john.doe", 0, 20, "ALL", null, null);
             assertThat(result.getContent()).isEmpty();
         }
 
         @Test @DisplayName("throws ResourceNotFoundException when user not found")
         void getByUserPaged_unknownUser_throwsResourceNotFound() {
             when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
-            assertThatThrownBy(() -> transactionService.getByUserPaged("nobody", 0, 20))
+            assertThatThrownBy(() -> transactionService.getByUserPaged("nobody", 0, 20, "ALL", null, null))
                     .isInstanceOf(ResourceNotFoundException.class)
                     .hasMessageContaining("User").hasMessageContaining("nobody");
         }
@@ -482,14 +482,62 @@ class TransactionServiceTest {
             TransactionResponse resp = stubResponse(tx);
 
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
-            when(transactionRepository.findIdsByUser(eq(regularUser), any(Pageable.class)))
-                    .thenReturn(new PageImpl<>(List.of(1L), PageRequest.of(0, 20), 1));
-            when(transactionRepository.findByIdsWithDetails(List.of(1L)))
-                    .thenReturn(List.of(tx));
+            when(transactionRepository.searchMyHistory(eq(regularUser), any(), any(), any(), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(tx), PageRequest.of(0, 20), 1));
             when(transactionMapper.toResponse(tx)).thenReturn(resp);
 
-            Page<TransactionResponse> result = transactionService.getByUserPaged("john.doe", 0, 20);
+            Page<TransactionResponse> result = transactionService.getByUserPaged("john.doe", 0, 20, "ALL", null, null);
             assertThat(result.getContent().get(0).getScreenshots()).isEmpty();
+        }
+
+        @Test @DisplayName("passes a null status to the repository when status is ALL")
+        void getByUserPaged_allStatus_passesNullStatus() {
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(transactionRepository.searchMyHistory(eq(regularUser), isNull(), any(), any(), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getByUserPaged("john.doe", 0, 20, "ALL", null, null);
+            verify(transactionRepository).searchMyHistory(eq(regularUser), isNull(), any(), any(), any(Pageable.class));
+        }
+
+        @Test @DisplayName("passes the parsed status enum to the repository when status is not ALL")
+        void getByUserPaged_withStatus_passesParsedStatus() {
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(transactionRepository.searchMyHistory(
+                    eq(regularUser), eq(TransactionStatus.PENDING), any(), any(), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getByUserPaged("john.doe", 0, 20, "PENDING", null, null);
+            verify(transactionRepository).searchMyHistory(
+                    eq(regularUser), eq(TransactionStatus.PENDING), any(), any(), any(Pageable.class));
+        }
+
+        @Test @DisplayName("passes medicineId through as given")
+        void getByUserPaged_medicineId_passedThrough() {
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(transactionRepository.searchMyHistory(eq(regularUser), any(), eq(5L), any(), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getByUserPaged("john.doe", 0, 20, "ALL", 5L, null);
+            verify(transactionRepository).searchMyHistory(eq(regularUser), any(), eq(5L), any(), any(Pageable.class));
+        }
+
+        @Test @DisplayName("builds a trimmed, lowercased LIKE pattern from the notes filter")
+        void getByUserPaged_notes_buildsLikePattern() {
+            // Built as a complete pattern here (not passed raw to the repository) — see
+            // TransactionRepository.searchMyHistory's Javadoc for why binding a raw substring
+            // through LOWER(CONCAT(...)) at the SQL level breaks on Postgres when null.
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(transactionRepository.searchMyHistory(eq(regularUser), any(), any(), eq("%clinic%"), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getByUserPaged("john.doe", 0, 20, "ALL", null, "  Clinic  ");
+            verify(transactionRepository).searchMyHistory(eq(regularUser), any(), any(), eq("%clinic%"), any(Pageable.class));
+        }
+
+        @Test @DisplayName("normalizes a blank notes filter to null (no filter)")
+        void getByUserPaged_blankNotes_normalizedToNull() {
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(transactionRepository.searchMyHistory(eq(regularUser), any(), any(), isNull(), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getByUserPaged("john.doe", 0, 20, "ALL", null, "   ");
+            verify(transactionRepository).searchMyHistory(eq(regularUser), any(), any(), isNull(), any(Pageable.class));
         }
     }
 

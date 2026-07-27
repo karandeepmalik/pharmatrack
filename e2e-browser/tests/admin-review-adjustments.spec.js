@@ -47,6 +47,33 @@ test.describe('Review Adjustments (admin approval queue)', () => {
     await expect(page.locator('.transaction-card', { hasText: note })).toBeVisible({ timeout: 10000 });
   });
 
+  test('overriding the price before approving updates the medicine catalog price', async ({ page }) => {
+    test.setTimeout(60000);
+    // newPrice on approval updates the underlying Medicine's catalog price (for future
+    // dispatches) — it does not retroactively change this transaction's own already-captured
+    // price. Verified via Manage Medicines' "Existing Medicines" table rather than this
+    // transaction's own record, which keeps showing the price it was submitted with.
+    const note = `Price-override note ${Date.now()}`;
+    await submitDispatch(page, note);
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/transactions');
+    await page.getByRole('button', { name: /^pending$/i }).click();
+
+    const card = page.locator('.transaction-card', { hasText: note });
+    await scrollUntilVisible(page, card, { maxScrolls: 60 });
+    const medicineLine = await card.locator('p', { hasText: 'Medicine:' }).innerText();
+    const medicineName = medicineLine.replace(/^Medicine:\s*/, '').split(' — ')[0].trim();
+
+    await card.getByLabel(/price \(rs\)/i).fill('54321');
+    await card.getByRole('button', { name: /approve/i }).click();
+    await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
+
+    await page.goto('/admin/medicines');
+    const medicineRow = page.getByRole('row', { name: new RegExp(medicineName) });
+    await expect(medicineRow.getByRole('cell', { name: '54321', exact: true })).toBeVisible({ timeout: 10000 });
+  });
+
   test('a freshly submitted dispatch can be rejected and disappears from PENDING', async ({ page }) => {
     test.setTimeout(60000);
     const note = `Reject-flow note ${Date.now()}`;

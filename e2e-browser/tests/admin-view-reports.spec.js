@@ -44,6 +44,39 @@ test.describe('View Reports', () => {
     await expect(page.locator('pre.report-content')).not.toBeEmpty();
   });
 
+  test('generates the Sales Report for a chosen date range', async ({ page }) => {
+    await page.locator('#report-select').selectOption('today-sales');
+    const today = new Date().toISOString().slice(0, 10);
+    await page.locator('#sales-from-input').fill(today);
+    await page.locator('#sales-to-input').fill(today);
+    await page.getByRole('button', { name: /generate report/i }).click();
+
+    await expect(page.getByRole('heading', { name: /^sales report$/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('pre.report-content')).not.toBeEmpty();
+  });
+
+  test('an invalid Sales Report date range (From after To) disables Generate Report and shows an error', async ({ page }) => {
+    await page.locator('#report-select').selectOption('today-sales');
+    await page.locator('#sales-from-input').fill('2026-01-10');
+    await page.locator('#sales-to-input').fill('2026-01-01');
+
+    await expect(page.getByText(/"from" date must be before or equal to "to" date/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /generate report/i })).toBeDisabled();
+  });
+
+  test('Copy to Clipboard copies the generated report content', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.locator('#report-select').selectOption('medicine-stock-by-user');
+    await page.getByRole('button', { name: /generate report/i }).click();
+    await expect(page.locator('pre.report-content')).not.toBeEmpty({ timeout: 10000 });
+
+    const reportText = await page.locator('pre.report-content').innerText();
+    await page.getByRole('button', { name: /copy to clipboard/i }).click();
+
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboardText).toBe(reportText);
+  });
+
   test.describe('Sales Trend Graph', () => {
     test.beforeEach(async ({ page }) => {
       await page.locator('#report-select').selectOption('sales-graph');
@@ -77,6 +110,19 @@ test.describe('View Reports', () => {
       await expect(page.getByRole('button', { name: 'Daily' })).not.toHaveClass(/btn-primary/);
       await expect(async () => {
         expect(await page.locator('#sg-from').inputValue()).not.toBe(fromBefore);
+      }).toPass({ timeout: 5000 });
+    });
+
+    test('switching to Monthly updates the active period button and widens the date range', async ({ page }) => {
+      const fromBefore = await page.locator('#sg-from').inputValue();
+      await page.getByRole('button', { name: 'Monthly' }).click();
+
+      await expect(page.getByRole('button', { name: 'Monthly' })).toHaveClass(/btn-primary/);
+      await expect(page.getByRole('button', { name: 'Daily' })).not.toHaveClass(/btn-primary/);
+      await expect(async () => {
+        const fromNow = await page.locator('#sg-from').inputValue();
+        expect(fromNow).not.toBe(fromBefore);
+        expect(new Date(fromNow).getTime()).toBeLessThan(new Date(fromBefore).getTime());
       }).toPass({ timeout: 5000 });
     });
 

@@ -75,8 +75,12 @@ public class TransactionController {
     public ResponseEntity<PagedResponse<TransactionResponse>> getMy(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "ALL") String status,
+            @RequestParam(required = false) Long medicineId,
+            @RequestParam(required = false) String notes,
             @AuthenticationPrincipal UserDetails userDetails) {
-        return ResponseEntity.ok(PagedResponse.of(transactionService.getByUserPaged(userDetails.getUsername(), page, size)));
+        return ResponseEntity.ok(PagedResponse.of(
+                transactionService.getByUserPaged(userDetails.getUsername(), page, size, status, medicineId, notes)));
     }
 
     /**
