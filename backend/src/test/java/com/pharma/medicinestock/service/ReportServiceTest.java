@@ -934,6 +934,82 @@ class ReportServiceTest {
             assertThat(r.getContent()).contains("3,500");
             assertThat(r.getContent()).doesNotContain("4,000");
         }
+
+        @Test
+        void usernameFilterExcludesOtherUsersSales() {
+            Transaction johnTx = makeTx(1L, john, vial, 2,
+                    Transaction.TransactionStatus.APPROVED, "john's dispatch");
+            Transaction janeTx = makeTx(2L, jane, tablet, 1,
+                    Transaction.TransactionStatus.APPROVED, "jane's dispatch");
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(johnTx, janeTx));
+
+            ReportResponse r = reportService.todaySales(null, null, "john.doe", null);
+
+            assertThat(r.getContent()).contains("John Doe");
+            assertThat(r.getContent()).doesNotContain("Jane Smith");
+        }
+
+        @Test
+        void blankOrAllUsernameAppliesNoFilter() {
+            Transaction johnTx = makeTx(1L, john, vial, 2,
+                    Transaction.TransactionStatus.APPROVED, "john's dispatch");
+            Transaction janeTx = makeTx(2L, jane, tablet, 1,
+                    Transaction.TransactionStatus.APPROVED, "jane's dispatch");
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(johnTx, janeTx));
+
+            ReportResponse all = reportService.todaySales(null, null, "ALL", null);
+            ReportResponse blank = reportService.todaySales(null, null, "  ", null);
+
+            assertThat(all.getContent()).contains("John Doe").contains("Jane Smith");
+            assertThat(blank.getContent()).contains("John Doe").contains("Jane Smith");
+        }
+
+        @Test
+        void medicineIdFilterExcludesOtherMedicinesSales() {
+            Transaction vialTx = makeTx(1L, john, vial, 2,
+                    Transaction.TransactionStatus.APPROVED, "vial dispatch");
+            Transaction tabletTx = makeTx(2L, john, tablet, 1,
+                    Transaction.TransactionStatus.APPROVED, "tablet dispatch");
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(vialTx, tabletTx));
+
+            ReportResponse r = reportService.todaySales(null, null, null, vial.getId());
+
+            assertThat(r.getContent()).contains("10 ml");
+            assertThat(r.getContent()).doesNotContain("25 mg");
+        }
+
+        @Test
+        void combinedUsernameAndMedicineIdFilterNarrowsToBoth() {
+            Transaction johnVial = makeTx(1L, john, vial, 2,
+                    Transaction.TransactionStatus.APPROVED, "john vial");
+            Transaction johnTablet = makeTx(2L, john, tablet, 1,
+                    Transaction.TransactionStatus.APPROVED, "john tablet");
+            Transaction janeVial = makeTx(3L, jane, vial, 3,
+                    Transaction.TransactionStatus.APPROVED, "jane vial");
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(johnVial, johnTablet, janeVial));
+
+            ReportResponse r = reportService.todaySales(null, null, "john.doe", vial.getId());
+
+            assertThat(r.getContent()).contains("john vial");
+            assertThat(r.getContent()).doesNotContain("john tablet");
+            assertThat(r.getContent()).doesNotContain("Jane Smith");
+        }
+
+        @Test
+        void filtersMatchingNothingShowNoSalesMessage() {
+            Transaction johnTx = makeTx(1L, john, vial, 2,
+                    Transaction.TransactionStatus.APPROVED, "john's dispatch");
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(johnTx));
+
+            ReportResponse r = reportService.todaySales(null, null, "jane.smith", null);
+
+            assertThat(r.getContent()).contains("No sales recorded today");
+        }
     }
 
     @Nested @DisplayName("dailyReport")

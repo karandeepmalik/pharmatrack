@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import SalesGraphReport from './SalesGraphReport';
+
+const medOptionLabel = (m) =>
+    m.type === 'VIAL'
+        ? `Vial ${m.specification} ml`
+        : `Tablet ${m.specification} mg (10 Tablets)`;
 
 const REPORTS = [
     { value: '', label: '-- Select a Report --' },
@@ -21,9 +26,20 @@ export default function ViewReports() {
     const [valuationDate, setValuationDate] = useState(todayStr());
     const [salesFrom, setSalesFrom] = useState(todayStr());
     const [salesTo, setSalesTo] = useState(todayStr());
+    const [salesUserFilter, setSalesUserFilter] = useState('ALL');
+    const [salesMedicineFilter, setSalesMedicineFilter] = useState('ALL');
+    const [users, setUsers] = useState([]);
+    const [medicines, setMedicines] = useState([]);
     const [content, setContent] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    useEffect(() => {
+        api.getUsers().then(r => setUsers(
+            (r.data || []).filter(u => u.role !== 'ADMIN')
+        )).catch(() => {});
+        api.getMedicines().then(r => setMedicines(r.data || [])).catch(() => {});
+    }, []);
 
     const handleGenerate = async () => {
         if (!selected) return;
@@ -34,7 +50,11 @@ export default function ViewReports() {
             let res;
             if (selected === 'medicine-stock-by-user') res = await api.getReportMedicineStockByUser();
             else if (selected === 'medicine-stock-valuation') res = await api.getReportMedicineStockValuation(valuationDate || null);
-            else if (selected === 'today-sales') res = await api.getReportTodaySales(salesFrom, salesTo);
+            else if (selected === 'today-sales') res = await api.getReportTodaySales(
+                salesFrom, salesTo,
+                salesUserFilter === 'ALL' ? undefined : salesUserFilter,
+                salesMedicineFilter === 'ALL' ? undefined : salesMedicineFilter
+            );
             else if (selected === 'daily') res = await api.getReportDaily(dailyDate || null);
             setContent(res.data.content);
         } catch {
@@ -106,6 +126,39 @@ export default function ViewReports() {
                                         value={salesTo}
                                         onChange={e => { setSalesTo(e.target.value); setContent(''); }}
                                     />
+                                </div>
+                            </div>
+                        )}
+
+                        {selected === 'today-sales' && (
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label htmlFor="sales-user-filter">User</label>
+                                    <select
+                                        id="sales-user-filter"
+                                        value={salesUserFilter}
+                                        onChange={e => { setSalesUserFilter(e.target.value); setContent(''); }}>
+                                        <option value="ALL">All Users</option>
+                                        {users.map(u => (
+                                            <option key={u.id} value={u.username}>
+                                                {u.fullName} ({u.username})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="sales-medicine-filter">Medicine Spec</label>
+                                    <select
+                                        id="sales-medicine-filter"
+                                        value={salesMedicineFilter}
+                                        onChange={e => { setSalesMedicineFilter(e.target.value); setContent(''); }}>
+                                        <option value="ALL">All Medicines</option>
+                                        {medicines.map(m => (
+                                            <option key={m.id} value={String(m.id)}>
+                                                {medOptionLabel(m)}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                         )}

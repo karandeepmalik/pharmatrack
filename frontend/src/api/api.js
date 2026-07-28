@@ -107,7 +107,8 @@ export const deleteMedicineStockAdjustment  = (id) =>
 export const getReportMedicineStockByUser    = ()      => api.get('/reports/medicine-stock-by-user');
 export const getReportMedicineStockValuation = (date = null) =>
     api.get('/reports/medicine-stock-valuation', date ? { params: { date } } : {});
-export const getReportTodaySales         = (from, to) => api.get('/reports/today-sales', { params: { from, to } });
+export const getReportTodaySales         = (from, to, username, medicineId) =>
+    api.get('/reports/today-sales', { params: { from, to, username, medicineId } });
 
 /**
  * Fetch the daily report.

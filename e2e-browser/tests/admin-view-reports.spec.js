@@ -1,5 +1,26 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsAdmin } = require('./helpers');
+const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible } = require('./helpers');
+
+async function submitAndApprove(page, who, note) {
+  await loginAsUser(page, who);
+  await page.goto('/user/submit');
+  await page.locator('#pharma-select').selectOption({ index: 1 });
+  await page.locator('#type-select').selectOption({ index: 1 });
+  await page.locator('#spec-select').selectOption({ index: 1 });
+  await page.locator('#quantity-input').fill('0.1');
+  await page.locator('#notes-input').fill(note);
+  await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+  await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+  await expect(page.getByRole('alert')).toContainText(/submitted successfully/i, { timeout: 10000 });
+
+  await loginAsAdmin(page);
+  await page.goto('/admin/transactions');
+  await page.getByRole('button', { name: /^pending$/i }).click();
+  const card = page.locator('.transaction-card', { hasText: note });
+  await scrollUntilVisible(page, card, { maxScrolls: 60 });
+  await card.getByRole('button', { name: /approve/i }).click();
+  await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
+}
 
 test.describe('View Reports', () => {
   test.beforeEach(async ({ page }) => {
@@ -53,6 +74,94 @@ test.describe('View Reports', () => {
 
     await expect(page.getByRole('heading', { name: /^sales report$/i })).toBeVisible({ timeout: 10000 });
     await expect(page.locator('pre.report-content')).not.toBeEmpty();
+  });
+
+  test('shows User and Medicine Spec filter dropdowns for the Sales Report', async ({ page }) => {
+    await page.locator('#report-select').selectOption('today-sales');
+    await expect(page.getByLabel(/^user$/i)).toBeVisible();
+    await expect(page.getByLabel(/medicine spec/i)).toBeVisible();
+    await expect(page.getByLabel(/^user$/i)).toHaveValue('ALL');
+    await expect(page.getByLabel(/medicine spec/i)).toHaveValue('ALL');
+  });
+
+  test('filtering the Sales Report by user narrows it to only that user\'s sales', async ({ page }) => {
+    test.setTimeout(90000);
+    const janeNote = `Sales-filter jane ${Date.now()}`;
+    await submitAndApprove(page, 'jane', janeNote);
+    const johnNote = `Sales-filter john ${Date.now()}`;
+    await submitAndApprove(page, 'john', johnNote);
+
+    await page.goto('/admin/reports');
+    await page.locator('#report-select').selectOption('today-sales');
+    const today = new Date().toISOString().slice(0, 10);
+    await page.locator('#sales-from-input').fill(today);
+    await page.locator('#sales-to-input').fill(today);
+    await page.getByLabel(/^user$/i).selectOption('jane.smith');
+    await page.getByRole('button', { name: /generate report/i }).click();
+
+    await expect(page.locator('pre.report-content')).toContainText('Jane Smith', { timeout: 10000 });
+    await expect(page.locator('pre.report-content')).not.toContainText('John Doe');
+  });
+
+  test('filtering the Sales Report by medicine spec excludes other medicines\' sales', async ({ page }) => {
+    test.setTimeout(120000);
+    // Derive the two dispatches' selections FROM the report page's own dropdown (rather than
+    // assuming SubmitTransaction and this page's medicine catalogs are ordered the same way —
+    // they're populated from different endpoints) so this test is robust regardless of seed
+    // data ordering or accumulated Playwright test medicines from earlier runs.
+    await page.locator('#report-select').selectOption('today-sales');
+    const specSelect = page.getByLabel(/medicine spec/i);
+    const label1 = await specSelect.locator('option').nth(1).innerText();
+    const label2 = await specSelect.locator('option').nth(2).innerText();
+
+    // Labels are "Vial N ml" or "Tablet N mg (10 Tablets)" — parse type + spec number back out
+    // so SubmitTransaction's #type-select (VIAL/TABLET) and #spec-select (matching label) can be
+    // driven directly from this page's own data.
+    const parseLabel = (label) => {
+      const vial = label.match(/^Vial (\d+) ml$/i);
+      if (vial) return { type: 'VIAL', specLabel: `${vial[1]} ml` };
+      const tablet = label.match(/^Tablet (\d+) mg/i);
+      return { type: 'TABLET', specLabel: `${tablet[1]} mg (10 Tablets)` };
+    };
+    const target = parseLabel(label1);
+    const other = parseLabel(label2);
+
+    async function submitFor(typeAndSpec, note) {
+      await loginAsUser(page, 'john');
+      await page.goto('/user/submit');
+      await page.locator('#pharma-select').selectOption({ index: 1 });
+      await page.locator('#type-select').selectOption(typeAndSpec.type);
+      await page.locator('#spec-select').selectOption({ label: typeAndSpec.specLabel });
+      await page.locator('#quantity-input').fill('0.1');
+      await page.locator('#notes-input').fill(note);
+      await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+      await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+      await expect(page.getByRole('alert')).toContainText(/submitted successfully/i, { timeout: 10000 });
+
+      await loginAsAdmin(page);
+      await page.goto('/admin/transactions');
+      await page.getByRole('button', { name: /^pending$/i }).click();
+      const card = page.locator('.transaction-card', { hasText: note });
+      await scrollUntilVisible(page, card, { maxScrolls: 60 });
+      await card.getByRole('button', { name: /approve/i }).click();
+      await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
+    }
+
+    const targetNote = `Sales-filter-target ${Date.now()}`;
+    const otherNote = `Sales-filter-other ${Date.now()}`;
+    await submitFor(target, targetNote);
+    await submitFor(other, otherNote);
+
+    await page.goto('/admin/reports');
+    await page.locator('#report-select').selectOption('today-sales');
+    const today = new Date().toISOString().slice(0, 10);
+    await page.locator('#sales-from-input').fill(today);
+    await page.locator('#sales-to-input').fill(today);
+    await page.getByLabel(/medicine spec/i).selectOption({ label: label1 });
+    await page.getByRole('button', { name: /generate report/i }).click();
+
+    await expect(page.locator('pre.report-content')).toContainText(targetNote, { timeout: 10000 });
+    await expect(page.locator('pre.report-content')).not.toContainText(otherNote);
   });
 
   test('an invalid Sales Report date range (From after To) disables Generate Report and shows an error', async ({ page }) => {
