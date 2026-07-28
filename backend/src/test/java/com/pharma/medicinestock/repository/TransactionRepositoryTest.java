@@ -13,6 +13,7 @@ import org.springframework.data.domain.PageRequest;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,6 +124,25 @@ class TransactionRepositoryTest {
             Page<Long> page = repo.findAllIds(PageRequest.of(1, 2));
             assertThat(page.getContent()).containsExactly(tx1.getId());
             assertThat(page.isLast()).isTrue();
+        }
+
+        @Test
+        @DisplayName("rows with an identical submittedAt paginate without duplicating or dropping any "
+                + "row — see searchHistory's identical test for why this matters")
+        void identicalSubmittedAtPaginatesWithoutDuplicatesOrGaps() {
+            LocalDateTime sameInstant = LocalDateTime.of(2024, 6, 1, 0, 0);
+            Transaction tied1 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING, sameInstant);
+            Transaction tied2 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING, sameInstant);
+            em.persist(tied1); em.persist(tied2);
+            em.flush();
+
+            Page<Long> page0 = repo.findAllIds(PageRequest.of(0, 4));
+            Page<Long> page1 = repo.findAllIds(PageRequest.of(1, 4));
+
+            assertThat(page0.getContent()).doesNotContainAnyElementsOf(page1.getContent());
+            List<Long> allIds = new ArrayList<>(page0.getContent());
+            allIds.addAll(page1.getContent());
+            assertThat(allIds).containsExactlyInAnyOrder(tx1.getId(), tx2.getId(), tx3.getId(), tied1.getId(), tied2.getId());
         }
     }
 
@@ -248,6 +268,32 @@ class TransactionRepositoryTest {
                     user1, Transaction.TransactionStatus.PENDING, null, null, PageRequest.of(0, 1));
             assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx1.getId());
             assertThat(page.getTotalElements()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("rows with an identical submittedAt paginate without duplicating or dropping any "
+                + "row — see searchHistory's identical test for why this matters")
+        void identicalSubmittedAtPaginatesWithoutDuplicatesOrGaps() {
+            LocalDateTime sameInstant = LocalDateTime.of(2024, 6, 1, 0, 0);
+            Transaction tied1 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING, sameInstant);
+            Transaction tied2 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING, sameInstant);
+            Transaction tied3 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING, sameInstant);
+            em.persist(tied1); em.persist(tied2); em.persist(tied3);
+            em.flush();
+
+            // user1 has 5 matching transactions total (tx1, tx2, tied1-3) — page size 3 covers
+            // all of them across exactly two pages.
+            Page<Transaction> page0 = repo.searchMyHistory(user1, null, null, null, PageRequest.of(0, 3));
+            Page<Transaction> page1 = repo.searchMyHistory(user1, null, null, null, PageRequest.of(1, 3));
+
+            List<Long> page0Ids = page0.getContent().stream().map(Transaction::getId).toList();
+            List<Long> page1Ids = page1.getContent().stream().map(Transaction::getId).toList();
+            assertThat(page0Ids).doesNotContainAnyElementsOf(page1Ids);
+
+            List<Long> allIds = new ArrayList<>(page0Ids);
+            allIds.addAll(page1Ids);
+            assertThat(allIds).containsExactlyInAnyOrder(
+                    tx1.getId(), tx2.getId(), tied1.getId(), tied2.getId(), tied3.getId());
         }
     }
 
@@ -484,6 +530,35 @@ class TransactionRepositoryTest {
                     PageRequest.of(0, 1));
             assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
             assertThat(result.getTotalElements()).isEqualTo(2); // tx1 + tx2, both alice
+        }
+
+        @Test
+        @DisplayName("rows with an identical submittedAt (e.g. same dispatch date) paginate without "
+                + "duplicating or dropping any row across separate page fetches — a real, shipped bug: "
+                + "without a secondary tiebreaker, Postgres doesn't guarantee a stable order for ties "
+                + "across separate LIMIT/OFFSET queries, so scrolling from page 0 to page 1 could return "
+                + "the same tied row twice while silently skipping a different one")
+        void identicalSubmittedAtPaginatesWithoutDuplicatesOrGaps() {
+            LocalDateTime sameInstant = LocalDateTime.of(2024, 6, 1, 0, 0);
+            Transaction tied1 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING, sameInstant);
+            Transaction tied2 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING, sameInstant);
+            Transaction tied3 = buildTx(user1, medicine, Transaction.TransactionStatus.PENDING, sameInstant);
+            em.persist(tied1); em.persist(tied2); em.persist(tied3);
+            em.flush();
+
+            Page<Transaction> page0 = repo.searchHistory(
+                    sameInstant, sameInstant.plusDays(1), null, null, null, null, PageRequest.of(0, 2));
+            Page<Transaction> page1 = repo.searchHistory(
+                    sameInstant, sameInstant.plusDays(1), null, null, null, null, PageRequest.of(1, 2));
+
+            List<Long> page0Ids = page0.getContent().stream().map(Transaction::getId).toList();
+            List<Long> page1Ids = page1.getContent().stream().map(Transaction::getId).toList();
+
+            assertThat(page0Ids).hasSize(2);
+            assertThat(page1Ids).hasSize(1);
+            assertThat(page0Ids).doesNotContainAnyElementsOf(page1Ids); // no row duplicated across pages
+            assertThat(page0Ids).containsExactlyInAnyOrder(tied3.getId(), tied2.getId()); // id DESC tiebreak
+            assertThat(page1Ids).containsExactly(tied1.getId()); // the one row not dropped
         }
     }
 

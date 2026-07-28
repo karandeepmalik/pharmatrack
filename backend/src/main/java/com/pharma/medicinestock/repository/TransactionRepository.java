@@ -25,14 +25,22 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
      *
      * Step 1: fetch a page of IDs via lightweight scalar queries.
      * Step 2: fetch the full entity graph for those IDs (findByIdsWithDetails).
+     *
+     * Every ORDER BY below breaks submittedAt ties with id DESC — submittedAt is truncated to
+     * the dispatch date (not wall-clock submission time), so many rows legitimately share the
+     * exact same value, and Postgres does not guarantee a stable order for tied rows across
+     * separate LIMIT/OFFSET query executions. Without a secondary deterministic key, scrolling
+     * from one page to the next could return the same tied row twice (it reordered within its
+     * tie-group between the two queries) while silently dropping a different one — a real,
+     * shipped bug reported against "View Past Medicine Dispatches".
      */
     /** Admin "Review Adjustments" queue — DESC so the most recently submitted requests surface first. */
-    @Query(value = "SELECT t.id FROM Transaction t ORDER BY t.submittedAt DESC",
+    @Query(value = "SELECT t.id FROM Transaction t ORDER BY t.submittedAt DESC, t.id DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t")
     Page<Long> findAllIds(Pageable pageable);
 
     /** Admin "Review Adjustments" queue — DESC so the most recently submitted requests surface first. */
-    @Query(value = "SELECT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt DESC",
+    @Query(value = "SELECT t.id FROM Transaction t WHERE t.status = :status ORDER BY t.submittedAt DESC, t.id DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.status = :status")
     Page<Long> findIdsByStatus(@Param("status") Transaction.TransactionStatus status, Pageable pageable);
 
@@ -51,6 +59,9 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
      *
      * Safe to paginate directly (no two-query id workaround needed, unlike findAllIds/
      * findIdsByStatus above): every JOIN FETCH here is a to-one association.
+     *
+     * ORDER BY breaks submittedAt ties with id DESC — see findAllIds' Javadoc above for why
+     * that's required for correct pagination, not just tidiness.
      */
     @Query(value = "SELECT t FROM Transaction t " +
            "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
@@ -59,7 +70,7 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "AND (:status IS NULL OR t.status = :status) " +
            "AND (:medicineId IS NULL OR m.id = :medicineId) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern) " +
-           "ORDER BY t.submittedAt DESC",
+           "ORDER BY t.submittedAt DESC, t.id DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t " +
            "WHERE t.submittedBy = :user " +
            "AND (:status IS NULL OR t.status = :status) " +
@@ -111,6 +122,9 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
      *
      * Safe to paginate directly (no two-query workaround needed): every JOIN FETCH here is a
      * to-one association, so there's no collection-fetch + firstResult/maxResults conflict.
+     *
+     * ORDER BY breaks submittedAt ties with id DESC — see findAllIds' Javadoc above for why
+     * that's required for correct pagination, not just tidiness.
      */
     @Query(value = "SELECT t FROM Transaction t " +
            "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
@@ -120,7 +134,7 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "AND (:username IS NULL OR u.username = :username) " +
            "AND (:medicineId IS NULL OR m.id = :medicineId) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern) " +
-           "ORDER BY t.submittedAt DESC",
+           "ORDER BY t.submittedAt DESC, t.id DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t " +
            "WHERE t.submittedAt >= :start AND t.submittedAt < :end " +
            "AND (:status IS NULL OR t.status = :status) " +
