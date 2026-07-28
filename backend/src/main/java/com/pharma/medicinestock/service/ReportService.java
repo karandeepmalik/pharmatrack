@@ -391,22 +391,30 @@ public class ReportService {
         return new ReportResponse("MEDICINE_STOCK_VALUATION", nowIST(), sb.toString());
     }
 
-    /** Convenience overload — defaults to today only. */
-    public ReportResponse todaySales() { return todaySales(todayIST(), todayIST()); }
+    /** Convenience overload — defaults to today only, no filters. */
+    public ReportResponse todaySales() { return todaySales(todayIST(), todayIST(), null, null); }
 
+    /**
+     * @param username   optional exact submittedBy username filter (null/blank/"ALL" = no filter)
+     * @param medicineId optional exact medicine filter
+     */
     @Timed(value = "pharmatrack.report.today_sales", description = "Time to build sales report")
     @Transactional(readOnly = true)
-    public ReportResponse todaySales(LocalDate from, LocalDate to) {
+    public ReportResponse todaySales(LocalDate from, LocalDate to, String username, Long medicineId) {
         LocalDate effectiveFrom = from != null ? from : todayIST();
         LocalDate effectiveTo   = to   != null ? to   : todayIST();
 
         LocalDateTime start = effectiveFrom.atStartOfDay();
         LocalDateTime end   = effectiveTo.plusDays(1).atStartOfDay();
 
+        boolean hasUsernameFilter = username != null && !username.isBlank() && !"ALL".equalsIgnoreCase(username);
+
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end)
                 .stream()
                 .filter(tx -> tx.getMedicineStockType() != MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK)
+                .filter(tx -> !hasUsernameFilter || tx.getSubmittedBy().getUsername().equals(username))
+                .filter(tx -> medicineId == null || tx.getMedicine().getId().equals(medicineId))
                 .toList();
 
         StringBuilder sb = new StringBuilder();
@@ -446,11 +454,11 @@ public class ReportService {
                         ? specInt + " ml"
                         : specInt + " mg";
 
-                String username = tx.getSubmittedBy().getUsername();
+                String txUsername = tx.getSubmittedBy().getUsername();
                 String notes = (tx.getNotes() != null && !tx.getNotes().isBlank())
                         ? tx.getNotes() : "";
 
-                sb.append("  ").append(username).append("  ").append(tx.getQuantity().toPlainString()).append(" x ").append(specLabel);
+                sb.append("  ").append(txUsername).append("  ").append(tx.getQuantity().toPlainString()).append(" x ").append(specLabel);
                 if (!notes.isBlank()) {
                     sb.append("  ").append(notes);
                 }

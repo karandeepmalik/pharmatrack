@@ -112,7 +112,8 @@ class ReportControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanGetTodaySalesWithNoParams() throws Exception {
-            when(reportService.todaySales(ArgumentMatchers.isNull(), ArgumentMatchers.isNull()))
+            when(reportService.todaySales(ArgumentMatchers.isNull(), ArgumentMatchers.isNull(),
+                    ArgumentMatchers.isNull(), ArgumentMatchers.isNull()))
                     .thenReturn(sampleReport("TODAY_SALES"));
             mockMvc.perform(get("/api/reports/today-sales"))
                     .andExpect(status().isOk())
@@ -121,11 +122,26 @@ class ReportControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanGetSalesForDateRange() throws Exception {
-            when(reportService.todaySales(ArgumentMatchers.any(LocalDate.class), ArgumentMatchers.any(LocalDate.class)))
+            when(reportService.todaySales(ArgumentMatchers.any(LocalDate.class), ArgumentMatchers.any(LocalDate.class),
+                    ArgumentMatchers.isNull(), ArgumentMatchers.isNull()))
                     .thenReturn(sampleReport("TODAY_SALES"));
             mockMvc.perform(get("/api/reports/today-sales")
                             .param("from", "2026-05-01")
                             .param("to", "2026-05-07"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.reportType").value("TODAY_SALES"));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanFilterSalesByUsernameAndMedicineId() throws Exception {
+            when(reportService.todaySales(ArgumentMatchers.any(LocalDate.class), ArgumentMatchers.any(LocalDate.class),
+                    ArgumentMatchers.eq("john.doe"), ArgumentMatchers.eq(5L)))
+                    .thenReturn(sampleReport("TODAY_SALES"));
+            mockMvc.perform(get("/api/reports/today-sales")
+                            .param("from", "2026-05-01")
+                            .param("to", "2026-05-07")
+                            .param("username", "john.doe")
+                            .param("medicineId", "5"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.reportType").value("TODAY_SALES"));
         }

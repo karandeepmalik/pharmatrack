@@ -18,7 +18,22 @@ const sampleReport = (type, content) => ({
   data: { reportType: type, generatedAt: '01 Jan 2025, 12:00 PM', content },
 });
 
-beforeEach(() => jest.clearAllMocks());
+const USERS = [
+  { id: 1, username: 'john.doe', fullName: 'John Doe', role: 'USER', active: true },
+  { id: 2, username: 'jane.smith', fullName: 'Jane Smith', role: 'USER', active: true },
+  { id: 3, username: 'admin', fullName: 'Admin', role: 'ADMIN', active: true },
+];
+
+const MEDICINES = [
+  { id: 10, name: 'Shield FX Vial 10 ml', type: 'VIAL', specification: 10, price: 4000 },
+  { id: 20, name: 'Shield FX Tablet 25 mg (10 Tablets)', type: 'TABLET', specification: 25, price: 4000 },
+];
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  api.getUsers.mockResolvedValue({ data: USERS });
+  api.getMedicines.mockResolvedValue({ data: MEDICINES });
+});
 
 // ── Initial render ───────────────────────────────────────────────────────
 
@@ -207,7 +222,9 @@ describe("ViewReports — today's sales report", () => {
     );
     expect(api.getReportTodaySales).toHaveBeenCalledWith(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      undefined,
+      undefined
     );
   });
 
@@ -238,7 +255,7 @@ describe("ViewReports — today's sales report", () => {
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
-      expect(api.getReportTodaySales).toHaveBeenCalledWith('2026-05-01', '2026-05-07')
+      expect(api.getReportTodaySales).toHaveBeenCalledWith('2026-05-01', '2026-05-07', undefined, undefined)
     );
   });
 
@@ -247,6 +264,63 @@ describe("ViewReports — today's sales report", () => {
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'medicine-stock-by-user');
     expect(screen.queryByLabelText(/from date/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/to date/i)).not.toBeInTheDocument();
+  });
+
+  test("shows User and Medicine Spec filter dropdowns when today-sales is selected", async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
+    await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
+  });
+
+  test("User and Medicine Spec dropdowns default to All", async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
+    await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toHaveValue('ALL'));
+    expect(screen.getByLabelText(/medicine spec/i)).toHaveValue('ALL');
+  });
+
+  test("User and Medicine Spec dropdowns are populated from the API", async () => {
+    renderPage();
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: /john doe \(john\.doe\)/i })).toBeInTheDocument()
+    );
+    expect(screen.getByRole('option', { name: /jane smith \(jane\.smith\)/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /admin.*admin/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /vial 10 ml/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /tablet 25 mg/i })).toBeInTheDocument();
+  });
+
+  test("selecting a user and medicine and generating sends them as query params", async () => {
+    api.getReportTodaySales.mockResolvedValue(sampleReport('TODAY_SALES', 'TOTAL: Rs 0'));
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
+    await waitFor(() => screen.getByRole('option', { name: /john doe \(john\.doe\)/i }));
+    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
+
+    await waitFor(() =>
+      expect(api.getReportTodaySales).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), 'john.doe', '10'
+      )
+    );
+  });
+
+  test("changing the user filter after generating a report hides it until Generate is pressed again", async () => {
+    api.getReportTodaySales.mockResolvedValue(sampleReport('TODAY_SALES', 'TOTAL: Rs 0'));
+    renderPage();
+
+    await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
+    await waitFor(() => screen.getByRole('option', { name: /john doe \(john\.doe\)/i }));
+    await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
+    await waitFor(() => expect(screen.getByText(/total: rs 0/i)).toBeInTheDocument());
+
+    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+
+    expect(screen.queryByText(/total: rs 0/i)).not.toBeInTheDocument();
   });
 });
 

@@ -39,8 +39,10 @@ public class ReportController {
             @RequestParam(value = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(value = "to", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ResponseEntity.ok(reportService.todaySales(from, to));
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(value = "username", required = false) String username,
+            @RequestParam(value = "medicineId", required = false) Long medicineId) {
+        return ResponseEntity.ok(reportService.todaySales(from, to, username, medicineId));
     }
 
     /**
