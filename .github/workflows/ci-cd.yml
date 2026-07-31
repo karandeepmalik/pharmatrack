@@ -210,7 +210,15 @@ jobs:
           region: ${{ env.REGION }}
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
           # DB now runs on a self-hosted Postgres VM (pharmatrack-db-vm, us-central1-a), not Cloud SQL —
-          # reached over plain TCP through the pharmatrack-connector VPC connector. See CLAUDE.md.
+          # reached over plain TCP via Direct VPC egress onto the "default" network's auto-created
+          # asia-south1 subnet (10.160.0.0/20, well over the required /26), the same VPC network the
+          # VM's NIC is on — so standard VPC routing (global) reaches it without any peering. The
+          # existing `default-allow-internal` firewall rule (source 10.128.0.0/9) already covers this
+          # subnet, so no new firewall rule was needed. Replaced the old pharmatrack-connector
+          # Serverless VPC Access connector (deleted) — that connector's 2-3 always-on e2-micro
+          # instances in asia-south1 aren't Compute Engine free-tier eligible (free tier only covers
+          # us-west1/us-central1/us-east1), so it was a real, avoidable ~Rs 50/day charge; Direct VPC
+          # egress has no always-on billed instances. See CLAUDE.md.
           # NOTE: env vars are set via `flags`/--set-env-vars with a custom `;;` delimiter, not the
           # `env_vars` input — that input splits on commas even inside a single newline-separated
           # entry, which silently corrupted CORS_ALLOWED_ORIGINS's comma-joined origin list once already.
@@ -218,7 +226,9 @@ jobs:
             DB_PASSWORD=pharmatrack-db-password:latest
             JWT_SECRET=pharmatrack-jwt-secret:latest
           flags: >-
-            --vpc-connector=pharmatrack-connector
+            --network=default
+            --subnet=default
+            --clear-vpc-connector
             --vpc-egress=private-ranges-only
             --set-env-vars=^;;^DB_URL=jdbc:postgresql://10.128.0.2:5432/pharma_inventory;;DB_USERNAME=pharma;;DDL_AUTO=update;;LOG_LEVEL=INFO;;JWT_EXPIRATION_MS=86400000;;COOKIE_SECURE=true;;SPRING_PROFILES_ACTIVE=prod;;CORS_ALLOWED_ORIGINS=https://pharmatrack-frontend-558147403401.asia-south1.run.app,https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app
 
