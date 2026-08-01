@@ -562,6 +562,70 @@ class TransactionRepositoryTest {
         }
     }
 
+    // ── sumQuantityForHistory ────────────────────────────────────────────────
+
+    @Nested @DisplayName("sumQuantityForHistory")
+    class SumQuantityForHistory {
+
+        @Test @DisplayName("sums quantity across all matching transactions regardless of status when status is null")
+        void sumsAllStatusesInRange() {
+            // tx1 (10) + tx2 (10) in [Jan 1, Jan 3); tx3 excluded by the date boundary
+            BigDecimal result = repo.sumQuantityForHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 3, 0, 0),
+                    null, null, null, null);
+            assertThat(result).isEqualByComparingTo("20");
+        }
+
+        @Test @DisplayName("matches exactly what searchHistory itself returns for the same filters")
+        void matchesSearchHistoryResultSet() {
+            Page<Transaction> page = repo.searchHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    Transaction.TransactionStatus.PENDING, null, null, null,
+                    PageRequest.of(0, 20));
+            BigDecimal expected = page.getContent().stream()
+                    .map(Transaction::getQuantity)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal result = repo.sumQuantityForHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    Transaction.TransactionStatus.PENDING, null, null, null);
+
+            assertThat(result).isEqualByComparingTo(expected);
+        }
+
+        @Test @DisplayName("returns zero (not null) when nothing matches")
+        void returnsZeroWhenNoMatch() {
+            BigDecimal result = repo.sumQuantityForHistory(
+                    LocalDateTime.of(2025, 1, 1, 0, 0),
+                    LocalDateTime.of(2025, 2, 1, 0, 0),
+                    null, null, null, null);
+            assertThat(result).isEqualByComparingTo(BigDecimal.ZERO);
+        }
+
+        @Test @DisplayName("filters by exact username, same as searchHistory")
+        void filtersByUsername() {
+            // tx3 (bob, 10) is the only match
+            BigDecimal result = repo.sumQuantityForHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    null, "bob", null, null);
+            assertThat(result).isEqualByComparingTo("10");
+        }
+
+        @Test @DisplayName("reflects the full matching set, not just one page's worth")
+        void reflectsFullSetNotJustOnePage() {
+            // page size 1 would only return 1 of alice's 2 transactions, but the sum must
+            // still cover both — the whole point of computing this server-side.
+            BigDecimal result = repo.sumQuantityForHistory(
+                    LocalDateTime.of(2024, 1, 1, 0, 0),
+                    LocalDateTime.of(2024, 1, 4, 0, 0),
+                    null, "alice", null, null);
+            assertThat(result).isEqualByComparingTo("20");
+        }
+    }
 
     // ── findNonRejectedSubmittedUpToForUser ──────────────────────────────────
 

@@ -118,6 +118,9 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     // (only 10 of the 11 rows are actually rendered at this point).
     await expect(page.getByText(/^results \(11\)$/i)).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/showing 10 of 11 matching dispatches/i)).toBeVisible();
+    // Total Quantity also reflects the full matching set (11 dispatches x 0.1 each), available
+    // immediately even though only 10 rows are rendered at this point.
+    await expect(page.getByText(/total quantity: 1\.1/i)).toBeVisible();
     const rowsBeforeScroll = await page.getByRole('row').count();
 
     // Scroll the whole page to the bottom to bring the sentinel into view.

@@ -647,6 +647,47 @@ class TransactionServiceTest {
         }
     }
 
+    // ── getHistoryTotalQuantity() ────────────────────────────────────────
+
+    @Nested @DisplayName("getHistoryTotalQuantity()")
+    class GetHistoryTotalQuantity {
+
+        private final LocalDate from = LocalDate.of(2026, 5, 1);
+        private final LocalDate to   = LocalDate.of(2026, 5, 4);
+
+        @Test @DisplayName("returns the repository's sum unchanged")
+        void returnsSum() {
+            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), any(), any(), any()))
+                    .thenReturn(new BigDecimal("42.5"));
+            BigDecimal result = transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null);
+            assertThat(result).isEqualByComparingTo("42.5");
+        }
+
+        @Test @DisplayName("normalizes filters identically to getHistory — same status/username/notes handling")
+        void normalizesFiltersLikeGetHistory() {
+            when(transactionRepository.sumQuantityForHistory(
+                    any(), any(), eq(TransactionStatus.PENDING), eq("john.doe"), eq(5L), eq("%clinic%")))
+                    .thenReturn(BigDecimal.TEN);
+
+            BigDecimal result = transactionService.getHistoryTotalQuantity(
+                    from, to, "PENDING", "john.doe", 5L, "  Clinic  ");
+
+            assertThat(result).isEqualByComparingTo("10");
+            verify(transactionRepository).sumQuantityForHistory(
+                    any(), any(), eq(TransactionStatus.PENDING), eq("john.doe"), eq(5L), eq("%clinic%"));
+        }
+
+        @Test @DisplayName("normalizes a blank or ALL username to null, same as getHistory")
+        void normalizesBlankOrAllUsernameToNull() {
+            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), isNull(), any(), any()))
+                    .thenReturn(BigDecimal.ZERO);
+            transactionService.getHistoryTotalQuantity(from, to, "ALL", "  ", null, null);
+            transactionService.getHistoryTotalQuantity(from, to, "ALL", "ALL", null, null);
+            verify(transactionRepository, times(2))
+                    .sumQuantityForHistory(any(), any(), any(), isNull(), any(), any());
+        }
+    }
+
     // ── approve() ─────────────────────────────────────────────────────
 
     @Nested @DisplayName("approve()")

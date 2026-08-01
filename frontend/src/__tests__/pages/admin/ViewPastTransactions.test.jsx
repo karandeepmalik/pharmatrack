@@ -47,8 +47,8 @@ const makeTx = (overrides = {}) => ({
 });
 
 // Wrap a list into the paginated response shape the component expects
-const mkPage = (items, { last = true, totalElements = items.length } = {}) => ({
-  data: { content: items, last, totalElements },
+const mkPage = (items, { last = true, totalElements = items.length, totalQuantity = 0 } = {}) => ({
+  data: { content: items, last, totalElements, totalQuantity },
 });
 
 const USERS = [
@@ -372,6 +372,27 @@ describe('ViewPastTransactions — pagination', () => {
       expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument()
     );
     expect(screen.queryByText(/showing \d+ of \d+ matching dispatches/i)).not.toBeInTheDocument();
+  });
+
+  test('shows the total quantity across the full matching set, sourced from the server', async () => {
+    const page0 = Array.from({ length: 10 }, (_, i) => makeTx({ id: i + 1 }));
+    api.getTransactionHistory.mockResolvedValue(mkPage(page0, { last: false, totalElements: 47, totalQuantity: 123.4 }));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/total quantity: 123\.4/i)).toBeInTheDocument()
+    );
+  });
+
+  test('formats the total quantity to one decimal place', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()], { totalQuantity: 5 }));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/total quantity: 5\.0/i)).toBeInTheDocument()
+    );
   });
 });
 

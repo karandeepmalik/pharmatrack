@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -149,6 +150,27 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("medicineId") Long medicineId,
             @Param("notesPattern") String notesPattern,
             Pageable pageable);
+
+    /**
+     * Sum of quantity across the *entire* server-side matching set for searchHistory's filters
+     * (not just whatever page has been scroll-loaded) — backs the "Total Quantity" figure on
+     * View Past Medicine Dispatches. Same nullable-predicate pattern, so it always matches
+     * exactly what searchHistory itself would return. COALESCE guards against SQL's SUM
+     * returning NULL (not zero) when no rows match.
+     */
+    @Query("SELECT COALESCE(SUM(t.quantity), 0) FROM Transaction t " +
+           "WHERE t.submittedAt >= :start AND t.submittedAt < :end " +
+           "AND (:status IS NULL OR t.status = :status) " +
+           "AND (:username IS NULL OR t.submittedBy.username = :username) " +
+           "AND (:medicineId IS NULL OR t.medicine.id = :medicineId) " +
+           "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern)")
+    BigDecimal sumQuantityForHistory(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end,
+            @Param("status") Transaction.TransactionStatus status,
+            @Param("username") String username,
+            @Param("medicineId") Long medicineId,
+            @Param("notesPattern") String notesPattern);
 
     /**
      * All non-rejected transactions submitted before endExclusive.
