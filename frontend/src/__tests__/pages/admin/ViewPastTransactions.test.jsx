@@ -47,8 +47,8 @@ const makeTx = (overrides = {}) => ({
 });
 
 // Wrap a list into the paginated response shape the component expects
-const mkPage = (items, { last = true } = {}) => ({
-  data: { content: items, last, totalElements: items.length },
+const mkPage = (items, { last = true, totalElements = items.length } = {}) => ({
+  data: { content: items, last, totalElements },
 });
 
 const USERS = [
@@ -338,6 +338,40 @@ describe('ViewPastTransactions — pagination', () => {
     await waitFor(() =>
       expect(screen.getByText(/all 1 transactions loaded/i)).toBeInTheDocument()
     );
+  });
+
+  test('results heading shows the total matching count, not just the loaded page size — '
+      + 'available immediately from page 0, before scrolling', async () => {
+    const page0 = Array.from({ length: 10 }, (_, i) => makeTx({ id: i + 1 }));
+    api.getTransactionHistory.mockResolvedValue(mkPage(page0, { last: false, totalElements: 47 }));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/results \(47\)/i)).toBeInTheDocument()
+    );
+  });
+
+  test('shows a "Showing X of Y" hint while more matching pages remain unloaded', async () => {
+    const page0 = Array.from({ length: 10 }, (_, i) => makeTx({ id: i + 1 }));
+    api.getTransactionHistory.mockResolvedValue(mkPage(page0, { last: false, totalElements: 47 }));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/showing 10 of 47 matching dispatches/i)).toBeInTheDocument()
+    );
+  });
+
+  test('the "Showing X of Y" hint disappears once every matching page has been loaded', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()], { last: true, totalElements: 1 }));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument()
+    );
+    expect(screen.queryByText(/showing \d+ of \d+ matching dispatches/i)).not.toBeInTheDocument();
   });
 });
 

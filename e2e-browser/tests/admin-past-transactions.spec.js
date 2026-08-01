@@ -113,8 +113,11 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     await page.getByRole('combobox', { name: /^status$/i }).selectOption('ALL');
     await page.getByRole('button', { name: /^search$/i }).click();
 
-    // "Results (N)" reflects only what's loaded so far, not the total — page 0 is 10 items.
-    await expect(page.getByText(/^results \(10\)$/i)).toBeVisible({ timeout: 15000 });
+    // "Results (N)" reflects the total matching count from the server (totalElements),
+    // available immediately from page 0's response — not just what's been scroll-loaded so far
+    // (only 10 of the 11 rows are actually rendered at this point).
+    await expect(page.getByText(/^results \(11\)$/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/showing 10 of 11 matching dispatches/i)).toBeVisible();
     const rowsBeforeScroll = await page.getByRole('row').count();
 
     // Scroll the whole page to the bottom to bring the sentinel into view.
@@ -124,6 +127,7 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
 
     await expect(page.getByText(/^results \(11\)$/i)).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/all 11 transactions loaded\./i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/showing \d+ of \d+ matching dispatches/i)).not.toBeVisible();
     const rowsAfterScroll = await page.getByRole('row').count();
     expect(rowsAfterScroll).toBeGreaterThan(rowsBeforeScroll);
   });

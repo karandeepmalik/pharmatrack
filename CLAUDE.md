@@ -44,7 +44,7 @@ No local npm/Maven install required — everything above runs through `make`/Doc
 - Never commit to main — always use a feature branch, open a PR.
 - Never deploy directly to Cloud Run — push to GitHub; Actions builds and deploys.
 - UI must be responsive, mobile-viewable, and center-aligned; every new UI page needs back navigation.
-- Before merging: run the full suite (backend, frontend, e2e; e2e-browser too for frontend-behavior changes — run `e2e/auth.test.js` *before* `e2e-browser`, or `make down-v` between them, see Gotchas) locally, then push/open the PR and wait for GitHub Actions CI to go green too. If everything passes, squash-merge and delete the branch — no need to ask each time. Merging to `main` deploys to Cloud Run, so confirm the deployed service is actually healthy (`/actuator/health`) before considering the task done; a green test suite does not guarantee a working deploy.
+- Before merging: run the full suite (backend, frontend, e2e; e2e-browser too for frontend-behavior changes — run `e2e/auth.test.js` *before* `e2e-browser`, or `make down-v` between them, see Gotchas) locally, then push/open the PR and squash-merge and delete the branch — no need to ask each time. Merging to `main` deploys to Cloud Run, so confirm the deployed service is actually healthy (`/actuator/health`) before considering the task done; a green test suite does not guarantee a working deploy.
 
 ## Architecture
 
