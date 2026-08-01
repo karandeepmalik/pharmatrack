@@ -159,13 +159,12 @@ public class TransactionService {
         return ids.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
     }
 
-    @Transactional(readOnly = true)
-    public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status, int page, int size,
-                                                 String username, Long medicineId, String notes) {
-        LocalDateTime start = from.atStartOfDay();
-        LocalDateTime end   = to.plusDays(1).atStartOfDay();
-        PageRequest pageable = PageRequest.of(page, size);
+    /** Shared status/username/notes normalization for getHistory and getHistoryTotalQuantity —
+     *  both must filter identically or the displayed total quantity would silently disagree
+     *  with what the results table actually shows. */
+    private record HistoryFilters(TransactionStatus status, String username, String notesPattern) {}
 
+    private HistoryFilters normalizeHistoryFilters(String status, String username, String notes) {
         TransactionStatus txStatus = (status == null || "ALL".equalsIgnoreCase(status))
                 ? null : TransactionStatus.valueOf(status.toUpperCase());
         String usernameFilter = (username == null || username.isBlank() || "ALL".equalsIgnoreCase(username))
@@ -174,10 +173,34 @@ public class TransactionService {
         // why binding a raw substring through LOWER(CONCAT(...)) at the SQL level breaks on Postgres.
         String notesPattern = (notes == null || notes.isBlank())
                 ? null : "%" + notes.trim().toLowerCase() + "%";
+        return new HistoryFilters(txStatus, usernameFilter, notesPattern);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status, int page, int size,
+                                                 String username, Long medicineId, String notes) {
+        LocalDateTime start = from.atStartOfDay();
+        LocalDateTime end   = to.plusDays(1).atStartOfDay();
+        PageRequest pageable = PageRequest.of(page, size);
+        HistoryFilters f = normalizeHistoryFilters(status, username, notes);
 
         Page<Transaction> txPage = transactionRepository.searchHistory(
-                start, end, txStatus, usernameFilter, medicineId, notesPattern, pageable);
+                start, end, f.status(), f.username(), medicineId, f.notesPattern(), pageable);
         return txPage.map(transactionMapper::toResponse);
+    }
+
+    /** Sum of quantity across the full server-side matching set for getHistory's filters — not
+     *  just whatever page has been scroll-loaded. Backs the "Total Quantity" figure on View Past
+     *  Medicine Dispatches. */
+    @Transactional(readOnly = true)
+    public BigDecimal getHistoryTotalQuantity(LocalDate from, LocalDate to, String status,
+                                               String username, Long medicineId, String notes) {
+        LocalDateTime start = from.atStartOfDay();
+        LocalDateTime end   = to.plusDays(1).atStartOfDay();
+        HistoryFilters f = normalizeHistoryFilters(status, username, notes);
+
+        return transactionRepository.sumQuantityForHistory(
+                start, end, f.status(), f.username(), medicineId, f.notesPattern());
     }
 
     @Transactional

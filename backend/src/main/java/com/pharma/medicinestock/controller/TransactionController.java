@@ -7,6 +7,7 @@ import com.pharma.medicinestock.dto.TransactionResponse;
 import com.pharma.medicinestock.dto.UpdateTransactionRequest;
 import com.pharma.medicinestock.service.ScreenshotProcessor;
 import com.pharma.medicinestock.service.TransactionService;
+import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -107,8 +108,9 @@ public class TransactionController {
             @RequestParam(required = false) String username,
             @RequestParam(required = false) Long medicineId,
             @RequestParam(required = false) String notes) {
-        return ResponseEntity.ok(PagedResponse.of(
-                transactionService.getHistory(from, to, status, page, size, username, medicineId, notes)));
+        Page<TransactionResponse> result = transactionService.getHistory(from, to, status, page, size, username, medicineId, notes);
+        BigDecimal totalQuantity = transactionService.getHistoryTotalQuantity(from, to, status, username, medicineId, notes);
+        return ResponseEntity.ok(PagedResponse.of(result, totalQuantity));
     }
 
     @PostMapping("/{id}/approve")

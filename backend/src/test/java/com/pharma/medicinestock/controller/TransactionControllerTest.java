@@ -541,6 +541,46 @@ class TransactionControllerTest {
             verify(transactionService).getHistory(
                     any(), any(), anyString(), anyInt(), anyInt(), isNull(), isNull(), isNull());
         }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("includes totalQuantity from the service in the response")
+        void history_includesTotalQuantity() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+                    .thenReturn(page);
+            when(transactionService.getHistoryTotalQuantity(any(), any(), anyString(), any(), any(), any()))
+                    .thenReturn(new BigDecimal("37.5"));
+
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.totalQuantity").value(37.5));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("passes the same status/username/medicineId/notes filters to getHistoryTotalQuantity as to getHistory")
+        void history_totalQuantity_sameFiltersAsGetHistory() throws Exception {
+            Page<TransactionResponse> page = new PageImpl<>(List.of());
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+                    .thenReturn(page);
+            when(transactionService.getHistoryTotalQuantity(any(), any(), anyString(), any(), any(), any()))
+                    .thenReturn(BigDecimal.ZERO);
+
+            mockMvc.perform(get("/api/transactions/history")
+                    .param("from", "2026-05-01")
+                    .param("to", "2026-05-04")
+                    .param("status", "APPROVED")
+                    .param("username", "john.doe")
+                    .param("medicineId", "7")
+                    .param("notes", "clinic"))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).getHistoryTotalQuantity(
+                    any(), any(), eq("APPROVED"), eq("john.doe"), eq(7L), eq("clinic"));
+        }
     }
 
     // ── DELETE /api/transactions/{id} ─────────────────────────────────

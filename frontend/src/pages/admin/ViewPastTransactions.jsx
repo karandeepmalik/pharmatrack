@@ -33,6 +33,7 @@ export default function ViewPastTransactions() {
     const [status, setStatus]         = useState('APPROVED');
     const [transactions, setTransactions] = useState([]);
     const [totalCount, setTotalCount] = useState(0);
+    const [totalQuantity, setTotalQuantity] = useState(0);
     const [hasMore, setHasMore]       = useState(false);
     const [searched, setSearched]     = useState(false);
     const [loading, setLoading]       = useState(false);
@@ -85,11 +86,12 @@ export default function ViewPastTransactions() {
                 const safe    = Array.isArray(content) ? content : [];
                 setTransactions((prev) => pg === 0 ? safe : [...prev, ...safe]);
                 setHasMore(!last);
-                // totalElements reflects the full server-side matching set for the current
-                // filters, not just what's been scroll-loaded — available immediately from
-                // page 0's response, so the admin doesn't have to scroll to the end to find
-                // out how many results a filter actually matched.
+                // totalElements/totalQuantity reflect the full server-side matching set for the
+                // current filters, not just what's been scroll-loaded — available immediately
+                // from page 0's response, so the admin doesn't have to scroll to the end to find
+                // out how many results (or how much quantity) a filter actually matched.
                 setTotalCount(r.data?.totalElements ?? 0);
+                setTotalQuantity(r.data?.totalQuantity ?? 0);
                 pageRef.current = pg;
             })
             .catch(() => setError('Failed to load transactions. Please try again.'))
@@ -246,6 +248,7 @@ export default function ViewPastTransactions() {
                 ) : (
                     <div className="form-section" style={{ marginTop: '1.5rem' }}>
                         <h2>Results ({totalCount})</h2>
+                        <p className="page-subtitle">Total Quantity: {Number(totalQuantity).toFixed(1)}</p>
                         {transactions.length < totalCount && (
                             <p className="page-subtitle">
                                 Showing {transactions.length} of {totalCount} matching dispatches — scroll down to load more.
