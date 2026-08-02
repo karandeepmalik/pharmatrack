@@ -404,4 +404,37 @@ describe('Form submission', () => {
     await waitFor(() => screen.getByRole('alert'));
     expect(screen.getByLabelText(/pharma company/i)).toHaveValue('');
   });
+
+  // Regression: the post-submit stock refresh (api.getAvailableMedicineStock, called again after
+  // a successful submit to refresh the max-quantity figures) used to share a try/catch with the
+  // submit call itself. If that refresh failed, its error was mis-reported as a submit failure —
+  // even though the dispatch had already been accepted server-side — and both a success and an
+  // error alert could render at once.
+  test('a failed post-submit stock refresh does not surface as a submit failure', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+    api.getAvailableMedicineStock.mockRejectedValueOnce(new Error('Network error'));
+
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/submitted successfully/i)
+    );
+    expect(screen.queryByText(/failed to submit/i)).not.toBeInTheDocument();
+  });
+
+  test('does not call getAvailableMedicineStock again if the submit itself fails', async () => {
+    api.submitTransaction.mockRejectedValue({
+      response: { data: { message: 'Insufficient stock' } },
+    });
+    await fillValidForm();
+    api.getAvailableMedicineStock.mockClear();
+
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/insufficient stock/i)
+    );
+    expect(api.getAvailableMedicineStock).not.toHaveBeenCalled();
+  });
 });

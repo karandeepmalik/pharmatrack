@@ -232,6 +232,27 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     });
   });
 
+  test('results table shows a viewable screenshot thumbnail for a dispatch with a payment screenshot', async ({ page }) => {
+    test.setTimeout(60000);
+    const note = `Screenshot column check ${Date.now()}`;
+    await submitDispatch(page, note, new Date().toISOString().slice(0, 10));
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/past-transactions');
+    await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('combobox', { name: /^status$/i }).selectOption('ALL');
+    await page.getByRole('button', { name: /^search$/i }).click();
+
+    const row = page.locator('tr', { hasText: note });
+    await scrollUntilVisible(page, row, { maxScrolls: 60 });
+    const thumbBtn = row.getByRole('button', { name: /view payment screenshot/i });
+    await expect(thumbBtn).toBeVisible();
+
+    await thumbBtn.click();
+    await expect(page.getByRole('dialog', { name: /payment screenshots/i })).toBeVisible();
+    await page.getByRole('button', { name: /close screenshot viewer/i }).click();
+  });
+
   test('changing a filter after a search hides the table until Search is pressed again', async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto('/admin/past-transactions');

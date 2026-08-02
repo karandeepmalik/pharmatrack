@@ -141,20 +141,29 @@ export default function SubmitTransaction() {
         medicineStockType: selectedMedicineStockType,
         submittedDate: dispatchDate,
       });
-
-      setSuccessMessage('Medicine dispatch submitted successfully and is pending admin approval.');
-      setSelectedMedicineStockType('REGULAR_MEDICINE_STOCK');
-      setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
-      setQuantity(''); setNotes(''); setPriceOverride('');
-      setDispatchDate(new Date().toISOString().slice(0, 10));
-      screenshot.clearAll();
-
-      const r = await api.getAvailableMedicineStock();
-      setMedicineStock(r.data);
     } catch (err) {
       setErrorMessage(
         err.response?.data?.message || 'Failed to submit adjustment. Please try again.'
       );
+      setSubmitting(false);
+      return;
+    }
+
+    // Submission itself succeeded — everything below is best-effort cleanup/refresh. A failure
+    // here (e.g. the stock refetch) must never be reported as a submit failure, since the
+    // dispatch was already accepted server-side.
+    setSuccessMessage('Medicine dispatch submitted successfully and is pending admin approval.');
+    setSelectedMedicineStockType('REGULAR_MEDICINE_STOCK');
+    setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
+    setQuantity(''); setNotes(''); setPriceOverride('');
+    setDispatchDate(new Date().toISOString().slice(0, 10));
+    screenshot.clearAll();
+
+    try {
+      const r = await api.getAvailableMedicineStock();
+      setMedicineStock(r.data);
+    } catch {
+      // Non-fatal — the dispatch already succeeded; stale stock figures will refresh on next visit.
     } finally {
       setSubmitting(false);
     }
