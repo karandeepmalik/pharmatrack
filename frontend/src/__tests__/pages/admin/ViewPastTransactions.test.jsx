@@ -43,6 +43,7 @@ const makeTx = (overrides = {}) => ({
   submittedAt: '2026-05-03T10:00:00',
   approvedByUsername: 'admin',
   medicineStockType: 'REGULAR_MEDICINE_STOCK',
+  screenshots: [],
   ...overrides,
 });
 
@@ -448,6 +449,46 @@ describe('ViewPastTransactions — stock type column', () => {
     await waitFor(() => screen.getByRole('table'));
     expect(screen.getByText('Regular Stock')).toBeInTheDocument();
     expect(screen.getByText('Admin Stock')).toBeInTheDocument();
+  });
+});
+
+// ── Screenshot column ────────────────────────────────────────────────────
+
+describe('ViewPastTransactions — screenshot column', () => {
+  test('shows "No screenshot" for a dispatch with no screenshots', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ screenshots: [] })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/no screenshot/i)).toBeInTheDocument()
+    );
+  });
+
+  test('shows a viewable thumbnail button for a dispatch with a screenshot', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({
+      id: 5,
+      screenshots: [{ data: 'ZmFrZQ==', mimeType: 'image/png' }],
+    })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /view payment screenshot 1 of 1 for transaction #5/i })).toBeInTheDocument()
+    );
+  });
+
+  test('renders the Screenshot column header', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /screenshot/i })).toBeInTheDocument()
+    );
   });
 });
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import { medicineStockTypeLabel } from '../../constants';
+import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
 
 const PAGE_SIZE = 10;
 
@@ -267,6 +268,7 @@ export default function ViewPastTransactions() {
                                         <th>Price/Unit</th>
                                         <th>Status</th>
                                         <th>Notes</th>
+                                        <th>Screenshot</th>
                                         <th>Approved By</th>
                                     </tr>
                                 </thead>
@@ -292,6 +294,12 @@ export default function ViewPastTransactions() {
                                                     : '—'}</td>
                                             <td>{statusBadge(tx.status)}</td>
                                             <td>{tx.notes || '—'}</td>
+                                            <td>
+                                                <PaymentScreenshotViewer
+                                                    screenshots={tx.screenshots}
+                                                    transactionId={tx.id}
+                                                />
+                                            </td>
                                             <td>{tx.approvedByUsername || '—'}</td>
                                         </tr>
                                     ))}

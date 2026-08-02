@@ -105,4 +105,22 @@ test.describe('Submit Medicine Dispatch', () => {
 
     await expect(page.getByRole('alert')).toContainText(/pending admin approval/i, { timeout: 10000 });
   });
+
+  // Regression: a successful submit used to be immediately followed, in the same try/catch, by an
+  // unrelated stock-refresh call. A slow/failing refresh could stamp a misleading "failed to
+  // submit" error alert on top of the genuine success alert. After the dispatch succeeds, only
+  // the success alert should ever be present — never both at once.
+  test('a successful submission shows only the success alert, never an error alert alongside it', async ({ page }) => {
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption({ index: 1 });
+    await page.locator('#spec-select').selectOption({ index: 1 });
+    await page.locator('#quantity-input').fill('0.1');
+    await page.locator('#notes-input').fill(`No stray error alert ${Date.now()}`);
+    await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+    await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+
+    await expect(page.getByRole('alert')).toContainText(/pending admin approval/i, { timeout: 10000 });
+    await expect(page.getByRole('alert')).toHaveCount(1);
+    await expect(page.getByText(/failed to submit/i)).not.toBeVisible();
+  });
 });
