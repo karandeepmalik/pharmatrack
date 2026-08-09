@@ -20,6 +20,25 @@ test.describe('Login', () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
+  // Regression: any failed login call — network blip, Cloud Run cold start, backend 500, the
+  // rate limiter's 429 — used to be blanket-reported as "Invalid username or password" even
+  // when the credentials were correct, since the Login component's catch didn't look at the
+  // actual failure. Simulate a non-401 failure (aborted request = no response, like a real
+  // network drop) with correct credentials and confirm the message no longer blames the
+  // credentials.
+  test('a network failure during login shows a connectivity message, not "Invalid username or password"', async ({ page }) => {
+    await page.goto('/login');
+    await page.route('**/api/auth/login', (route) => route.abort('failed'));
+
+    await page.locator('#username').fill(CREDENTIALS.admin.username);
+    await page.locator('#password').fill(CREDENTIALS.admin.password);
+    await page.getByRole('button', { name: /sign in/i }).click();
+
+    await expect(page.getByRole('alert')).toHaveText(/unable to reach the server/i);
+    await expect(page.getByRole('alert')).not.toHaveText(/invalid username or password/i);
+    await expect(page).toHaveURL(/\/login/);
+  });
+
   test('admin login redirects to the admin dashboard', async ({ page }) => {
     await loginAsAdmin(page);
     await expect(page.getByRole('heading', { name: /admin dashboard/i })).toBeVisible();

@@ -2,6 +2,19 @@ import React,{useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useAuth} from '../context/AuthContext';
 import * as api from '../api/api';
+
+// A failed login call can fail for reasons that have nothing to do with the credentials being
+// wrong — a Cloud Run cold start, a transient network blip, the rate limiter — and reporting all
+// of those as "Invalid username or password" is misleading (the user did nothing wrong) and was
+// a real, reported bug. Only an actual 401 from the login endpoint means bad credentials.
+function loginErrorMessage(err){
+    const status = err.response?.status;
+    if(status===401) return 'Invalid username or password';
+    if(status===429) return err.response?.data || 'Too many failed login attempts. Please try again in a few minutes.';
+    if(status===undefined) return 'Unable to reach the server. Please check your connection and try again.';
+    return 'Something went wrong while signing in. Please try again.';
+}
+
 export default function Login(){
     const[form,setForm]=useState({username:'',password:''});
     const[error,setError]=useState('');
@@ -14,7 +27,7 @@ export default function Login(){
             const{data}=await api.login(form);
             login({username:data.username,fullName:data.fullName,role:data.role},data.token);
             navigate(data.role==='ADMIN'?'/admin/dashboard':'/user/dashboard');
-        }catch{ setError('Invalid username or password'); }
+        }catch(err){ setError(loginErrorMessage(err)); }
         finally{ setLoading(false); }
     };
     return(<div className="login-page"><div className="login-card">
