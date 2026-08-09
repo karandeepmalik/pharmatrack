@@ -106,8 +106,8 @@ describe('Login — successful login', () => {
 // ── Failed login ──────────────────────────────────────────────────────────
 
 describe('Login — failed login', () => {
-  test('shows error alert on API failure', async () => {
-    api.login.mockRejectedValue(new Error('Unauthorized'));
+  test('shows "Invalid username or password" on a 401 (actual bad credentials)', async () => {
+    api.login.mockRejectedValue({ response: { status: 401, data: 'Invalid credentials' } });
     renderPage();
 
     await userEvent.type(screen.getByLabelText(/username/i), 'john.doe');
@@ -120,7 +120,7 @@ describe('Login — failed login', () => {
   });
 
   test('does not navigate on failure', async () => {
-    api.login.mockRejectedValue(new Error('Unauthorized'));
+    api.login.mockRejectedValue({ response: { status: 401, data: 'Invalid credentials' } });
     renderPage();
 
     await userEvent.type(screen.getByLabelText(/username/i), 'john.doe');
@@ -129,6 +129,53 @@ describe('Login — failed login', () => {
 
     await waitFor(() => screen.getByRole('alert'));
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  // Regression: any failed login call — a network blip, a Cloud Run cold start, the rate
+  // limiter, a backend 500 — used to be reported as "Invalid username or password" regardless
+  // of cause, misleading users into doubting correct credentials. Only a real 401 means that.
+  test('a network error (no response at all) shows a connectivity message, not "Invalid username or password"', async () => {
+    api.login.mockRejectedValue(new Error('Network Error'));
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText(/username/i), 'john.doe');
+    await userEvent.type(screen.getByLabelText(/password/i), 'correct-password');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/unable to reach the server/i)
+    );
+    expect(screen.queryByText(/invalid username or password/i)).not.toBeInTheDocument();
+  });
+
+  test('a 429 rate-limit response shows the rate-limit message, not "Invalid username or password"', async () => {
+    api.login.mockRejectedValue({
+      response: { status: 429, data: 'Too many failed login attempts. Please try again in a few minutes.' },
+    });
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText(/username/i), 'john.doe');
+    await userEvent.type(screen.getByLabelText(/password/i), 'correct-password');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/too many failed login attempts/i)
+    );
+    expect(screen.queryByText(/invalid username or password/i)).not.toBeInTheDocument();
+  });
+
+  test('a 500 server error shows a generic try-again message, not "Invalid username or password"', async () => {
+    api.login.mockRejectedValue({ response: { status: 500, data: 'Internal Server Error' } });
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText(/username/i), 'john.doe');
+    await userEvent.type(screen.getByLabelText(/password/i), 'correct-password');
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/something went wrong/i)
+    );
+    expect(screen.queryByText(/invalid username or password/i)).not.toBeInTheDocument();
   });
 });
 
