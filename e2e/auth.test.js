@@ -149,6 +149,18 @@ async function run() {
     assert(!sysUser, 'lostmedicinestock system user should not exist after reseed');
   });
 
+  // Regression: JwtAuthenticationFilter used to call jwtService.extractUsername() with no
+  // exception handling, so a stale/expired/malformed token attached via the Authorization header
+  // (exactly what the frontend's Axios interceptor does on every request, including a fresh
+  // login) crashed the filter chain before AuthController.login() ever ran the credential check —
+  // a real login with correct credentials would fail as if the credentials were wrong. A garbage
+  // Bearer token alongside correct credentials must not affect the login outcome.
+  await test('Login succeeds even with a stale/garbage Authorization header attached', async () => {
+    const r = await apiPost(`${API}/auth/login`, { username: 'admin', password: 'Admin@123' }, 'this-is-not-a-real-jwt-at-all');
+    assert(r.status === 200, `Got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.token && r.data.token.length > 20, `Token: ${r.data.token}`);
+  });
+
   // ── CORS ──────────────────────────────────────────────────────────────
   console.log('\n-- CORS (browser origin simulation)');
   await test('Preflight OPTIONS from frontend origin returns 200/204', async () => {
