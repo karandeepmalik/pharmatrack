@@ -1,5 +1,8 @@
 package com.pharma.medicinestock.exception;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.pharma.medicinestock.controller.TransactionController;
 import com.pharma.medicinestock.config.AppConfig;
 import com.pharma.medicinestock.config.SecurityConfig;
@@ -7,9 +10,12 @@ import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.JwtService;
 import com.pharma.medicinestock.service.ScreenshotProcessor;
 import com.pharma.medicinestock.service.TransactionService;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -24,6 +30,7 @@ import org.springframework.data.domain.Page;
 import java.math.BigDecimal;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
@@ -126,6 +133,53 @@ class GlobalExceptionHandlerTest {
                     .param("notes", "Hi").with(csrf()))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message").value(containsString("5 and 500")));
+        }
+    }
+
+    @Nested @DisplayName("500 Internal Server Error")
+    class InternalServerError {
+        private ListAppender<ILoggingEvent> appender;
+        private Logger handlerLogger;
+
+        @BeforeEach
+        void attachAppender() {
+            handlerLogger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+            appender = new ListAppender<>();
+            appender.start();
+            handlerLogger.addAppender(appender);
+        }
+
+        @AfterEach
+        void detachAppender() {
+            handlerLogger.detachAppender(appender);
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        @DisplayName("an unexpected exception → 500 with a generic client-safe message")
+        void unexpectedException_returns500WithGenericMessage() throws Exception {
+            when(transactionService.getAllPaged(anyString(), anyInt(), anyInt()))
+                    .thenThrow(new IllegalStateException("db connection pool exhausted"));
+
+            mockMvc.perform(get("/api/transactions"))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.status").value(500))
+                    .andExpect(jsonPath("$.message").value("An unexpected error occurred. Please try again later."));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        @DisplayName("an unexpected exception is logged server-side, not silently swallowed")
+        void unexpectedException_isLogged() throws Exception {
+            when(transactionService.getAllPaged(anyString(), anyInt(), anyInt()))
+                    .thenThrow(new IllegalStateException("db connection pool exhausted"));
+
+            mockMvc.perform(get("/api/transactions"))
+                    .andExpect(status().isInternalServerError());
+
+            assertThat(appender.list)
+                    .anySatisfy(event -> {
+                        assertThat(event.getFormattedMessage()).contains("/api/transactions");
+                        assertThat(event.getThrowableProxy().getMessage()).contains("db connection pool exhausted");
+                    });
         }
     }
 

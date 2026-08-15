@@ -12,6 +12,41 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+describe('AuthContext — initial load', () => {
+  test('starts logged out when localStorage has no stored user', () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    expect(result.current.user).toBeNull();
+  });
+
+  test('restores the stored user on mount', () => {
+    localStorage.setItem('user', JSON.stringify({ username: 'john.doe', fullName: 'John Doe', role: 'USER' }));
+    localStorage.setItem('token', 'jwt-token');
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    expect(result.current.user).toEqual({ username: 'john.doe', fullName: 'John Doe', role: 'USER' });
+  });
+
+  // Regression: localStorage persists across reloads, so an unguarded JSON.parse on a corrupted
+  // 'user' entry (partial write, manual tampering, a stale shape from an older app version)
+  // would crash on every single mount forever — not a one-off error a reload could fix. Treat
+  // it as logged-out and clear it, the same way an expired/malformed JWT is treated as
+  // "unauthenticated" server-side rather than crashing the request.
+  test('a corrupted stored user value does not crash the app and clears itself', () => {
+    localStorage.setItem('user', '{not valid json');
+    localStorage.setItem('token', 'some-token');
+
+    let result;
+    expect(() => {
+      ({ result } = renderHook(() => useAuth(), { wrapper }));
+    }).not.toThrow();
+
+    expect(result.current.user).toBeNull();
+    expect(localStorage.getItem('user')).toBeNull();
+    expect(localStorage.getItem('token')).toBeNull();
+  });
+});
+
 describe('AuthContext — login', () => {
   test('sets user state and persists user/token to localStorage', () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
