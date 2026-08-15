@@ -1,6 +1,7 @@
 package com.pharma.medicinestock.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -35,6 +36,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
  *   Exception (catch-all)             → 500 Internal Server Error
  */
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     // ── 404 Not Found ─────────────────────────────────────────────────
@@ -134,6 +136,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(
             Exception ex, HttpServletRequest req) {
+        // A handler that returns cleanly (as this one does) is never logged by the servlet
+        // container's own unhandled-exception path — unlike an exception thrown from a filter
+        // (which runs before this advice even applies), the exception here is technically
+        // "handled" the moment this method returns, so nothing else will ever log it. Without
+        // this line, every unexpected 500 would be completely invisible in Cloud Logging: the
+        // client gets a clean generic message, but there'd be zero server-side trace of what
+        // actually failed or why.
+        log.error("Unhandled exception on {} {}: {}", req.getMethod(), req.getRequestURI(), ex.toString(), ex);
         return build(HttpStatus.INTERNAL_SERVER_ERROR,
             "An unexpected error occurred. Please try again later.",
             req.getRequestURI());
