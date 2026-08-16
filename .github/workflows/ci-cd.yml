@@ -3,8 +3,16 @@ name: CI / CD — PharmaTrack
 on:
   push:
     branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/ci-cd.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/ci-cd.yml"
 
 env:
   PROJECT_ID: project-35eb97fa-dede-4ae8-ba6
