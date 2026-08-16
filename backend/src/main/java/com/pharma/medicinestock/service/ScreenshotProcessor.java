@@ -36,9 +36,9 @@ import java.util.Set;
 public class ScreenshotProcessor {
 
     private static final long MAX_BYTES = 5L * 1024 * 1024; // 5 MB
-    private static final int  MAX_DIMENSION = 1200;          // px on longest side
+    private static final int  MAX_DIMENSION = 900;           // px on longest side
     private static final int  MAX_DECODE_DIMENSION = 8000;   // reject before allocating a buffer this large
-    private static final float JPEG_QUALITY = 0.80f;
+    private static final float JPEG_QUALITY = 0.65f;
 
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
         "image/png",
