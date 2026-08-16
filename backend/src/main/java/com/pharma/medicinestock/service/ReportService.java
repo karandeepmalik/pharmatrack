@@ -16,15 +16,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.pharma.medicinestock.dto.SalesGraphResponse;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+import static com.pharma.medicinestock.service.ReportTextRenderer.*;
+import static com.pharma.medicinestock.util.MoneyMath.amount;
+
+/**
+ * Assembles report data by reconstructing stock/sales figures from the adjustment and
+ * transaction history, then delegates to {@link ReportTextRenderer} for how each figure
+ * renders as text and to {@link com.pharma.medicinestock.util.MoneyMath} for how money is
+ * rounded. This class owns "what the report shows," not "how a line looks" or "how a
+ * rupee amount is computed."
+ */
 @Service
 @RequiredArgsConstructor
 public class ReportService {
@@ -32,38 +39,6 @@ public class ReportService {
     private final MedicineStockRepository medicineStockRepository;
     private final TransactionRepository transactionRepository;
     private final MedicineStockAdjustmentRepository medicineStockAdjustmentRepository;
-
-    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
-    private static final DateTimeFormatter DT_FMT   = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
-    private static final DateTimeFormatter DATE_FMT  = DateTimeFormatter.ofPattern("dd MMM yyyy");
-
-    // Fixed display order for daily report — short names, no pharma prefix
-    private static final List<String[]> DAILY_SPEC_ORDER = List.of(
-        new String[]{"VIAL",   "10.0", "Vial 10 ml"},
-        new String[]{"VIAL",   "5.0",  "Vial 5 ml"},
-        new String[]{"TABLET", "50.0", "Tablet 50 mg (10 Tablets)"},
-        new String[]{"TABLET", "25.0", "Tablet 25 mg (10 Tablets)"},
-        new String[]{"TABLET", "12.0", "Tablet 12 mg (10 Tablets)"}
-    );
-
-    private String nowIST() {
-        return ZonedDateTime.now(IST_ZONE).format(DT_FMT) + " IST";
-    }
-
-    private LocalDate todayIST() {
-        return ZonedDateTime.now(IST_ZONE).toLocalDate();
-    }
-
-    private String vialConc(Medicine m) {
-        Double c = m.getConcentrationMgPerMl();
-        if (c == null) return "20";
-        return c % 1 == 0 ? String.valueOf(c.intValue()) : String.valueOf(c);
-    }
-
-    /** Returns the type|spec key used to match DAILY_SPEC_ORDER entries. */
-    private static String specKey(Medicine m) {
-        return m.getType().name() + "|" + m.getSpecification();
-    }
 
     /**
      * Builds a map of userId|medicineId|medicineStockType → total in-transit ADD quantity.
@@ -127,59 +102,6 @@ public class ReportService {
         return new ReportResponse("MEDICINE_STOCK_BY_USER", nowIST(), sb.toString());
     }
 
-    /**
-     * Writes one user quantity line, using in-transit format when applicable.
-     * Format: "  username: settled + transit (in transit)" or "  username: qty"
-     */
-    private void appendUserQtyLine(StringBuilder sb, String username, Long userId, Long medicineId,
-                                    MedicineStock.MedicineStockType type, BigDecimal qty,
-                                    Map<String, BigDecimal> inTransitMap) {
-        String key = userId + "|" + medicineId + "|"
-                + (type != null ? type.name() : "REGULAR_MEDICINE_STOCK");
-        BigDecimal transit = inTransitMap.getOrDefault(key, BigDecimal.ZERO);
-        sb.append("  ").append(username).append(": ");
-        if (transit.compareTo(BigDecimal.ZERO) > 0) {
-            sb.append(qty.subtract(transit).toPlainString()).append(" + ")
-              .append(transit.toPlainString()).append(" (in transit)");
-        } else {
-            sb.append(qty.toPlainString());
-        }
-        sb.append("\n");
-    }
-
-    /**
-     * Appends per-spec, per-user medicine stock lines for the medicine-stock-by-user report.
-     * Uses full medicine name as header; skips specs with no data.
-     */
-    private void appendMedicineStockByUserSection(StringBuilder sb, List<MedicineStock> records,
-                                              Map<String, BigDecimal> inTransitMap) {
-        Map<String, List<MedicineStock>> bySpec = new LinkedHashMap<>();
-        for (MedicineStock inv : records) {
-            bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
-        }
-
-        for (String[] spec : DAILY_SPEC_ORDER) {
-            String key = spec[0] + "|" + spec[1];
-            List<MedicineStock> entries = bySpec.get(key);
-            if (entries == null || entries.isEmpty()) continue;
-
-            // Short format: "Vial 10 ml | 20 mg/ml" or "Tablet 50 mg (10 Tablets)"
-            String header = "VIAL".equals(spec[0])
-                    ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
-                    : spec[2];
-
-            sb.append(header).append("\n");
-            sb.append("-".repeat(35)).append("\n");
-            BigDecimal total = BigDecimal.ZERO;
-            for (MedicineStock inv : entries) {
-                appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
-                        inv.getMedicine().getId(), inv.getMedicineStockType(), inv.getQuantity(), inTransitMap);
-                total = total.add(inv.getQuantity());
-            }
-            sb.append("  TOTAL: ").append(total.toPlainString()).append("\n\n");
-        }
-    }
-
     @Transactional(readOnly = true)
     public ReportResponse medicineStockValuation(LocalDate date) {
         return date == null ? medicineStockValuationCurrent() : medicineStockValuationHistorical(date);
@@ -234,7 +156,7 @@ public class ReportService {
 
                 BigDecimal totalQty = entries.stream().map(MedicineStock::getQuantity).reduce(BigDecimal.ZERO, BigDecimal::add);
                 int price = specPrice.getOrDefault(key, 0);
-                long valuation = BigDecimal.valueOf(price).multiply(totalQty).setScale(0, RoundingMode.HALF_UP).longValue();
+                long valuation = amount(price, totalQty);
                 grandTotal += valuation;
 
                 sb.append(spec[2]).append("\n");
@@ -377,7 +299,7 @@ public class ReportService {
                     sb.append("\n");
                 }
                 int price = med.getPrice();
-                long valuation = BigDecimal.valueOf(price).multiply(totalQty).setScale(0, RoundingMode.HALF_UP).longValue();
+                long valuation = amount(price, totalQty);
                 grandTotal += valuation;
                 sb.append("  Valuation: ").append(totalQty.toPlainString()).append(" units x Rs ")
                   .append(String.format("%,d", price)).append(" = Rs ")
@@ -446,8 +368,8 @@ public class ReportService {
             for (Transaction tx : entry.getValue()) {
                 Medicine med = tx.getMedicine();
                 int price = tx.getPricePerUnit() != null ? tx.getPricePerUnit() : med.getPrice();
-                long amount = BigDecimal.valueOf(price).multiply(tx.getQuantity()).setScale(0, RoundingMode.HALF_UP).longValue();
-                userTotal += amount;
+                long lineAmount = amount(price, tx.getQuantity());
+                userTotal += lineAmount;
 
                 int specInt = med.getSpecification().intValue();
                 String specLabel = med.getType() == Medicine.MedicineType.VIAL
@@ -463,7 +385,7 @@ public class ReportService {
                     sb.append("  ").append(notes);
                 }
                 sb.append("\n");
-                sb.append("    Amount: Rs ").append(String.format("%,d", amount)).append("\n");
+                sb.append("    Amount: Rs ").append(String.format("%,d", lineAmount)).append("\n");
             }
             sb.append("  Subtotal: Rs ").append(String.format("%,d", userTotal)).append("\n\n");
             grandTotal += userTotal;
@@ -648,99 +570,6 @@ public class ReportService {
         return result;
     }
 
-    /**
-     * Appends per-pharma, per-spec, per-user medicine stock lines.
-     * Groups by pharma company; only emits specs with non-zero total
-     * (specs with no medicine stock are skipped).
-     */
-    private void appendMedicineStockSection(StringBuilder sb, List<MedicineStock> records,
-                                        Map<String, BigDecimal> inTransitMap) {
-        LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
-        LinkedHashMap<Long, Map<String, List<MedicineStock>>> pharmaSpecMap = new LinkedHashMap<>();
-        for (MedicineStock inv : records) {
-            Long pid = inv.getMedicine().getPharmaCompany().getId();
-            pharmaNames.putIfAbsent(pid, inv.getMedicine().getPharmaCompany().getName());
-            pharmaSpecMap.computeIfAbsent(pid, k -> new LinkedHashMap<>())
-                         .computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>())
-                         .add(inv);
-        }
-
-        for (Map.Entry<Long, String> pe : pharmaNames.entrySet()) {
-            String pharmaName = pe.getValue();
-            sb.append(pharmaName).append("\n");
-            sb.append("-".repeat(pharmaName.length())).append("\n");
-            Map<String, List<MedicineStock>> bySpec = pharmaSpecMap.get(pe.getKey());
-            for (String[] spec : DAILY_SPEC_ORDER) {
-                String key = spec[0] + "|" + spec[1];
-                List<MedicineStock> entries = bySpec.getOrDefault(key, Collections.emptyList());
-                if (entries.isEmpty()) continue;
-                BigDecimal total = BigDecimal.ZERO;
-                sb.append("\n").append(spec[2]).append("\n");
-                for (MedicineStock inv : entries) {
-                    appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
-                            inv.getMedicine().getId(), inv.getMedicineStockType(), inv.getQuantity(), inTransitMap);
-                    total = total.add(inv.getQuantity());
-                }
-                sb.append("  TOTAL: ").append(total.toPlainString()).append("\n");
-            }
-        }
-    }
-
-    /**
-     * Appends per-pharma, per-spec, per-user admin medicine stock lines.
-     * Groups by pharma company; skips specs with no data (no (none)/TOTAL: 0).
-     * Used for the ADMIN MEDICINE STOCK section in the daily report.
-     */
-    private void appendMedicineStockAdminSection(StringBuilder sb, List<MedicineStock> records,
-                                             Map<String, BigDecimal> inTransitMap) {
-        LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
-        LinkedHashMap<Long, Map<String, List<MedicineStock>>> pharmaSpecMap = new LinkedHashMap<>();
-        for (MedicineStock inv : records) {
-            Long pid = inv.getMedicine().getPharmaCompany().getId();
-            pharmaNames.putIfAbsent(pid, inv.getMedicine().getPharmaCompany().getName());
-            pharmaSpecMap.computeIfAbsent(pid, k -> new LinkedHashMap<>())
-                         .computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>())
-                         .add(inv);
-        }
-
-        for (Map.Entry<Long, String> pe : pharmaNames.entrySet()) {
-            String pharmaName = pe.getValue();
-            sb.append(pharmaName).append("\n");
-            sb.append("-".repeat(pharmaName.length())).append("\n");
-            Map<String, List<MedicineStock>> bySpec = pharmaSpecMap.get(pe.getKey());
-            for (String[] spec : DAILY_SPEC_ORDER) {
-                String key = spec[0] + "|" + spec[1];
-                List<MedicineStock> entries = bySpec.getOrDefault(key, Collections.emptyList());
-                if (entries.isEmpty()) continue;
-                String header = "VIAL".equals(spec[0])
-                        ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
-                        : spec[2];
-                sb.append("\n").append(header).append("\n");
-                BigDecimal total = BigDecimal.ZERO;
-                for (MedicineStock inv : entries) {
-                    appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
-                            inv.getMedicine().getId(), inv.getMedicineStockType(), inv.getQuantity(), inTransitMap);
-                    total = total.add(inv.getQuantity());
-                }
-                sb.append("  TOTAL: ").append(total.toPlainString()).append("\n");
-            }
-        }
-    }
-
-    private void appendTransactionLine(StringBuilder sb, Transaction tx) {
-        Medicine m = tx.getMedicine();
-        int specInt = m.getSpecification().intValue();
-        String specLabel = m.getType() == Medicine.MedicineType.VIAL
-                ? specInt + " ml" : specInt + " mg";
-        sb.append(tx.getSubmittedBy().getUsername())
-          .append("  ")
-          .append(tx.getQuantity().toPlainString()).append(" x ").append(specLabel);
-        if (tx.getNotes() != null && !tx.getNotes().isBlank()) {
-            sb.append("  ").append(tx.getNotes());
-        }
-        sb.append("\n");
-    }
-
     @Timed(value = "pharmatrack.report.sales_graph", description = "Time to build the sales graph response")
     @Transactional(readOnly = true)
     public SalesGraphResponse salesGraph(String period, LocalDate from, LocalDate to) {
@@ -768,7 +597,7 @@ public class ReportService {
                    .computeIfAbsent(specName, s -> new SalesAgg());
             int price = t.getPricePerUnit() != null ? t.getPricePerUnit() : t.getMedicine().getPrice();
             agg.qty = agg.qty.add(t.getQuantity());
-            agg.value += BigDecimal.valueOf(price).multiply(t.getQuantity()).setScale(0, RoundingMode.HALF_UP).longValue();
+            agg.value += amount(price, t.getQuantity());
         }
 
         List<String> orderedSpecs = new ArrayList<>(specOrder);
@@ -796,20 +625,6 @@ public class ReportService {
     private static final class SalesAgg {
         BigDecimal qty = BigDecimal.ZERO;
         long value = 0;
-    }
-
-    private String specDisplayName(Medicine m) {
-        String key = specKey(m);
-        for (String[] spec : DAILY_SPEC_ORDER) {
-            if ((spec[0] + "|" + spec[1]).equals(key)) return spec[2];
-        }
-        int s = m.getSpecification().intValue();
-        return switch (m.getType()) {
-            case VIAL    -> "Vial " + s + " ml";
-            case TABLET  -> "Tablet " + s + " mg";
-            case CAPSULE -> "Capsule " + s + " mg";
-            case SYRUP   -> "Syrup " + s + " ml";
-        };
     }
 
     private String groupKey(LocalDate date, String period) {
@@ -849,20 +664,5 @@ public class ReportService {
             }
         }
         return keys;
-    }
-
-    private void appendAdjustmentLine(StringBuilder sb, MedicineStockAdjustment a) {
-        Medicine m = a.getMedicine();
-        int specInt = m.getSpecification().intValue();
-        String specLabel = m.getType() == Medicine.MedicineType.VIAL
-                ? specInt + " ml" : specInt + " mg";
-        String sign = "ADD".equals(a.getAdjustmentType()) ? "+" : "-";
-        sb.append(a.getUser().getUsername())
-          .append("  ")
-          .append(sign).append(a.getQuantity().toPlainString()).append(" x ").append(specLabel);
-        if (a.getNote() != null && !a.getNote().isBlank()) {
-            sb.append("  ").append(a.getNote());
-        }
-        sb.append("\n");
     }
 }

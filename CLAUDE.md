@@ -12,7 +12,6 @@ backend/     Spring Boot 3.2 API (Maven)
 e2e/         API-only end-to-end tests against a running stack (Node.js, zero deps, no browser)
 e2e-browser/ Browser-driven e2e tests (Playwright) — renders the real frontend and clicks
              through it, so it catches frontend rendering/wiring bugs e2e/ structurally can't
-infra/k8s/   Dead — not used by the real deploy path (see CI/CD below)
 ```
 
 ## Commands
@@ -82,7 +81,7 @@ Postgres runs on a self-hosted Compute Engine VM (`pharmatrack-db-vm`, `us-centr
 - Daily `pg_dump` backups via cron on the VM (`/etc/cron.d/pharmatrack-db-backup`), 7-day local rotation, disk-local only (no offsite copy).
 
 ### CI/CD (`.github/workflows/ci-cd.yml`)
-GitHub Actions is the only live pipeline — `cloudbuild.yaml`, `render.yaml`, `fly.toml`, `railway.toml`, and `infra/k8s/*` are all dead/unused alternate deploy paths left over from exploration. Jobs: `backend-test` → `frontend-test` → `docker-build-push` → `deploy-cloud-run` (last two gated to `main` pushes only). There's no path filtering, so **every** merge to `main` — even a docs-only change — triggers a full rebuild and redeploy of both services.
+GitHub Actions is the only live pipeline. Jobs: `backend-test` → `frontend-test` → `docker-build-push` → `deploy-cloud-run` (last two gated to `main` pushes only). There's no path filtering, so **every** merge to `main` — even a docs-only change — triggers a full rebuild and redeploy of both services.
 
 ### Reports
 Plain-text report generation lives in `ReportService` (the largest file in the codebase, mixing report assembly, money math, and string formatting — a known refactor target). Formatting conventions: pharma name as heading with its medicine specs listed beneath (never repeat the name per spec); all timestamp-ordered reports go recent → past.
