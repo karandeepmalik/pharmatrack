@@ -6,6 +6,7 @@ import com.pharma.medicinestock.config.SecurityConfig;
 import com.pharma.medicinestock.dto.LoginRequest;
 import com.pharma.medicinestock.entity.User;
 import com.pharma.medicinestock.repository.UserRepository;
+import com.pharma.medicinestock.security.InMemoryRateLimitCounter;
 import com.pharma.medicinestock.security.JwtService;
 import com.pharma.medicinestock.security.LoginRateLimiter;
 import org.junit.jupiter.api.*;
@@ -26,7 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AuthController.class)
-@Import({SecurityConfig.class, AppConfig.class, LoginRateLimiter.class})
+@Import({SecurityConfig.class, AppConfig.class, LoginRateLimiter.class, InMemoryRateLimitCounter.class})
 @DisplayName("AuthController")
 class AuthControllerTest {
 
