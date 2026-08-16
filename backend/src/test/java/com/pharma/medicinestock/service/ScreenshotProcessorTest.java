@@ -224,4 +224,32 @@ class ScreenshotProcessorTest {
         String[] result = processor.compressAndEncode(tinyValidPng, "image/png");
         assertThat(result[1]).isEqualTo("image/jpeg");
     }
+
+    // ── compressAndEncode — resize-to-fit ────────────────────────────────
+
+    @Test @DisplayName("compressAndEncode resizes an image larger than the max dimension down to it")
+    void compressAndEncode_oversizedImage_resizedToMaxDimension() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(2000, 1000, BufferedImage.TYPE_INT_RGB), "png", out);
+        byte[] largePng = out.toByteArray();
+
+        String[] result = processor.compressAndEncode(largePng, "image/png");
+        BufferedImage resized = ImageIO.read(new java.io.ByteArrayInputStream(Base64.getDecoder().decode(result[0])));
+
+        assertThat(resized.getWidth()).isEqualTo(900);
+        assertThat(resized.getHeight()).isEqualTo(450);
+    }
+
+    @Test @DisplayName("compressAndEncode leaves an image already within the max dimension unresized")
+    void compressAndEncode_withinLimit_notResized() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(800, 400, BufferedImage.TYPE_INT_RGB), "png", out);
+        byte[] png = out.toByteArray();
+
+        String[] result = processor.compressAndEncode(png, "image/png");
+        BufferedImage resized = ImageIO.read(new java.io.ByteArrayInputStream(Base64.getDecoder().decode(result[0])));
+
+        assertThat(resized.getWidth()).isEqualTo(800);
+        assertThat(resized.getHeight()).isEqualTo(400);
+    }
 }
