@@ -37,3 +37,5 @@ cd frontend && npm install && npm start
 
 ## Copyright
 Copyright (c) 2024 Karandeep Malik. All rights reserved.
+
+<!-- path-filter verification: this line should not trigger CI/CD -->
