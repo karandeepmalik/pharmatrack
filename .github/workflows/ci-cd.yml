@@ -222,15 +222,19 @@ jobs:
           # NOTE: env vars are set via `flags`/--set-env-vars with a custom `;;` delimiter, not the
           # `env_vars` input — that input splits on commas even inside a single newline-separated
           # entry, which silently corrupted CORS_ALLOWED_ORIGINS's comma-joined origin list once already.
+          # Redis (login rate-limit counters, shared across instances) is self-hosted on the
+          # same pharmatrack-db-vm as Postgres, reached the same way (10.128.0.2, Direct VPC
+          # egress) — no new networking/firewall needed since it's covered by the same rule.
           secrets: |-
             DB_PASSWORD=pharmatrack-db-password:latest
             JWT_SECRET=pharmatrack-jwt-secret:latest
+            REDIS_PASSWORD=pharmatrack-redis-password:latest
           flags: >-
             --network=default
             --subnet=default
             --clear-vpc-connector
             --vpc-egress=private-ranges-only
-            --set-env-vars=^;;^DB_URL=jdbc:postgresql://10.128.0.2:5432/pharma_inventory;;DB_USERNAME=pharma;;DDL_AUTO=update;;LOG_LEVEL=INFO;;JWT_EXPIRATION_MS=86400000;;COOKIE_SECURE=true;;SPRING_PROFILES_ACTIVE=prod;;CORS_ALLOWED_ORIGINS=https://pharmatrack-frontend-558147403401.asia-south1.run.app,https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app
+            --set-env-vars=^;;^DB_URL=jdbc:postgresql://10.128.0.2:5432/pharma_inventory;;DB_USERNAME=pharma;;DDL_AUTO=update;;LOG_LEVEL=INFO;;JWT_EXPIRATION_MS=86400000;;COOKIE_SECURE=true;;SPRING_PROFILES_ACTIVE=prod;;CORS_ALLOWED_ORIGINS=https://pharmatrack-frontend-558147403401.asia-south1.run.app,https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app;;REDIS_ENABLED=true;;REDIS_HOST=10.128.0.2;;REDIS_PORT=6379
 
       - name: Deploy frontend to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v3
