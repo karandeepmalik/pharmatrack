@@ -50,9 +50,9 @@ describe('api.js', () => {
   // ── Axios instance configuration ─────────────────────────────────────
 
   describe('Axios instance configuration', () => {
-    test('creates axios instance with withCredentials: true', () => {
+    test('creates axios instance without withCredentials (no cookie-based auth — cross-origin, Authorization header only)', () => {
       expect(mockAxiosCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ withCredentials: true })
+        expect.not.objectContaining({ withCredentials: true })
       );
     });
   });

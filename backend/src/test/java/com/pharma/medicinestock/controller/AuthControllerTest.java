@@ -20,7 +20,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
 
-import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -64,8 +63,8 @@ class AuthControllerTest {
     class Login {
 
         @Test
-        @DisplayName("returns 200 and sets HttpOnly jwt cookie on valid credentials")
-        void returnsOkAndSetsCookieOnValidCredentials() throws Exception {
+        @DisplayName("returns 200 with the token in the response body on valid credentials, no Set-Cookie")
+        void returnsOkWithTokenInBodyOnValidCredentials() throws Exception {
             when(authenticationManager.authenticate(any())).thenReturn(
                     new UsernamePasswordAuthenticationToken("john.doe", null));
             when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(activeUser));
@@ -75,9 +74,7 @@ class AuthControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json("john.doe", "secret")))
                     .andExpect(status().isOk())
-                    .andExpect(header().string("Set-Cookie", containsString("jwt=test.jwt.token")))
-                    .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
-                    .andExpect(header().string("Set-Cookie", containsString("Path=/api")))
+                    .andExpect(header().doesNotExist("Set-Cookie"))
                     .andExpect(jsonPath("$.token").value("test.jwt.token"))
                     .andExpect(jsonPath("$.username").value("john.doe"))
                     .andExpect(jsonPath("$.fullName").value("John Doe"))
@@ -357,12 +354,11 @@ class AuthControllerTest {
     class Logout {
 
         @Test
-        @DisplayName("returns 204 and clears jwt cookie")
-        void returns204AndClearsCookie() throws Exception {
+        @DisplayName("returns 204, no Set-Cookie (stateless — nothing server-side to clear)")
+        void returns204NoContent() throws Exception {
             mockMvc.perform(post("/api/auth/logout"))
                     .andExpect(status().isNoContent())
-                    .andExpect(header().string("Set-Cookie", containsString("jwt=")))
-                    .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
+                    .andExpect(header().doesNotExist("Set-Cookie"));
         }
 
         @Test
