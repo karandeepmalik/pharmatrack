@@ -70,7 +70,9 @@ public class SecurityConfig {
         CorsConfiguration cfg=new CorsConfiguration();
         cfg.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         cfg.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        cfg.setAllowedHeaders(List.of("Authorization","Content-Type","Accept")); cfg.setAllowCredentials(true);
+        cfg.setAllowedHeaders(List.of("Authorization","Content-Type","Accept"));
+        // No allowCredentials — auth is a Bearer token in the Authorization header, not a
+        // cookie, so the browser has no credentials (cookies/client certs) to send cross-origin.
         UrlBasedCorsConfigurationSource src=new UrlBasedCorsConfigurationSource();
         src.registerCorsConfiguration("/**",cfg); return src;
     }

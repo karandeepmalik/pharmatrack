@@ -28,14 +28,14 @@ export function AuthProvider({children}){
     },[]);
     const logout=useCallback(()=>{
         // Clear local state first so the UI (ProtectedRoute reacting to `user`) responds
-        // instantly — the server-side cookie clear is best-effort cleanup, not something the
+        // instantly — the server-side call is a stateless no-op courtesy ping, not something the
         // signed-out experience should ever block on. Previously this awaited apiLogout() before
         // clearing state, so on slow/high-latency requests Sign Out visibly did nothing until
         // the network round-trip finished.
         localStorage.removeItem('user');
         localStorage.removeItem('token');
         setUser(null);
-        apiLogout().catch(()=>{ /* HttpOnly cookie will expire on its own */ });
+        apiLogout().catch(()=>{ /* fire-and-forget; nothing server-side depends on this succeeding */ });
     },[]);
     return <AuthContext.Provider value={{user,isAdmin,login,logout}}>{children}</AuthContext.Provider>;
 }

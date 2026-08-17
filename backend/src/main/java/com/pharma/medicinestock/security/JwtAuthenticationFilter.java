@@ -1,7 +1,6 @@
 package com.pharma.medicinestock.security;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -47,13 +46,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         chain.doFilter(req, res);
     }
 
+    // Frontend and backend are deployed on different origins (separate Cloud Run services),
+    // so a SameSite=Lax cookie can never reach the backend on a cross-origin XHR/fetch call —
+    // only on a top-level GET navigation. The Authorization header, populated by the frontend
+    // from the token in the login response body, is the only mechanism that actually works here.
     private String extractToken(HttpServletRequest req) {
-        if (req.getCookies() != null) {
-            for (Cookie c : req.getCookies()) {
-                if ("jwt".equals(c.getName())) return c.getValue();
-            }
-        }
-        // Fallback for API clients that send the Authorization header directly
         String header = req.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) return header.substring(7);
         return null;

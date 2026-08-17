@@ -3,11 +3,13 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
-  withCredentials: true,
 });
 
-// Send token via Authorization header — works in all environments including cross-domain.
-// The HttpOnly cookie set on login provides defence-in-depth for same-domain deployments.
+// Auth is via the Authorization header, populated from the token in the login response body.
+// Frontend and backend are separate origins (different Cloud Run services), so a cookie-based
+// approach doesn't work here: a SameSite=Lax cookie is never sent on a cross-origin XHR/fetch,
+// only a top-level GET navigation — there used to be a cookie set alongside this for
+// "defence-in-depth," but it was dead code in this deployment topology, so it was removed.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
