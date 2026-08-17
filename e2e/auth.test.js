@@ -1173,6 +1173,51 @@ async function run() {
     assert(r.status === 401 || r.status === 403, `Expected 401/403, got ${r.status}`);
   });
 
+  // ── Sales Graph — medicineStockType filter ──────────────────────────
+  // Uses a wide historical range and checks the invariant regular+admin=unfiltered,
+  // rather than creating new APPROVED transactions — approving here would permanently
+  // move real stock and could disturb the hardcoded baselines other tests rely on
+  // (rejecting, as the medicineStockType-response tests above do, doesn't create
+  // sales-graph data at all, since sales-graph only counts APPROVED transactions).
+  const salesGraphRangeParams = 'period=monthly&from=2024-01-01';
+
+  await test('sales-graph accepts medicineStockType=REGULAR_MEDICINE_STOCK', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph?${salesGraphRangeParams}&medicineStockType=REGULAR_MEDICINE_STOCK`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('sales-graph accepts medicineStockType=ADMIN_MEDICINE_STOCK', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph?${salesGraphRangeParams}&medicineStockType=ADMIN_MEDICINE_STOCK`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('sales-graph rejects an invalid medicineStockType with 400', async () => {
+    const r = await apiGet(`${API}/reports/sales-graph?${salesGraphRangeParams}&medicineStockType=NOT_A_REAL_TYPE`, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('sales-graph regular + admin filtered totals sum to the unfiltered total', async () => {
+    const sumQty = (data) => data.dataPoints.reduce((s, dp) => s + dp.quantity, 0);
+
+    const all = await apiGet(`${API}/reports/sales-graph?${salesGraphRangeParams}`, adminToken);
+    const explicitAll = await apiGet(`${API}/reports/sales-graph?${salesGraphRangeParams}&medicineStockType=ALL`, adminToken);
+    const regular = await apiGet(`${API}/reports/sales-graph?${salesGraphRangeParams}&medicineStockType=REGULAR_MEDICINE_STOCK`, adminToken);
+    const admin = await apiGet(`${API}/reports/sales-graph?${salesGraphRangeParams}&medicineStockType=ADMIN_MEDICINE_STOCK`, adminToken);
+    for (const r of [all, explicitAll, regular, admin]) {
+      assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    }
+
+    const allQty = sumQty(all.data);
+    const explicitAllQty = sumQty(explicitAll.data);
+    const regularQty = sumQty(regular.data);
+    const adminQty = sumQty(admin.data);
+
+    assert(Math.abs(explicitAllQty - allQty) < 0.05,
+      `medicineStockType=ALL (${explicitAllQty}) should match no filter (${allQty})`);
+    assert(Math.abs((regularQty + adminQty) - allQty) < 0.05,
+      `regular (${regularQty}) + admin (${adminQty}) should equal unfiltered total (${allQty})`);
+  });
+
   // ── Telemetry ────────────────────────────────────────────────────────
   console.log('\n-- Telemetry');
 

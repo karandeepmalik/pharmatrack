@@ -572,16 +572,24 @@ public class ReportService {
 
     @Timed(value = "pharmatrack.report.sales_graph", description = "Time to build the sales graph response")
     @Transactional(readOnly = true)
-    public SalesGraphResponse salesGraph(String period, LocalDate from, LocalDate to) {
+    public SalesGraphResponse salesGraph(String period, LocalDate from, LocalDate to, String medicineStockType) {
         if (from == null) from = todayIST().minusDays(29);
         if (to == null) to = todayIST();
         if (period == null || period.isBlank()) period = "daily";
+
+        boolean hasStockTypeFilter = medicineStockType != null && !medicineStockType.isBlank()
+                && !"ALL".equalsIgnoreCase(medicineStockType);
+        MedicineStock.MedicineStockType stockTypeFilter = hasStockTypeFilter
+                ? MedicineStock.MedicineStockType.valueOf(medicineStockType) : null;
 
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end = to.plusDays(1).atStartOfDay();
 
         List<Transaction> txns = transactionRepository.findApprovedBetween(
-                Transaction.TransactionStatus.APPROVED, start, end);
+                Transaction.TransactionStatus.APPROVED, start, end)
+                .stream()
+                .filter(tx -> stockTypeFilter == null || tx.getMedicineStockType() == stockTypeFilter)
+                .toList();
 
         // Spec order: DAILY_SPEC_ORDER first (consistent colours), unknown specs appended
         LinkedHashSet<String> specOrder = new LinkedHashSet<>();

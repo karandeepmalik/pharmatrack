@@ -13,6 +13,12 @@ const METRICS = [
     { value: 'value', label: 'Value (Rs)' },
 ];
 
+const STOCK_TYPES = [
+    { value: 'ALL', label: 'Both' },
+    { value: 'REGULAR_MEDICINE_STOCK', label: 'Regular' },
+    { value: 'ADMIN_MEDICINE_STOCK', label: 'Admin' },
+];
+
 // Colour palette — index matches the spec's position in the ordered spec list
 const SPEC_COLORS = [
     '#3b82f6', // blue       — Vial 10 ml
@@ -225,6 +231,7 @@ function shadeColor(hex, pct) {
 export default function SalesGraphReport() {
     const [period, setPeriod] = useState('daily');
     const [metric, setMetric] = useState('quantity');
+    const [stockType, setStockType] = useState('ALL');
     const [from, setFrom] = useState(daysAgo(29));
     const [to, setTo] = useState(todayStr());
     const [data, setData] = useState(null);
@@ -242,20 +249,21 @@ export default function SalesGraphReport() {
         setLoading(true);
         setError('');
         setData(null);
-        api.getReportSalesGraph(period, from, to)
+        api.getReportSalesGraph(period, from, to, stockType)
             .then(res => {
                 setData(res.data);
                 trackEvent('sales_graph_loaded', PAGE, {
                     period,
+                    stockType,
                     dataPoints: res.data.dataPoints?.length ?? 0,
                 });
             })
             .catch(() => {
                 setError('Failed to load sales data. Please try again.');
-                trackEvent('sales_graph_error', PAGE, { period });
+                trackEvent('sales_graph_error', PAGE, { period, stockType });
             })
             .finally(() => setLoading(false));
-    }, [period, from, to]);
+    }, [period, from, to, stockType]);
 
     const handlePeriodChange = useCallback((newPeriod) => {
         setPeriod(newPeriod);
@@ -266,6 +274,11 @@ export default function SalesGraphReport() {
         setMetric(newMetric);
         trackEvent('metric_toggled', PAGE, { metric: newMetric });
     }, []);
+
+    const handleStockTypeChange = useCallback((newStockType) => {
+        setStockType(newStockType);
+        trackEvent('stock_type_toggled', PAGE, { from: stockType, to: newStockType });
+    }, [stockType]);
 
     // Build consistent colour map from the first data point's ordered spec list
     const allSpecNames = data?.dataPoints?.[0]?.specs?.map(s => s.specName) ?? [];
@@ -304,6 +317,19 @@ export default function SalesGraphReport() {
                             onClick={() => handleMetricChange(m.value)}
                         >
                             {m.label}
+                        </button>
+                    ))}
+                </div>
+                <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: 500, marginLeft: '12px' }}>Stock:</span>
+                <div className="btn-group">
+                    {STOCK_TYPES.map(s => (
+                        <button
+                            key={s.value}
+                            type="button"
+                            className={`btn btn-sm ${stockType === s.value ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => handleStockTypeChange(s.value)}
+                        >
+                            {s.label}
                         </button>
                     ))}
                 </div>
