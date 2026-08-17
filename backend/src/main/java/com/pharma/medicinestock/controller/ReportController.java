@@ -57,13 +57,20 @@ public class ReportController {
         return ResponseEntity.ok(reportService.dailyReport(date));
     }
 
+    /**
+     * @param medicineStockType optional exact filter — {@code REGULAR_MEDICINE_STOCK} or
+     *                          {@code ADMIN_MEDICINE_STOCK}; null/blank/{@code ALL} (default)
+     *                          includes both, matching this app's existing optional-filter
+     *                          convention (see {@code todaySales}'s {@code username} param).
+     */
     @GetMapping("/sales-graph")
     public ResponseEntity<SalesGraphResponse> salesGraph(
             @RequestParam(value = "period", defaultValue = "daily") String period,
             @RequestParam(value = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(value = "to", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ResponseEntity.ok(reportService.salesGraph(period, from, to));
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(value = "medicineStockType", required = false) String medicineStockType) {
+        return ResponseEntity.ok(reportService.salesGraph(period, from, to, medicineStockType));
     }
 }

@@ -119,8 +119,8 @@ export const getReportTodaySales         = (from, to, username, medicineId) =>
 export const getReportDaily = (date) =>
   api.get('/reports/daily', date ? { params: { date } } : {});
 
-export const getReportSalesGraph = (period, from, to) =>
-  api.get('/reports/sales-graph', { params: { period, from, to } });
+export const getReportSalesGraph = (period, from, to, medicineStockType) =>
+  api.get('/reports/sales-graph', { params: { period, from, to, medicineStockType } });
 
 // ── Telemetry ──────────────────────────────────────────────────────────
 export const postTelemetryEvent = (eventName, page, properties = {}) =>

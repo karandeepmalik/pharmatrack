@@ -61,6 +61,16 @@ describe('SalesGraphReport — initial render', () => {
         expect(screen.getByRole('button', { name: /value/i })).toBeInTheDocument();
     });
 
+    test('renders stock type toggle buttons, defaulting to Both', () => {
+        api.getReportSalesGraph.mockReturnValue(new Promise(() => {}));
+        renderPage();
+        const bothBtn = screen.getByRole('button', { name: /both/i });
+        expect(bothBtn).toBeInTheDocument();
+        expect(bothBtn).toHaveClass('btn-primary');
+        expect(screen.getByRole('button', { name: /regular/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /admin/i })).toBeInTheDocument();
+    });
+
     test('shows loading state immediately', () => {
         api.getReportSalesGraph.mockReturnValue(new Promise(() => {}));
         renderPage();
@@ -83,7 +93,7 @@ describe('SalesGraphReport — data fetching', () => {
         renderPage();
         await waitFor(() => {
             expect(api.getReportSalesGraph).toHaveBeenCalledWith(
-                'daily', expect.any(String), expect.any(String)
+                'daily', expect.any(String), expect.any(String), 'ALL'
             );
         });
     });
@@ -169,7 +179,7 @@ describe('SalesGraphReport — period switching', () => {
         await userEvent.click(screen.getByRole('button', { name: /weekly/i }));
         await waitFor(() => {
             expect(api.getReportSalesGraph).toHaveBeenCalledWith(
-                'weekly', expect.any(String), expect.any(String)
+                'weekly', expect.any(String), expect.any(String), 'ALL'
             );
         });
     });
@@ -180,7 +190,56 @@ describe('SalesGraphReport — period switching', () => {
         await userEvent.click(screen.getByRole('button', { name: /monthly/i }));
         await waitFor(() => {
             expect(api.getReportSalesGraph).toHaveBeenCalledWith(
-                'monthly', expect.any(String), expect.any(String)
+                'monthly', expect.any(String), expect.any(String), 'ALL'
+            );
+        });
+    });
+});
+
+// ── Stock type switching ────────────────────────────────────────────────────
+
+describe('SalesGraphReport — stock type switching', () => {
+    test('clicking Regular refetches with REGULAR_MEDICINE_STOCK and highlights the button', async () => {
+        api.getReportSalesGraph.mockResolvedValue(mkResp(TWO_SPEC_DATA));
+        renderPage();
+        await waitFor(() => expect(api.getReportSalesGraph).toHaveBeenCalled());
+        await userEvent.click(screen.getByRole('button', { name: /regular/i }));
+        await waitFor(() => {
+            expect(api.getReportSalesGraph).toHaveBeenCalledWith(
+                'daily', expect.any(String), expect.any(String), 'REGULAR_MEDICINE_STOCK'
+            );
+        });
+        expect(screen.getByRole('button', { name: /regular/i })).toHaveClass('btn-primary');
+        expect(screen.getByRole('button', { name: /both/i })).toHaveClass('btn-secondary');
+    });
+
+    test('clicking Admin refetches with ADMIN_MEDICINE_STOCK and highlights the button', async () => {
+        api.getReportSalesGraph.mockResolvedValue(mkResp(TWO_SPEC_DATA));
+        renderPage();
+        await waitFor(() => expect(api.getReportSalesGraph).toHaveBeenCalled());
+        await userEvent.click(screen.getByRole('button', { name: /admin/i }));
+        await waitFor(() => {
+            expect(api.getReportSalesGraph).toHaveBeenCalledWith(
+                'daily', expect.any(String), expect.any(String), 'ADMIN_MEDICINE_STOCK'
+            );
+        });
+        expect(screen.getByRole('button', { name: /admin/i })).toHaveClass('btn-primary');
+    });
+
+    test('clicking Both after Regular switches back to ALL', async () => {
+        api.getReportSalesGraph.mockResolvedValue(mkResp(TWO_SPEC_DATA));
+        renderPage();
+        await waitFor(() => expect(api.getReportSalesGraph).toHaveBeenCalled());
+        await userEvent.click(screen.getByRole('button', { name: /regular/i }));
+        await waitFor(() => {
+            expect(api.getReportSalesGraph).toHaveBeenCalledWith(
+                'daily', expect.any(String), expect.any(String), 'REGULAR_MEDICINE_STOCK'
+            );
+        });
+        await userEvent.click(screen.getByRole('button', { name: /both/i }));
+        await waitFor(() => {
+            expect(api.getReportSalesGraph).toHaveBeenCalledWith(
+                'daily', expect.any(String), expect.any(String), 'ALL'
             );
         });
     });

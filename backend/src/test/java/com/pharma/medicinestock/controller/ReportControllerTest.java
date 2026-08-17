@@ -24,6 +24,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -208,7 +210,7 @@ class ReportControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanGetSalesGraphWithDefaults() throws Exception {
-            when(reportService.salesGraph(any(), any(), any())).thenReturn(sampleSalesGraph());
+            when(reportService.salesGraph(any(), any(), any(), any())).thenReturn(sampleSalesGraph());
             mockMvc.perform(get("/api/reports/sales-graph"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.period").value("daily"))
@@ -217,7 +219,7 @@ class ReportControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void responseIncludesSpecBreakdownArray() throws Exception {
-            when(reportService.salesGraph(any(), any(), any())).thenReturn(sampleSalesGraph());
+            when(reportService.salesGraph(any(), any(), any(), any())).thenReturn(sampleSalesGraph());
             mockMvc.perform(get("/api/reports/sales-graph")
                             .param("period", "daily")
                             .param("from", "2026-06-01")
@@ -231,11 +233,20 @@ class ReportControllerTest {
 
         @Test @WithMockUser(roles = "ADMIN")
         void totalQuantityAndValueSerialised() throws Exception {
-            when(reportService.salesGraph(any(), any(), any())).thenReturn(sampleSalesGraph());
+            when(reportService.salesGraph(any(), any(), any(), any())).thenReturn(sampleSalesGraph());
             mockMvc.perform(get("/api/reports/sales-graph"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.dataPoints[0].quantity").value(8))
                     .andExpect(jsonPath("$.dataPoints[0].value").value(29000));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void medicineStockTypeParamIsPassedThroughToService() throws Exception {
+            when(reportService.salesGraph(any(), any(), any(), any())).thenReturn(sampleSalesGraph());
+            mockMvc.perform(get("/api/reports/sales-graph")
+                            .param("medicineStockType", "ADMIN_MEDICINE_STOCK"))
+                    .andExpect(status().isOk());
+            verify(reportService).salesGraph(eq("daily"), any(), any(), eq("ADMIN_MEDICINE_STOCK"));
         }
 
         @Test @WithMockUser(roles = "USER")

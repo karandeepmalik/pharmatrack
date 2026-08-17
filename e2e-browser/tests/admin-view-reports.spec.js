@@ -191,15 +191,19 @@ test.describe('View Reports', () => {
       await page.locator('#report-select').selectOption('sales-graph');
     });
 
-    test('shows period and metric toggle buttons, defaulting to Daily/Quantity', async ({ page }) => {
+    test('shows period, metric, and stock toggle buttons, defaulting to Daily/Quantity/Both', async ({ page }) => {
       for (const period of ['Daily', 'Weekly', 'Monthly']) {
         await expect(page.getByRole('button', { name: period })).toBeVisible();
       }
       for (const metric of ['Quantity', 'Value (Rs)']) {
         await expect(page.getByRole('button', { name: metric })).toBeVisible();
       }
+      for (const stock of ['Both', 'Regular', 'Admin']) {
+        await expect(page.getByRole('button', { name: stock })).toBeVisible();
+      }
       await expect(page.getByRole('button', { name: 'Daily' })).toHaveClass(/btn-primary/);
       await expect(page.getByRole('button', { name: 'Quantity' })).toHaveClass(/btn-primary/);
+      await expect(page.getByRole('button', { name: 'Both' })).toHaveClass(/btn-primary/);
     });
 
     test('loads chart data without an error and without the generic report controls', async ({ page }) => {
@@ -239,6 +243,29 @@ test.describe('View Reports', () => {
       await page.getByRole('button', { name: 'Value (Rs)' }).click();
       await expect(page.getByRole('button', { name: 'Value (Rs)' })).toHaveClass(/btn-primary/);
       await expect(page.getByRole('button', { name: 'Quantity' })).not.toHaveClass(/btn-primary/);
+    });
+
+    test('switching between Regular/Admin/Both updates the active stock filter button and reloads the chart', async ({ page }) => {
+      await expect(page.locator('svg[aria-label="Sales bar chart"]').or(page.getByText(/no approved sales found/i)))
+        .toBeVisible({ timeout: 10000 });
+
+      await page.getByRole('button', { name: 'Regular' }).click();
+      await expect(page.getByRole('button', { name: 'Regular' })).toHaveClass(/btn-primary/);
+      await expect(page.getByRole('button', { name: 'Both' })).not.toHaveClass(/btn-primary/);
+      await expect(page.locator('svg[aria-label="Sales bar chart"]').or(page.getByText(/no approved sales found/i)))
+        .toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('alert')).not.toBeVisible();
+
+      await page.getByRole('button', { name: 'Admin' }).click();
+      await expect(page.getByRole('button', { name: 'Admin' })).toHaveClass(/btn-primary/);
+      await expect(page.getByRole('button', { name: 'Regular' })).not.toHaveClass(/btn-primary/);
+      await expect(page.locator('svg[aria-label="Sales bar chart"]').or(page.getByText(/no approved sales found/i)))
+        .toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('alert')).not.toBeVisible();
+
+      await page.getByRole('button', { name: 'Both' }).click();
+      await expect(page.getByRole('button', { name: 'Both' })).toHaveClass(/btn-primary/);
+      await expect(page.getByRole('button', { name: 'Admin' })).not.toHaveClass(/btn-primary/);
     });
 
     test('an invalid date range (From after To) shows a validation error', async ({ page }) => {

@@ -23,6 +23,7 @@ import java.util.List;
 import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -1734,10 +1735,15 @@ class ReportServiceTest {
     class SalesGraph {
 
         private Transaction makeTx(Long id, User u, Medicine m, int qty, LocalDateTime at) {
+            return makeTx(id, u, m, qty, at, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK);
+        }
+
+        private Transaction makeTx(Long id, User u, Medicine m, int qty, LocalDateTime at,
+                                    MedicineStock.MedicineStockType stockType) {
             Transaction tx = Transaction.builder()
                     .id(id).submittedBy(u).medicine(m).quantity(BigDecimal.valueOf(qty))
                     .status(Transaction.TransactionStatus.APPROVED).notes("t")
-                    .medicineStockType(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK)
+                    .medicineStockType(stockType)
                     .submittedAt(at).build();
             tx.setApprovedAt(at);
             return tx;
@@ -1751,7 +1757,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(makeTx(1L, john, vial, 5, at)));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), null);
 
             assertThat(resp.getPeriod()).isEqualTo("daily");
             assertThat(resp.getDataPoints()).hasSize(1);
@@ -1769,7 +1775,7 @@ class ReportServiceTest {
                     ));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), null);
 
             var dp = resp.getDataPoints().get(0);
             assertThat(dp.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
@@ -1798,7 +1804,7 @@ class ReportServiceTest {
                     ));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), null);
 
             var dp = resp.getDataPoints().get(0);
             BigDecimal specSum = dp.getSpecs().stream()
@@ -1818,7 +1824,7 @@ class ReportServiceTest {
                     ));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), null);
 
             var dp = resp.getDataPoints().get(0);
             long specValueSum = dp.getSpecs().stream()
@@ -1836,7 +1842,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(tx));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15));
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), null);
 
             var dp = resp.getDataPoints().get(0);
             assertThat(dp.getValue()).isEqualTo(10000L);
@@ -1853,7 +1859,7 @@ class ReportServiceTest {
                     .thenReturn(List.of(makeTx(1L, john, vial, 5, at)));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "daily", LocalDate.of(2026, 6, 14), LocalDate.of(2026, 6, 16));
+                    "daily", LocalDate.of(2026, 6, 14), LocalDate.of(2026, 6, 16), null);
 
             assertThat(resp.getDataPoints()).hasSize(3);
             assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.ZERO);  // 14 Jun
@@ -1874,7 +1880,7 @@ class ReportServiceTest {
                     ));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "weekly", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 21));
+                    "weekly", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 21), null);
 
             assertThat(resp.getDataPoints()).hasSize(1);
             assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
@@ -1892,7 +1898,7 @@ class ReportServiceTest {
                     ));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "monthly", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30));
+                    "monthly", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), null);
 
             assertThat(resp.getDataPoints()).hasSize(1);
             assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.TEN);
@@ -1906,7 +1912,7 @@ class ReportServiceTest {
                     .thenReturn(List.of());
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    null, LocalDate.now().minusDays(1), LocalDate.now());
+                    null, LocalDate.now().minusDays(1), LocalDate.now(), null);
 
             assertThat(resp.getPeriod()).isEqualTo("daily");
         }
@@ -1923,7 +1929,7 @@ class ReportServiceTest {
                     ));
 
             SalesGraphResponse resp = reportService.salesGraph(
-                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 16));
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 16), null);
 
             var day1 = resp.getDataPoints().get(0);
             var day2 = resp.getDataPoints().get(1);
@@ -1933,6 +1939,78 @@ class ReportServiceTest {
             assertThat(specs1).isEqualTo(specs2);
             // Vial 10 ml must come before Vial 5 ml (DAILY_SPEC_ORDER ordering)
             assertThat(specs1.indexOf("Vial 10 ml")).isLessThan(specs1.indexOf("Vial 5 ml"));
+        }
+
+        @Test
+        @DisplayName("no filter (null) includes both regular and admin stock transactions")
+        void noFilterIncludesBothStockTypes() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial, 3, at, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK),
+                            makeTx(2L, jane, vial, 2, at, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK)
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), null);
+
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
+        }
+
+        @Test
+        @DisplayName("\"ALL\" filter includes both regular and admin stock transactions, same as null")
+        void allFilterIncludesBothStockTypes() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial, 3, at, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK),
+                            makeTx(2L, jane, vial, 2, at, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK)
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), "ALL");
+
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(5));
+        }
+
+        @Test
+        @DisplayName("REGULAR_MEDICINE_STOCK filter excludes admin-stock transactions")
+        void regularFilterExcludesAdminStock() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial, 3, at, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK),
+                            makeTx(2L, jane, vial, 2, at, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK)
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), "REGULAR_MEDICINE_STOCK");
+
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(3));
+        }
+
+        @Test
+        @DisplayName("ADMIN_MEDICINE_STOCK filter excludes regular-stock transactions")
+        void adminFilterExcludesRegularStock() {
+            LocalDateTime at = LocalDateTime.of(2026, 6, 15, 10, 0);
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(
+                            makeTx(1L, john, vial, 3, at, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK),
+                            makeTx(2L, jane, vial, 2, at, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK)
+                    ));
+
+            SalesGraphResponse resp = reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), "ADMIN_MEDICINE_STOCK");
+
+            assertThat(resp.getDataPoints().get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(2));
+        }
+
+        @Test
+        @DisplayName("invalid medicineStockType value throws IllegalArgumentException (400 via GlobalExceptionHandler)")
+        void invalidStockTypeThrows() {
+            assertThatThrownBy(() -> reportService.salesGraph(
+                    "daily", LocalDate.of(2026, 6, 15), LocalDate.of(2026, 6, 15), "NOT_A_REAL_TYPE"))
+                    .isInstanceOf(IllegalArgumentException.class);
         }
     }
 }
