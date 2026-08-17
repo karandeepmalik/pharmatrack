@@ -7,7 +7,7 @@ module.exports = {
     '\\.(css|less|scss|sass)$': '<rootDir>/src/__mocks__/styleMock.js',
     '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/src/__mocks__/fileMock.js',
   },
-  setupFilesAfterEnv: ['@testing-library/jest-dom'],
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
   moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx', 'json'],
   reporters: [
