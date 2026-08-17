@@ -43,7 +43,7 @@ No local npm/Maven install required — everything above runs through `make`/Doc
 - Never commit to main — always use a feature branch, open a PR.
 - Never deploy directly to Cloud Run — push to GitHub; Actions builds and deploys.
 - UI must be responsive, mobile-viewable, and center-aligned; every new UI page needs back navigation.
-- Before merging: run the full suite (backend, frontend, e2e; e2e-browser too for frontend-behavior changes — run `e2e/auth.test.js` *before* `e2e-browser`, or `make down-v` between them, see Gotchas) locally, then push/open the PR and squash-merge and delete the branch — no need to ask each time. Merging to `main` deploys to Cloud Run, so confirm the deployed service is actually healthy (`/actuator/health`) before considering the task done; a green test suite does not guarantee a working deploy.
+- Before merging: run the full suite (backend, frontend, e2e; e2e-browser too for frontend-behavior changes — run `e2e/auth.test.js` *before* `e2e-browser`, or `make down-v` between them, see Gotchas) locally, then push/open the PR and squash-merge and delete the branch — no need to ask each time. **Once the local suite is green, squash-merge immediately — do not wait for GitHub Actions CI checks on the PR to finish first.** The local run already exercises everything CI would; waiting on CI too is pure duplicated latency, not extra safety. Merging to `main` deploys to Cloud Run, so confirm the deployed service is actually healthy (`/actuator/health`) *after* merging, before considering the task done — a green test suite does not guarantee a working deploy, and that check still matters even though the pre-merge CI wait doesn't.
 
 ## Architecture
 
