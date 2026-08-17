@@ -1,9 +1,18 @@
 // Copyright (c) 2024 Karandeep Malik. All rights reserved.
-// PharmaTrack E2E Tests — run against production Cloud Run services
-// Override with env vars for local: FRONTEND_URL=http://localhost BACKEND_URL=http://localhost:8080
+// PharmaTrack E2E Tests — creates, approves, rejects, and deletes real records, so there is no
+// default target. Both env vars are required every run, including against production:
+//   Local:      BACKEND_URL=http://localhost:8080 FRONTEND_URL=http://localhost node e2e/auth.test.js
+//   Production: BACKEND_URL=https://pharmatrack-backend-... FRONTEND_URL=https://pharmatrack-frontend-... node e2e/auth.test.js
 
-const FRONTEND = process.env.FRONTEND_URL || 'https://pharmatrack-frontend-xhlza2c2ua-el.a.run.app';
-const BACKEND  = process.env.BACKEND_URL  || 'https://pharmatrack-backend-xhlza2c2ua-el.a.run.app';
+if (!process.env.BACKEND_URL || !process.env.FRONTEND_URL) {
+  console.error('ERROR: BACKEND_URL and FRONTEND_URL must both be set — there is no default target.');
+  console.error('  Local:      BACKEND_URL=http://localhost:8080 FRONTEND_URL=http://localhost node e2e/auth.test.js');
+  console.error('  Production: BACKEND_URL=https://pharmatrack-backend-... FRONTEND_URL=https://pharmatrack-frontend-... node e2e/auth.test.js');
+  process.exit(1);
+}
+
+const FRONTEND = process.env.FRONTEND_URL;
+const BACKEND  = process.env.BACKEND_URL;
 const API      = `${BACKEND}/api`;
 
 let passed = 0, failed = 0;
