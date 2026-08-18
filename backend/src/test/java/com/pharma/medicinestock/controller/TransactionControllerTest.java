@@ -9,6 +9,7 @@ import com.pharma.medicinestock.config.SecurityConfig;
 import com.pharma.medicinestock.exception.InvalidScreenshotException;
 import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.JwtService;
+import com.pharma.medicinestock.security.TokenRevocationStore;
 import com.pharma.medicinestock.service.ScreenshotProcessor;
 import com.pharma.medicinestock.service.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +49,7 @@ class TransactionControllerTest {
     @MockBean TransactionService transactionService;
     @MockBean ScreenshotProcessor screenshotProcessor;
     @MockBean JwtService jwtService;
+    @MockBean TokenRevocationStore tokenRevocationStore;
     @MockBean UserRepository userRepository;
 
     private TransactionResponse sampleResponse;

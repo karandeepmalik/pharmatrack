@@ -31,6 +31,7 @@ class JwtAuthenticationFilterTest {
 
     private JwtService jwtService;
     private UserDetailsService userDetailsService;
+    private TokenRevocationStore tokenRevocationStore;
     private JwtAuthenticationFilter filter;
 
     @BeforeEach
@@ -39,7 +40,8 @@ class JwtAuthenticationFilterTest {
         ReflectionTestUtils.setField(jwtService, "secret", TEST_SECRET);
         ReflectionTestUtils.setField(jwtService, "expirationMs", 86_400_000L);
         userDetailsService = mock(UserDetailsService.class);
-        filter = new JwtAuthenticationFilter(jwtService, userDetailsService);
+        tokenRevocationStore = mock(TokenRevocationStore.class); // isRevoked defaults to false
+        filter = new JwtAuthenticationFilter(jwtService, userDetailsService, tokenRevocationStore);
         SecurityContextHolder.clearContext();
     }
 
@@ -50,6 +52,10 @@ class JwtAuthenticationFilterTest {
 
     private UserDetails userDetails(String username) {
         return new User(username, "password", Collections.emptyList());
+    }
+
+    private UserDetails disabledUserDetails(String username) {
+        return new User(username, "password", false, true, true, true, Collections.emptyList());
     }
 
     private MockHttpServletRequest requestWithBearer(String token) {
@@ -127,6 +133,39 @@ class JwtAuthenticationFilterTest {
     @DisplayName("no token present leaves the request unauthenticated and still calls the chain")
     void noTokenLeavesUnauthenticated() throws Exception {
         MockHttpServletRequest req = new MockHttpServletRequest();
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilterInternal(req, res, chain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verify(chain, times(1)).doFilter(req, res);
+    }
+
+    @Test
+    @DisplayName("a token whose jti is revoked does not authenticate, even though it's otherwise valid")
+    void revokedTokenDoesNotAuthenticate() throws Exception {
+        String token = jwtService.generateToken("john.doe");
+        when(userDetailsService.loadUserByUsername("john.doe")).thenReturn(userDetails("john.doe"));
+        when(tokenRevocationStore.isRevoked(jwtService.extractJti(token))).thenReturn(true);
+
+        MockHttpServletRequest req = requestWithBearer(token);
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilterInternal(req, res, chain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verify(chain, times(1)).doFilter(req, res);
+    }
+
+    @Test
+    @DisplayName("a token for a since-deactivated user does not authenticate, even before it naturally expires")
+    void deactivatedUserTokenDoesNotAuthenticate() throws Exception {
+        String token = jwtService.generateToken("john.doe");
+        when(userDetailsService.loadUserByUsername("john.doe")).thenReturn(disabledUserDetails("john.doe"));
+
+        MockHttpServletRequest req = requestWithBearer(token);
         MockHttpServletResponse res = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 

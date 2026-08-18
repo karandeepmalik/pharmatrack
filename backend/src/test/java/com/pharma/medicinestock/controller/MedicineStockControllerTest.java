@@ -11,6 +11,7 @@ import com.pharma.medicinestock.exception.InsufficientMedicineStockException;
 import com.pharma.medicinestock.exception.ResourceNotFoundException;
 import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.JwtService;
+import com.pharma.medicinestock.security.TokenRevocationStore;
 import com.pharma.medicinestock.service.MedicineStockService;
 import com.pharma.medicinestock.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,7 @@ class MedicineStockControllerTest {
     @MockBean MedicineStockService medicineStockService;
     @MockBean UserService userService;
     @MockBean JwtService jwtService;
+    @MockBean TokenRevocationStore tokenRevocationStore;
     @MockBean UserRepository userRepository;
 
     private MedicineStockResponse sampleResponse;

@@ -8,6 +8,7 @@ import com.pharma.medicinestock.config.AppConfig;
 import com.pharma.medicinestock.config.SecurityConfig;
 import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.JwtService;
+import com.pharma.medicinestock.security.TokenRevocationStore;
 import com.pharma.medicinestock.service.ScreenshotProcessor;
 import com.pharma.medicinestock.service.TransactionService;
 import org.junit.jupiter.api.AfterEach;
@@ -47,6 +48,7 @@ class GlobalExceptionHandlerTest {
     @MockBean  TransactionService transactionService;
     @MockBean  ScreenshotProcessor screenshotProcessor;
     @MockBean  JwtService jwtService;
+    @MockBean  TokenRevocationStore tokenRevocationStore;
     @MockBean  UserRepository userRepository;
 
     @Nested @DisplayName("404 Not Found")

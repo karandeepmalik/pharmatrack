@@ -18,6 +18,7 @@ import java.io.IOException;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
+    private final TokenRevocationStore tokenRevocationStore;
     @Override protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
         String token = extractToken(req);
         if (token != null) {
@@ -25,7 +26,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String username = jwtService.extractUsername(token);
                 if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     UserDetails u = userDetailsService.loadUserByUsername(username);
-                    if (jwtService.isValid(token, u)) {
+                    if (jwtService.isValid(token, u) && !tokenRevocationStore.isRevoked(jwtService.extractJti(token))) {
                         var auth = new UsernamePasswordAuthenticationToken(u, null, u.getAuthorities());
                         auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(req));
                         SecurityContextHolder.getContext().setAuthentication(auth);

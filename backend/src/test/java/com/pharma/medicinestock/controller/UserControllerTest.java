@@ -7,6 +7,7 @@ import com.pharma.medicinestock.config.AppConfig;
 import com.pharma.medicinestock.config.SecurityConfig;
 import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.JwtService;
+import com.pharma.medicinestock.security.TokenRevocationStore;
 import com.pharma.medicinestock.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -40,6 +41,7 @@ class UserControllerTest {
     @Autowired ObjectMapper objectMapper;
     @MockBean UserService userService;
     @MockBean JwtService jwtService;
+    @MockBean TokenRevocationStore tokenRevocationStore;
     @MockBean UserRepository userRepository;
 
     private User adminUser;

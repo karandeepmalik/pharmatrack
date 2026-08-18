@@ -29,6 +29,10 @@ class JwtServiceTest {
         return new User(username, "password", Collections.emptyList());
     }
 
+    private UserDetails disabledUserDetails(String username) {
+        return new User(username, "password", false, true, true, true, Collections.emptyList());
+    }
+
     // ── generateToken ──────────────────────────────────────────────────────
 
     @Nested
@@ -120,6 +124,38 @@ class JwtServiceTest {
         @DisplayName("returns false for a single-segment (non-JWT) token")
         void returnsFalseForSingleSegmentToken() {
             assertThat(jwtService.isValid("notavalidjwtatall", userDetails("john.doe"))).isFalse();
+        }
+
+        @Test
+        @DisplayName("returns false for a since-deactivated user, even though the token itself hasn't expired")
+        void returnsFalseForDisabledUser() {
+            String token = jwtService.generateToken("john.doe");
+            assertThat(jwtService.isValid(token, disabledUserDetails("john.doe"))).isFalse();
+        }
+    }
+
+    // ── extractJti / extractExpiration ───────────────────────────────────────
+
+    @Nested
+    @DisplayName("extractJti / extractExpiration")
+    class ExtractJtiAndExpiration {
+
+        @Test
+        @DisplayName("each generated token gets a distinct jti")
+        void distinctJtiPerToken() {
+            String t1 = jwtService.generateToken("john.doe");
+            String t2 = jwtService.generateToken("john.doe");
+            assertThat(jwtService.extractJti(t1)).isNotBlank();
+            assertThat(jwtService.extractJti(t2)).isNotBlank();
+            assertThat(jwtService.extractJti(t1)).isNotEqualTo(jwtService.extractJti(t2));
+        }
+
+        @Test
+        @DisplayName("extractExpiration returns a time roughly expirationMs in the future")
+        void extractExpirationIsInTheFuture() {
+            String token = jwtService.generateToken("john.doe");
+            long delta = jwtService.extractExpiration(token).getTime() - System.currentTimeMillis();
+            assertThat(delta).isPositive().isLessThanOrEqualTo(EXPIRATION_MS);
         }
     }
 

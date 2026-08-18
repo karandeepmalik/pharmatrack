@@ -5,6 +5,7 @@ import com.pharma.medicinestock.config.SecurityConfig;
 import com.pharma.medicinestock.dto.TelemetryEvent;
 import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.JwtService;
+import com.pharma.medicinestock.security.TokenRevocationStore;
 import com.pharma.medicinestock.service.TelemetryService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -31,6 +32,7 @@ class TelemetryControllerTest {
     @Autowired MockMvc mockMvc;
     @MockBean  TelemetryService telemetryService;
     @MockBean  JwtService jwtService;
+    @MockBean  TokenRevocationStore tokenRevocationStore;
     @MockBean  UserRepository userRepository;
 
     private static final String VALID_BODY =

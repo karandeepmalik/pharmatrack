@@ -159,6 +159,41 @@ async function run() {
     assert(r.data.role === 'USER', `Got role: ${r.data.role}`);
   });
 
+  // ── Logout / Token Revocation ────────────────────────────────────────
+  // Uses its own independently-logged-in token throughout — never userToken, which the rest
+  // of this suite depends on staying valid.
+  console.log('\n-- Logout / Token Revocation');
+  await test('A token still works before logout', async () => {
+    const loginR = await apiPost(`${API}/auth/login`, { username: 'john.doe', password: 'User@123' });
+    const r = await apiGet(`${API}/users/me`, loginR.data.token);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+  });
+  await test('Logout revokes the token — it stops working immediately, before natural expiry', async () => {
+    const loginR = await apiPost(`${API}/auth/login`, { username: 'john.doe', password: 'User@123' });
+    const token = loginR.data.token;
+
+    const logoutR = await apiPost(`${API}/auth/logout`, {}, token);
+    assert(logoutR.status === 204, `Expected 204, got ${logoutR.status}`);
+
+    const r = await apiGet(`${API}/users/me`, token);
+    assert(r.status === 401, `Expected 401 for a logged-out token, got ${r.status}`);
+  });
+  await test('Logout with no token present still returns 204 (nothing to revoke)', async () => {
+    const r = await apiPost(`${API}/auth/logout`, {}, null);
+    assert(r.status === 204, `Expected 204, got ${r.status}`);
+  });
+  await test('Other tokens for the same user are unaffected by one token being logged out', async () => {
+    const loginR1 = await apiPost(`${API}/auth/login`, { username: 'john.doe', password: 'User@123' });
+    const loginR2 = await apiPost(`${API}/auth/login`, { username: 'john.doe', password: 'User@123' });
+
+    await apiPost(`${API}/auth/logout`, {}, loginR1.data.token);
+
+    const r1 = await apiGet(`${API}/users/me`, loginR1.data.token);
+    assert(r1.status === 401, `Expected the logged-out token to be rejected, got ${r1.status}`);
+    const r2 = await apiGet(`${API}/users/me`, loginR2.data.token);
+    assert(r2.status === 200, `Expected the still-independent second token to keep working, got ${r2.status}`);
+  });
+
   // ── Invalid credentials ───────────────────────────────────────────────
   console.log('\n-- Invalid Credentials');
   await test('Wrong password returns 401', async () => {
@@ -771,10 +806,12 @@ async function run() {
     assert(r.data.username === testUsername, `Got: ${r.data.username}`);
     createdUserId = r.data.id;
   });
+  let createdUserToken;
   await test('Newly created user can log in', async () => {
     const r = await apiPost(`${API}/auth/login`, { username: testUsername, password: 'TestPass1!' });
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     assert(r.data.token && r.data.token.length > 20, 'Expected valid token');
+    createdUserToken = r.data.token;
   });
   await test('Admin cannot create user with duplicate username', async () => {
     const r = await apiPost(`${API}/users`, {
@@ -799,6 +836,19 @@ async function run() {
   await test('Deactivated user cannot log in', async () => {
     const r = await apiPost(`${API}/auth/login`, { username: testUsername, password: 'TestPass1!' });
     assert(r.status === 401, `Expected 401 for deactivated user, got ${r.status}`);
+  });
+  await test("A token issued before deactivation stops working immediately, not just at natural expiry", async () => {
+    assert(createdUserToken, 'No createdUserToken — login test must have passed');
+    const r = await apiGet(`${API}/users/me`, createdUserToken);
+    assert(r.status === 401, `Expected 401 for a deactivated user's still-unexpired token, got ${r.status}`);
+  });
+  await test('Reactivating the user makes the SAME still-unexpired token work again (no re-login needed)', async () => {
+    const toggleR = await apiPost(`${API}/users/${createdUserId}/toggle`, {}, adminToken);
+    assert(toggleR.status === 200 && toggleR.data.active === true, `Expected reactivation, got ${JSON.stringify(toggleR.data)}`);
+
+    const r = await apiGet(`${API}/users/me`, createdUserToken);
+    assert(r.status === 200, `Expected 200 after reactivation, got ${r.status}`);
+    assert(r.data.username === testUsername, `Expected ${testUsername}, got ${r.data.username}`);
   });
 
   // ── Admin: Change User Password ───────────────────────────────────────
