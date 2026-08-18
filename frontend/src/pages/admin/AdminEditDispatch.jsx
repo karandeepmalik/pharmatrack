@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
+import { medicineStockTypeLabel } from '../../constants';
+import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const weekAgoStr = () => {
@@ -168,8 +170,10 @@ export default function AdminEditDispatch() {
                                         <th>User</th>
                                         <th>Medicine</th>
                                         <th>Qty</th>
+                                        <th>Stock Type</th>
                                         <th>Status</th>
                                         <th>Notes</th>
+                                        <th>Screenshot</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -185,6 +189,11 @@ export default function AdminEditDispatch() {
                                                 <td>{tx.submittedByUsername}</td>
                                                 <td>{tx.medicineName}<br /><small>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</small></td>
                                                 <td>{Number(tx.quantity).toFixed(1)}</td>
+                                                <td>
+                                                    <span className={`status-badge ${tx.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
+                                                        {medicineStockTypeLabel(tx.medicineStockType)}
+                                                    </span>
+                                                </td>
                                                 <td>{statusBadge(tx.status)}</td>
                                                 <td>
                                                     {edit.active ? (
@@ -219,6 +228,12 @@ export default function AdminEditDispatch() {
                                                     ) : (
                                                         tx.notes || '—'
                                                     )}
+                                                </td>
+                                                <td>
+                                                    <PaymentScreenshotViewer
+                                                        screenshots={tx.screenshots}
+                                                        transactionId={tx.id}
+                                                    />
                                                 </td>
                                                 <td className="actions-cell">
                                                     {del.confirming ? (
