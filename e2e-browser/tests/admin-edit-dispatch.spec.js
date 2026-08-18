@@ -76,7 +76,7 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 });
 
     const firstRow = page.getByRole('row').nth(1);
-    await firstRow.getByRole('button', { name: /edit notes/i }).click();
+    await firstRow.getByRole('button', { name: /^edit$/i }).click();
     const newNote = `Edited by Playwright ${Date.now()}`;
     const textarea = firstRow.getByRole('textbox', { name: /edit notes/i });
     await textarea.fill(newNote);
@@ -96,12 +96,69 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     // Column order: Date, User, Medicine, Qty, Stock Type, Status, Notes, Screenshot, Actions —
     // Notes is index 6, not 5, since the Stock Type column was added before it.
     const originalNote = await firstRow.locator('td').nth(6).innerText();
-    await firstRow.getByRole('button', { name: /edit notes/i }).click();
+    await firstRow.getByRole('button', { name: /^edit$/i }).click();
     await firstRow.getByRole('textbox', { name: /edit notes/i }).fill('This should not be saved');
     await firstRow.getByRole('button', { name: /^cancel$/i }).click();
 
     await expect(firstRow.getByRole('textbox', { name: /edit notes/i })).not.toBeVisible();
     await expect(firstRow.getByText(originalNote, { exact: true })).toBeVisible();
+  });
+
+  test('editing quantity, stock type, and screenshot together persists all three after save', async ({ page }) => {
+    test.setTimeout(60000);
+    const note = `Full-field edit test ${Date.now()}`;
+
+    await loginAsUser(page, 'john');
+    await page.goto('/user/submit');
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption({ index: 1 });
+    await page.locator('#spec-select').selectOption({ index: 1 });
+    await page.locator('#quantity-input').fill('0.1');
+    await page.locator('#notes-input').fill(note);
+    await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+    await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/submitted successfully/i, { timeout: 10000 });
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/dispatch-records');
+    await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('button', { name: /^search$/i }).click();
+
+    const row = page.getByRole('row', { name: new RegExp(note) });
+    await expect(row).toBeVisible({ timeout: 10000 });
+    // Starts out on the user's own regular allocation.
+    await expect(row.getByText('Regular Stock')).toBeVisible();
+
+    await row.getByRole('button', { name: /^edit$/i }).click();
+    await row.getByRole('spinbutton', { name: /edit quantity/i }).fill('0.2');
+    await row.getByRole('combobox', { name: /edit stock type/i }).selectOption('ADMIN_MEDICINE_STOCK');
+    await row.getByLabel(/replace screenshots/i).setInputFiles(PAYMENT_SCREENSHOT);
+    const editedNote = `${note} — corrected`;
+    await row.getByRole('textbox', { name: /edit notes/i }).fill(editedNote);
+    await row.getByRole('button', { name: /^save$/i }).click();
+
+    await expect(row.getByText(editedNote)).toBeVisible({ timeout: 10000 });
+    await expect(row.locator('td').nth(3)).toHaveText('0.2');
+    await expect(row.getByText('Admin Stock')).toBeVisible();
+    await expect(row.getByRole('button', { name: /view payment screenshot/i })).toBeVisible();
+  });
+
+  test('cancelling an edit discards quantity and stock type changes too', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/admin/dispatch-records');
+    await page.locator('#from-date').fill('2020-01-01');
+    await page.getByRole('button', { name: /^search$/i }).click();
+    await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 });
+
+    const firstRow = page.getByRole('row').nth(1);
+    const originalQty = await firstRow.locator('td').nth(3).innerText();
+
+    await firstRow.getByRole('button', { name: /^edit$/i }).click();
+    await firstRow.getByRole('spinbutton', { name: /edit quantity/i }).fill('999');
+    await firstRow.getByRole('button', { name: /^cancel$/i }).click();
+
+    await expect(firstRow.getByRole('spinbutton', { name: /edit quantity/i })).not.toBeVisible();
+    await expect(firstRow.locator('td').nth(3)).toHaveText(originalQty);
   });
 
   test('results table shows Stock Type and a viewable screenshot thumbnail for a fresh dispatch', async ({ page }) => {

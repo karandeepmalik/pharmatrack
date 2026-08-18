@@ -676,46 +676,84 @@ class TransactionControllerTest {
     // ── PATCH /api/transactions/{id} ──────────────────────────────────
 
     @Nested
-    @DisplayName("PATCH /api/transactions/{id} — admin update notes")
-    class UpdateNotes {
+    @DisplayName("PATCH /api/transactions/{id} — admin edit dispatch record")
+    class UpdateTransaction {
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("admin updates notes — returns 200 with updated response")
-        void updateNotes_admin_200() throws Exception {
+        @DisplayName("admin updates notes only — returns 200 with updated response")
+        void updateTransaction_notesOnly_200() throws Exception {
             sampleResponse.setNotes("Updated dispatch note for this record");
-            when(transactionService.updateNotes(eq(1L), any())).thenReturn(sampleResponse);
+            when(transactionService.updateTransaction(eq(1L), eq("Updated dispatch note for this record"),
+                    isNull(), isNull(), anyList())).thenReturn(sampleResponse);
 
-            mockMvc.perform(patch("/api/transactions/1")
-                    .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"notes\": \"Updated dispatch note for this record\"}"))
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "Updated dispatch note for this record")
+                    .with(csrf()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.notes").value("Updated dispatch note for this record"));
         }
 
         @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("admin updates quantity and stock type — passes both through to the service")
+        void updateTransaction_quantityAndStockType_200() throws Exception {
+            when(transactionService.updateTransaction(eq(1L), eq("Correcting quantity and stock type"),
+                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), anyList())).thenReturn(sampleResponse);
+
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "Correcting quantity and stock type")
+                    .param("quantity", "8")
+                    .param("medicineStockType", "ADMIN_MEDICINE_STOCK")
+                    .with(csrf()))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).updateTransaction(eq(1L), eq("Correcting quantity and stock type"),
+                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), anyList());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("admin replaces the screenshot — encoded and passed through to the service")
+        void updateTransaction_replaceScreenshot_200() throws Exception {
+            byte[] pngBytes = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47};
+            MockMultipartFile screenshot = new MockMultipartFile(
+                    "screenshots", "payment.png", "image/png", pngBytes);
+            String expectedB64 = Base64.getEncoder().encodeToString(pngBytes);
+
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.<String[]>of(new String[]{expectedB64, "image/png"}));
+            when(transactionService.updateTransaction(eq(1L), eq("Replacing the wrong screenshot"),
+                    isNull(), isNull(), eq(List.<String[]>of(new String[]{expectedB64, "image/png"}))))
+                    .thenReturn(sampleResponse);
+
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .file(screenshot)
+                    .param("notes", "Replacing the wrong screenshot")
+                    .with(csrf()))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
         @WithMockUser(username = "john.doe", roles = "USER")
-        @DisplayName("USER role cannot update notes — returns 403")
-        void updateNotes_userRole_403() throws Exception {
-            mockMvc.perform(patch("/api/transactions/1")
-                    .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"notes\": \"some note here\"}"))
+        @DisplayName("USER role cannot update a dispatch record — returns 403")
+        void updateTransaction_userRole_403() throws Exception {
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "some note here")
+                    .with(csrf()))
                     .andExpect(status().isForbidden());
         }
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
         @DisplayName("invalid notes returns 400 from service validation")
-        void updateNotes_invalidNotes_400() throws Exception {
-            when(transactionService.updateNotes(eq(1L), any()))
+        void updateTransaction_invalidNotes_400() throws Exception {
+            when(transactionService.updateTransaction(eq(1L), eq("Hi"), isNull(), isNull(), anyList()))
                     .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
 
-            mockMvc.perform(patch("/api/transactions/1")
-                    .with(csrf())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"notes\": \"Hi\"}"))
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "Hi")
+                    .with(csrf()))
                     .andExpect(status().isBadRequest());
         }
     }

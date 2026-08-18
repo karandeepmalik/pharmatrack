@@ -22,7 +22,7 @@ export default function AdminEditDispatch() {
     const [loading, setLoading]         = useState(false);
     const [error, setError]             = useState('');
 
-    // Inline edit state: { [id]: { active: bool, notes: string, saving: bool, error: string } }
+    // Inline edit state: { [id]: { active, notes, quantity, medicineStockType, screenshotFiles, saving, error } }
     const [editState, setEditState]     = useState({});
     // Inline delete state: { [id]: { confirming: bool, deleting: bool, error: string } }
     const [deleteState, setDeleteState] = useState({});
@@ -47,12 +47,20 @@ export default function AdminEditDispatch() {
         }
     };
 
-    // ── Edit notes ─────────────────────────────────────────────────────
+    // ── Edit dispatch record ─────────────────────────────────────────────
 
     const startEdit = (tx) => {
         setEditState(prev => ({
             ...prev,
-            [tx.id]: { active: true, notes: tx.notes || '', saving: false, error: '' },
+            [tx.id]: {
+                active: true,
+                notes: tx.notes || '',
+                quantity: String(tx.quantity ?? ''),
+                medicineStockType: tx.medicineStockType || 'REGULAR_MEDICINE_STOCK',
+                screenshotFiles: [],
+                saving: false,
+                error: '',
+            },
         }));
     };
 
@@ -60,19 +68,24 @@ export default function AdminEditDispatch() {
         setEditState(prev => ({ ...prev, [id]: { ...prev[id], active: false } }));
     };
 
-    const handleNotesChange = (id, value) => {
-        setEditState(prev => ({ ...prev, [id]: { ...prev[id], notes: value } }));
+    const handleFieldChange = (id, field, value) => {
+        setEditState(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
     };
 
-    const saveNotes = async (id) => {
-        const notes = editState[id]?.notes ?? '';
+    const saveEdit = async (id) => {
+        const edit = editState[id] || {};
         setEditState(prev => ({ ...prev, [id]: { ...prev[id], saving: true, error: '' } }));
         try {
-            const res = await api.updateTransaction(id, { notes });
-            setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, notes: res.data.notes } : tx));
-            setEditState(prev => ({ ...prev, [id]: { active: false, notes: res.data.notes, saving: false, error: '' } }));
+            const res = await api.updateTransaction(id, {
+                notes: edit.notes ?? '',
+                quantity: edit.quantity === '' ? null : edit.quantity,
+                medicineStockType: edit.medicineStockType,
+                screenshotFiles: edit.screenshotFiles,
+            });
+            setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, ...res.data } : tx));
+            setEditState(prev => ({ ...prev, [id]: { active: false, saving: false, error: '' } }));
         } catch (err) {
-            const msg = err.response?.data?.message || 'Failed to save notes.';
+            const msg = err.response?.data?.message || 'Failed to save changes.';
             setEditState(prev => ({ ...prev, [id]: { ...prev[id], saving: false, error: msg } }));
         }
     };
@@ -188,11 +201,35 @@ export default function AdminEditDispatch() {
                                                     : '—'}</td>
                                                 <td>{tx.submittedByUsername}</td>
                                                 <td>{tx.medicineName}<br /><small>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</small></td>
-                                                <td>{Number(tx.quantity).toFixed(1)}</td>
                                                 <td>
-                                                    <span className={`status-badge ${tx.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
-                                                        {medicineStockTypeLabel(tx.medicineStockType)}
-                                                    </span>
+                                                    {edit.active ? (
+                                                        <input
+                                                            aria-label="Edit quantity"
+                                                            type="number"
+                                                            min="0.1"
+                                                            step="0.1"
+                                                            value={edit.quantity}
+                                                            onChange={e => handleFieldChange(tx.id, 'quantity', e.target.value)}
+                                                            style={{ width: '5rem' }}
+                                                        />
+                                                    ) : (
+                                                        Number(tx.quantity).toFixed(1)
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {edit.active ? (
+                                                        <select
+                                                            aria-label="Edit stock type"
+                                                            value={edit.medicineStockType}
+                                                            onChange={e => handleFieldChange(tx.id, 'medicineStockType', e.target.value)}>
+                                                            <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
+                                                            <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className={`status-badge ${tx.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
+                                                            {medicineStockTypeLabel(tx.medicineStockType)}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td>{statusBadge(tx.status)}</td>
                                                 <td>
@@ -201,7 +238,7 @@ export default function AdminEditDispatch() {
                                                             <textarea
                                                                 aria-label="Edit notes"
                                                                 value={edit.notes}
-                                                                onChange={e => handleNotesChange(tx.id, e.target.value)}
+                                                                onChange={e => handleFieldChange(tx.id, 'notes', e.target.value)}
                                                                 rows={3}
                                                                 style={{ width: '100%', resize: 'vertical' }}
                                                             />
@@ -213,7 +250,7 @@ export default function AdminEditDispatch() {
                                                                     type="button"
                                                                     className="btn btn-primary btn-sm"
                                                                     disabled={edit.saving}
-                                                                    onClick={() => saveNotes(tx.id)}>
+                                                                    onClick={() => saveEdit(tx.id)}>
                                                                     {edit.saving ? 'Saving…' : 'Save'}
                                                                 </button>
                                                                 <button
@@ -230,10 +267,25 @@ export default function AdminEditDispatch() {
                                                     )}
                                                 </td>
                                                 <td>
-                                                    <PaymentScreenshotViewer
-                                                        screenshots={tx.screenshots}
-                                                        transactionId={tx.id}
-                                                    />
+                                                    {edit.active ? (
+                                                        <div>
+                                                            <input
+                                                                aria-label="Replace screenshots"
+                                                                type="file"
+                                                                accept="image/*"
+                                                                multiple
+                                                                onChange={e => handleFieldChange(tx.id, 'screenshotFiles', Array.from(e.target.files))}
+                                                            />
+                                                            <p style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                                                                Leave empty to keep existing screenshot(s).
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        <PaymentScreenshotViewer
+                                                            screenshots={tx.screenshots}
+                                                            transactionId={tx.id}
+                                                        />
+                                                    )}
                                                 </td>
                                                 <td className="actions-cell">
                                                     {del.confirming ? (
@@ -266,7 +318,7 @@ export default function AdminEditDispatch() {
                                                                     type="button"
                                                                     className="btn btn-secondary btn-sm"
                                                                     onClick={() => startEdit(tx)}>
-                                                                    Edit Notes
+                                                                    Edit
                                                                 </button>
                                                             )}
                                                             <button
