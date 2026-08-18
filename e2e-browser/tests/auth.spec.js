@@ -78,4 +78,30 @@ test.describe('Sign out', () => {
     await page.goto('/admin/dashboard');
     await expect(page).toHaveURL(/\/login/);
   });
+
+  // Regression guard for the "clear localStorage before firing the logout request" ordering:
+  // if the token isn't captured before it's cleared, the backend never sees it and the token
+  // stays valid server-side even after Sign Out. Prove real server-side revocation (not just a
+  // client-side redirect) by capturing the token before signing out, then using that exact same
+  // token in a direct API call afterward.
+  test('signing out revokes the token server-side, not just client-side', async ({ page, request }) => {
+    await loginAsAdmin(page);
+    const token = await page.evaluate(() => localStorage.getItem('token'));
+    expect(token).toBeTruthy();
+
+    // The revoke call is deliberately fire-and-forget (AuthContext.logout() doesn't await it,
+    // so Sign Out feels instant) — the URL changing to /login says nothing about whether that
+    // background request has actually reached the backend yet, so wait for it explicitly.
+    const logoutResponse = page.waitForResponse((res) => res.url().includes('/auth/logout'));
+    await page.getByRole('button', { name: /sign out/i }).click();
+    await logoutResponse;
+    await expect(page).toHaveURL(/\/login/);
+
+    // /api/ is proxied to the backend by the frontend's own nginx (see playwright.config.js),
+    // so this reaches the real backend through the same route the app itself uses.
+    const res = await request.get('/api/users/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status()).toBe(401);
+  });
 });

@@ -9,6 +9,7 @@ import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.InMemoryRateLimitCounter;
 import com.pharma.medicinestock.security.JwtService;
 import com.pharma.medicinestock.security.LoginRateLimiter;
+import com.pharma.medicinestock.security.TokenRevocationStore;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -37,6 +38,7 @@ class AuthControllerTest {
     @MockBean AuthenticationManager authenticationManager;
     @MockBean JwtService jwtService;
     @MockBean UserRepository userRepository;
+    @MockBean TokenRevocationStore tokenRevocationStore;
 
     private User activeUser;
 
@@ -354,7 +356,7 @@ class AuthControllerTest {
     class Logout {
 
         @Test
-        @DisplayName("returns 204, no Set-Cookie (stateless — nothing server-side to clear)")
+        @DisplayName("returns 204, no Set-Cookie (stateless — nothing server-side to clear via a cookie)")
         void returns204NoContent() throws Exception {
             mockMvc.perform(post("/api/auth/logout"))
                     .andExpect(status().isNoContent())
@@ -366,6 +368,42 @@ class AuthControllerTest {
         void logoutIsPublic() throws Exception {
             mockMvc.perform(post("/api/auth/logout"))
                     .andExpect(status().isNoContent());
+        }
+
+        @Test
+        @DisplayName("with no Authorization header, does not attempt to revoke anything")
+        void noTokenDoesNotRevoke() throws Exception {
+            mockMvc.perform(post("/api/auth/logout"))
+                    .andExpect(status().isNoContent());
+
+            verifyNoInteractions(tokenRevocationStore);
+        }
+
+        @Test
+        @DisplayName("with a Bearer token, revokes its jti for its remaining validity")
+        void revokesTokenJti() throws Exception {
+            when(jwtService.extractJti("valid-token")).thenReturn("jti-123");
+            when(jwtService.extractExpiration("valid-token"))
+                    .thenReturn(new java.util.Date(System.currentTimeMillis() + 60_000));
+
+            mockMvc.perform(post("/api/auth/logout")
+                            .header("Authorization", "Bearer valid-token"))
+                    .andExpect(status().isNoContent());
+
+            verify(tokenRevocationStore).revoke(eq("jti-123"), any());
+        }
+
+        @Test
+        @DisplayName("a malformed Bearer token still returns 204 and does not revoke anything")
+        void malformedTokenStillReturns204() throws Exception {
+            when(jwtService.extractExpiration("garbage"))
+                    .thenThrow(new io.jsonwebtoken.MalformedJwtException("bad token"));
+
+            mockMvc.perform(post("/api/auth/logout")
+                            .header("Authorization", "Bearer garbage"))
+                    .andExpect(status().isNoContent());
+
+            verifyNoInteractions(tokenRevocationStore);
         }
     }
 }

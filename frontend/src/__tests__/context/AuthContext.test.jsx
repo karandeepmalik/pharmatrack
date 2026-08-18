@@ -99,6 +99,24 @@ describe('AuthContext — logout', () => {
     expect(api.logout).toHaveBeenCalledTimes(1);
   });
 
+  // Regression: the request interceptor attaches the Authorization header from localStorage at
+  // request-send time. Since logout() clears localStorage before firing this call (for instant
+  // UI feedback), the token must be captured beforehand and passed explicitly — otherwise the
+  // backend receives no token and has nothing to revoke, silently defeating server-side logout.
+  test('passes the pre-logout token explicitly, since localStorage is already cleared by send time', () => {
+    api.logout.mockResolvedValue({});
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    act(() => {
+      result.current.login({ username: 'john.doe', fullName: 'John Doe', role: 'USER' }, 'jwt-token');
+    });
+    act(() => {
+      result.current.logout();
+    });
+
+    expect(api.logout).toHaveBeenCalledWith('jwt-token');
+  });
+
   test('a rejected logout API call does not throw or affect the already-cleared state', async () => {
     api.logout.mockRejectedValue(new Error('network error'));
     const { result } = renderHook(() => useAuth(), { wrapper });

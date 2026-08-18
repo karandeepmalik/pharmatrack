@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.UUID;
 @Service
 public class JwtService {
     @Value("${jwt.secret}") private String secret;
@@ -29,13 +30,21 @@ public class JwtService {
     }
 
     public String generateToken(String username){
-        return Jwts.builder().subject(username)
+        return Jwts.builder().subject(username).id(UUID.randomUUID().toString())
             .issuedAt(new Date()).expiration(new Date(System.currentTimeMillis()+expirationMs))
             .signWith(getKey(), Jwts.SIG.HS256).compact();
     }
     public String extractUsername(String token){ return getClaims(token).getSubject(); }
+    /** The token's unique {@code jti} claim — what {@link TokenRevocationStore} keys revocation on. */
+    public String extractJti(String token){ return getClaims(token).getId(); }
+    public Date extractExpiration(String token){ return getClaims(token).getExpiration(); }
+    // isEnabled() is checked here (not just relied on elsewhere) so a deactivated user's
+    // already-issued token stops working on their very next request, not just at natural
+    // expiry — UserDetails is freshly reloaded from the DB per-request by JwtAuthenticationFilter,
+    // so this reflects the current active flag, not a stale snapshot from login time.
     public boolean isValid(String token, UserDetails u){
-        try{ return extractUsername(token).equals(u.getUsername()) && !getClaims(token).getExpiration().before(new Date()); }
+        try{ return extractUsername(token).equals(u.getUsername()) && u.isEnabled()
+                && !getClaims(token).getExpiration().before(new Date()); }
         catch(JwtException e){ return false; }
     }
     public long getExpirationMs() { return expirationMs; }

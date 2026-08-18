@@ -6,6 +6,7 @@ import com.pharma.medicinestock.dto.ReportResponse;
 import com.pharma.medicinestock.dto.SalesGraphResponse;
 import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.JwtService;
+import com.pharma.medicinestock.security.TokenRevocationStore;
 import com.pharma.medicinestock.service.ReportService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -37,6 +38,7 @@ class ReportControllerTest {
     @Autowired MockMvc mockMvc;
     @MockBean ReportService reportService;
     @MockBean JwtService jwtService;
+    @MockBean TokenRevocationStore tokenRevocationStore;
     @MockBean UserRepository userRepository;
 
     private ReportResponse sampleReport(String type) {

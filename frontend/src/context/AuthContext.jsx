@@ -28,14 +28,20 @@ export function AuthProvider({children}){
     },[]);
     const logout=useCallback(()=>{
         // Clear local state first so the UI (ProtectedRoute reacting to `user`) responds
-        // instantly — the server-side call is a stateless no-op courtesy ping, not something the
-        // signed-out experience should ever block on. Previously this awaited apiLogout() before
-        // clearing state, so on slow/high-latency requests Sign Out visibly did nothing until
-        // the network round-trip finished.
+        // instantly — the server-side call revokes the token (TokenRevocationStore) but the
+        // signed-out experience should never block on that round-trip. Previously this awaited
+        // apiLogout() before clearing state, so on slow/high-latency requests Sign Out visibly
+        // did nothing until the network round-trip finished.
+        //
+        // The token must be read before it's removed: api.js's request interceptor attaches the
+        // Authorization header from localStorage at request-send time, so building this request
+        // after clearing localStorage would send it with no token at all, leaving the backend
+        // with nothing to revoke.
+        const token=localStorage.getItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('token');
         setUser(null);
-        apiLogout().catch(()=>{ /* fire-and-forget; nothing server-side depends on this succeeding */ });
+        apiLogout(token).catch(()=>{ /* fire-and-forget; nothing server-side depends on this succeeding */ });
     },[]);
     return <AuthContext.Provider value={{user,isAdmin,login,logout}}>{children}</AuthContext.Provider>;
 }

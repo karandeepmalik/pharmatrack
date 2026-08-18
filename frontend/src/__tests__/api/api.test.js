@@ -165,6 +165,31 @@ describe('api.js', () => {
     });
   });
 
+  // ── logout ────────────────────────────────────────────────────────
+
+  describe('logout', () => {
+    // The request interceptor reads the token from localStorage at request-send time, but
+    // AuthContext.logout() clears localStorage before calling this — so the token must be
+    // passed explicitly and sent via an override header, not relied on from localStorage.
+    test('with a token, sends it as an explicit Authorization header override', () => {
+      const { logout } = require('../../api/api');
+      mockPost.mockResolvedValue({});
+
+      logout('the-token');
+
+      expect(mockPost).toHaveBeenCalledWith('/auth/logout', {}, { headers: { Authorization: 'Bearer the-token' } });
+    });
+
+    test('with no token, sends the request with no header override', () => {
+      const { logout } = require('../../api/api');
+      mockPost.mockResolvedValue({});
+
+      logout();
+
+      expect(mockPost).toHaveBeenCalledWith('/auth/logout', {}, {});
+    });
+  });
+
   // ── submitTransaction — FormData ────────────────────────────────────
 
   describe('submitTransaction — FormData construction', () => {

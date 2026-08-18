@@ -8,6 +8,7 @@ import com.pharma.medicinestock.dto.PharmaCompanyResponse;
 import com.pharma.medicinestock.exception.ResourceNotFoundException;
 import com.pharma.medicinestock.repository.UserRepository;
 import com.pharma.medicinestock.security.JwtService;
+import com.pharma.medicinestock.security.TokenRevocationStore;
 import com.pharma.medicinestock.service.MedicineService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +39,7 @@ class MedicineControllerTest {
     @Autowired ObjectMapper objectMapper;
     @MockBean MedicineService medicineService;
     @MockBean JwtService jwtService;
+    @MockBean TokenRevocationStore tokenRevocationStore;
     @MockBean UserRepository userRepository;
 
     private PharmaCompanyResponse sampleCompany;

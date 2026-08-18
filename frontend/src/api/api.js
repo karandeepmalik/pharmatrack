@@ -35,7 +35,11 @@ api.interceptors.response.use(
 
 // ── Auth ───────────────────────────────────────────────────────────────
 export const login    = (credentials) => api.post('/auth/login', credentials);
-export const logout   = ()            => api.post('/auth/logout');
+// Takes the token explicitly rather than relying on the request interceptor to pick it up from
+// localStorage — AuthContext.logout() clears localStorage before firing this call (for instant
+// UI feedback), so by the time the interceptor would read it, it's already gone.
+export const logout   = (token) =>
+  api.post('/auth/logout', {}, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
 
 // ── Medicine stock — user ───────────────────────────────────────────────
 export const getAvailableMedicineStock = () => api.get('/medicine-stock/available');
