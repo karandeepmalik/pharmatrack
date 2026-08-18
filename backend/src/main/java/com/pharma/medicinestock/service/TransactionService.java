@@ -3,7 +3,6 @@ package com.pharma.medicinestock.service;
 import com.pharma.medicinestock.dto.ApprovalRequest;
 import com.pharma.medicinestock.dto.TransactionRequest;
 import com.pharma.medicinestock.dto.TransactionResponse;
-import com.pharma.medicinestock.dto.UpdateTransactionRequest;
 import com.pharma.medicinestock.entity.MedicineStock;
 import com.pharma.medicinestock.entity.Medicine;
 import com.pharma.medicinestock.entity.Transaction;
@@ -278,13 +277,92 @@ public class TransactionService {
         transactionRepository.delete(tx);
     }
 
+    /**
+     * Admin edit of a past dispatch record. Every field is correctable after the fact,
+     * including on an already-APPROVED record — {@code notes} is always required regardless
+     * of what else changed, since it's this endpoint's only audit trail for a quantity/stock-type
+     * change (unlike {@code /medicine-stock/adjust}, there's no separate ledger entry for it).
+     *
+     * @param quantity           null to leave unchanged
+     * @param medicineStockType  null to leave unchanged
+     * @param encodedScreenshots empty to leave existing screenshots unchanged; non-empty fully
+     *                           replaces them (already compressed/encoded by the caller)
+     */
     @Transactional
-    public TransactionResponse updateNotes(Long id, UpdateTransactionRequest req) {
+    public TransactionResponse updateTransaction(Long id, String notes, BigDecimal quantity,
+                                                   String medicineStockType,
+                                                   List<String[]> encodedScreenshots) {
         Transaction tx = transactionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction", id));
-        validateNotes(req.getNotes());
-        tx.setNotes(req.getNotes().trim());
+
+        validateNotes(notes);
+        tx.setNotes(notes.trim());
+
+        BigDecimal oldQuantity = tx.getQuantity();
+        MedicineStock.MedicineStockType oldType = tx.getMedicineStockType() != null
+                ? tx.getMedicineStockType() : MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK;
+
+        if (quantity != null) validateQuantity(quantity);
+        BigDecimal newQuantity = quantity != null ? QuantityUtil.round(quantity) : oldQuantity;
+        MedicineStock.MedicineStockType newType = medicineStockType != null
+                ? resolveMedicineStockType(medicineStockType) : oldType;
+
+        // A PENDING or APPROVED transaction still has an "active" stock deduction from submission
+        // time (see submit()) that a quantity/stock-type change must stay consistent with — a
+        // REJECTED transaction already had that deduction reversed, so editing one afterward is a
+        // pure paper-record correction with nothing left to reconcile.
+        boolean hasActiveDeduction = tx.getStatus() == TransactionStatus.PENDING
+                || tx.getStatus() == TransactionStatus.APPROVED;
+        boolean quantityOrTypeChanged = newQuantity.compareTo(oldQuantity) != 0 || newType != oldType;
+        if (hasActiveDeduction && quantityOrTypeChanged) {
+            reconcileStockForEdit(tx, oldQuantity, oldType, newQuantity, newType);
+        }
+
+        tx.setQuantity(newQuantity);
+        tx.setMedicineStockType(newType);
+
+        if (!encodedScreenshots.isEmpty()) {
+            tx.getScreenshots().clear();
+            for (int i = 0; i < encodedScreenshots.size(); i++) {
+                tx.getScreenshots().add(TransactionScreenshot.builder()
+                        .transaction(tx)
+                        .data(encodedScreenshots.get(i)[0])
+                        .mimeType(encodedScreenshots.get(i)[1])
+                        .displayOrder(i)
+                        .build());
+            }
+        }
+
         return transactionMapper.toResponse(transactionRepository.save(tx));
+    }
+
+    /**
+     * Keeps each affected MedicineStock.quantity consistent with the edited transaction, the
+     * same way approve()'s reject branch / deleteTransaction() / deleteOwnPending() already do
+     * when a transaction's effect on stock needs to be undone or replayed — this is that same
+     * bookkeeping, just for a quantity/stock-type correction instead of a status change.
+     */
+    private void reconcileStockForEdit(Transaction tx, BigDecimal oldQty, MedicineStock.MedicineStockType oldType,
+                                        BigDecimal newQty, MedicineStock.MedicineStockType newType) {
+        Long userId = tx.getSubmittedBy().getId();
+        Long medicineId = tx.getMedicine().getId();
+        if (oldType == newType) {
+            MedicineStock inv = findMedicineStockByType(userId, medicineId, oldType);
+            inv.setQuantity(inv.getQuantity().add(oldQty).subtract(newQty));
+            medicineStockRepository.save(inv);
+        } else {
+            MedicineStock oldInv = findMedicineStockByType(userId, medicineId, oldType);
+            oldInv.setQuantity(oldInv.getQuantity().add(oldQty));
+            medicineStockRepository.save(oldInv);
+
+            MedicineStock newInv = medicineStockRepository
+                    .findByUserIdAndMedicineIdAndMedicineStockType(userId, medicineId, newType)
+                    .orElseGet(() -> MedicineStock.builder()
+                            .user(tx.getSubmittedBy()).medicine(tx.getMedicine())
+                            .quantity(BigDecimal.ZERO).medicineStockType(newType).build());
+            newInv.setQuantity(newInv.getQuantity().subtract(newQty));
+            medicineStockRepository.save(newInv);
+        }
     }
 
     private void validateNotes(String notes) {

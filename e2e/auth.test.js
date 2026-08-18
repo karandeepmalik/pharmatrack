@@ -82,6 +82,23 @@ async function apiPostForm(url, fields, token) {
   return { status: res.status, data };
 }
 
+async function apiPatchForm(url, fields, token) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) {
+    if (Array.isArray(v)) {
+      for (const item of v) form.append(k, item);
+    } else {
+      form.append(k, v);
+    }
+  }
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { method: 'PATCH', headers, body: form });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  return { status: res.status, data };
+}
+
 // A real, decodable 2x2 PNG (verified against the backend's own ImageIO decoder before
 // use) — the backend now verifies upload magic bytes AND that the image actually decodes
 // (not just the Content-Type header), so a fake text payload declaring itself as image/png
@@ -1690,6 +1707,222 @@ async function run() {
       quantity: 5,
       note: 'E2E teardown — removing admin-stock bucket allocation for medicineStockType test',
       medicineStockType: 'ADMIN_MEDICINE_STOCK',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  // ── PATCH /transactions/{id} — admin edit dispatch record (quantity/type/screenshots) ──
+  // "Modify or Delete a Medicine Dispatch Record" was extended beyond notes-only editing to
+  // let an admin correct quantity, stock type, and screenshots on a past record — including
+  // one that's already APPROVED. Since editing quantity/type retroactively changes reconstructed
+  // stock, this must run against a real Postgres instance to catch reconciliation bugs a mocked
+  // unit test can't: the get-or-create path for a stock-type bucket the user has never held, and
+  // the exact net delta across two consecutive edits.
+
+  let editRegularBefore;
+  await test('[SETUP] Record john.doe REGULAR_MEDICINE_STOCK level before edit-dispatch tests', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    editRegularBefore = inv ? inv.quantity : 0;
+  });
+
+  await test('[SETUP] Allocate 5 REGULAR_MEDICINE_STOCK units for edit-dispatch tests', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 5,
+      note: 'E2E setup — allocating stock for admin edit-dispatch test',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  let editTxId;
+  await test('User submits a 5-unit REGULAR dispatch for the edit test', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '5',
+      notes: 'E2E admin-edit-dispatch test dispatch',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('EditA')],
+    }, userToken);
+    assert(r.status === 201, `Submit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    editTxId = r.data.id;
+  });
+
+  await test('Admin approves the dispatch (edit must still be allowed after approval)', async () => {
+    const r = await apiPost(`${API}/transactions/${editTxId}/approve`, { approved: true }, adminToken);
+    assert(r.status === 200, `Approve failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.status === 'APPROVED', `Expected APPROVED, got ${r.data.status}`);
+  });
+
+  await test('PATCH without notes returns 400 — notes are mandatory even for quantity-only edits', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, { quantity: '3' }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('USER role cannot edit a dispatch record (401/403)', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`,
+      { notes: 'Trying to edit as a non-admin user' }, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  await test('Admin edits quantity 5 -> 3 on an APPROVED record and replaces the screenshot set', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Correcting dispatched quantity after recount',
+      quantity: '3',
+      screenshots: [makeFakePng('EditB'), makeFakePng('EditC')],
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.quantity === 3 || Number(r.data.quantity) === 3, `Expected quantity 3, got ${r.data.quantity}`);
+    assert(r.data.notes === 'Correcting dispatched quantity after recount', `Notes not updated: ${r.data.notes}`);
+    assert(r.data.status === 'APPROVED', `Status should stay APPROVED, got ${r.data.status}`);
+    assert(Array.isArray(r.data.screenshots) && r.data.screenshots.length === 2,
+      `Expected the screenshot set replaced with exactly 2 entries, got ${r.data.screenshots?.length}`);
+  });
+
+  await test('Quantity edit (5 -> 3) credits back the difference on real Postgres', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const current = inv ? inv.quantity : 0;
+    // editRegularBefore + 5 (setup) - 5 (original submit) + 2 (credited back by the 5->3 edit)
+    const expected = editRegularBefore + 2;
+    assert(Math.abs(current - expected) < 0.001, `Expected ${expected}, got ${current}`);
+  });
+
+  await test('Admin moves the record from REGULAR to ADMIN_MEDICINE_STOCK (get-or-create bucket)', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'This was actually dispatched from admin stock, correcting',
+      medicineStockType: 'ADMIN_MEDICINE_STOCK',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.medicineStockType === 'ADMIN_MEDICINE_STOCK',
+      `Expected ADMIN_MEDICINE_STOCK, got ${r.data.medicineStockType}`);
+  });
+
+  await test('Stock-type change credits REGULAR back in full and debits ADMIN_MEDICINE_STOCK', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const regular = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const admin = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'ADMIN_MEDICINE_STOCK');
+    const regularQty = regular ? regular.quantity : 0;
+    const adminQty = admin ? admin.quantity : 0;
+    // The tx no longer draws from REGULAR at all, so it's back to editRegularBefore + 5 (setup ADD).
+    assert(Math.abs(regularQty - (editRegularBefore + 5)) < 0.001,
+      `Expected REGULAR at ${editRegularBefore + 5}, got ${regularQty}`);
+    // ADMIN_MEDICINE_STOCK never existed for this (user, medicine) pair before — debited by 3.
+    assert(Math.abs(adminQty - (-3)) < 0.001, `Expected ADMIN_MEDICINE_STOCK at -3, got ${adminQty}`);
+  });
+
+  await test('[TEARDOWN] Admin deletes the edit-test dispatch record (credits back ADMIN_MEDICINE_STOCK)', async () => {
+    const r = await apiDelete(`${API}/transactions/${editTxId}`, adminToken);
+    assert(r.status === 204, `Delete failed: ${r.status}`);
+  });
+
+  await test('[TEARDOWN] Removes the leftover REGULAR_MEDICINE_STOCK allocation from edit-dispatch setup', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 5,
+      note: 'E2E teardown — removing REGULAR bucket allocation for admin edit-dispatch test',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[VERIFY] Both buckets restored to their pre-edit-test levels', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const regular = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const admin = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'ADMIN_MEDICINE_STOCK');
+    const regularQty = regular ? regular.quantity : 0;
+    const adminQty = admin ? admin.quantity : 0;
+    assert(Math.abs(regularQty - editRegularBefore) < 0.001, `Expected REGULAR at ${editRegularBefore}, got ${regularQty}`);
+    assert(Math.abs(adminQty - 0) < 0.001, `Expected ADMIN_MEDICINE_STOCK at 0, got ${adminQty}`);
+  });
+
+  // A REJECTED transaction has already had its stock effect reversed at reject time — editing
+  // its quantity afterward must NOT touch stock again (that would double-count the reversal).
+  let rejectedEditRegularBefore;
+  await test('[SETUP] Record REGULAR_MEDICINE_STOCK level before REJECTED-edit test', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    rejectedEditRegularBefore = inv ? inv.quantity : 0;
+  });
+
+  await test('[SETUP] Allocate 5 REGULAR_MEDICINE_STOCK units for REJECTED-edit test', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 5,
+      note: 'E2E setup — allocating stock for REJECTED-edit test',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  let rejectedTxId;
+  await test('User submits a 2-unit dispatch that will be rejected', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '2',
+      notes: 'E2E REJECTED-edit test dispatch',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('RejA')],
+    }, userToken);
+    assert(r.status === 201, `Submit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    rejectedTxId = r.data.id;
+  });
+
+  let regularAfterReject;
+  await test('Admin rejects the dispatch (stock already restored at reject time)', async () => {
+    const r = await apiPost(`${API}/transactions/${rejectedTxId}/approve`, { approved: false }, adminToken);
+    assert(r.status === 200, `Reject failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.status === 'REJECTED', `Expected REJECTED, got ${r.data.status}`);
+
+    const stockR = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = stockR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    regularAfterReject = inv ? inv.quantity : 0;
+    // The 5-unit SETUP ADD is still outstanding (not undone until teardown below), so this
+    // is rejectedEditRegularBefore + 5, not rejectedEditRegularBefore itself.
+    assert(Math.abs(regularAfterReject - (rejectedEditRegularBefore + 5)) < 0.001,
+      `Expected ${rejectedEditRegularBefore + 5} after reject restored the 2-unit reservation, got ${regularAfterReject}`);
+  });
+
+  await test('Editing quantity on a REJECTED record updates the record but does NOT touch stock again', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${rejectedTxId}`, {
+      notes: 'Correcting the record after rejection, for audit purposes',
+      quantity: '9',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.quantity === 9 || Number(r.data.quantity) === 9, `Expected quantity 9, got ${r.data.quantity}`);
+
+    const stockR = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = stockR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const current = inv ? inv.quantity : 0;
+    assert(Math.abs(current - regularAfterReject) < 0.001,
+      `Editing a REJECTED record's quantity must not move stock — expected ${regularAfterReject}, got ${current}`);
+  });
+
+  await test('[TEARDOWN] Deletes the REJECTED edit-test dispatch record', async () => {
+    const r = await apiDelete(`${API}/transactions/${rejectedTxId}`, adminToken);
+    assert(r.status === 204, `Delete failed: ${r.status}`);
+  });
+
+  await test('[TEARDOWN] Removes the leftover REGULAR_MEDICINE_STOCK allocation from REJECTED-edit setup', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 5,
+      note: 'E2E teardown — removing REGULAR bucket allocation for REJECTED-edit test',
     }, adminToken);
     assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
   });

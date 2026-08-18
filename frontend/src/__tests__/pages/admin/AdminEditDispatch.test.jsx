@@ -212,36 +212,50 @@ describe('AdminEditDispatch — screenshot column', () => {
   });
 });
 
-// ── Edit notes ──────────────────────────────────────────────────────────
+// ── Edit dispatch record ──────────────────────────────────────────────────
 
-describe('AdminEditDispatch — edit notes', () => {
-  test('clicking Edit Notes shows textarea with current notes', async () => {
+describe('AdminEditDispatch — edit', () => {
+  test('clicking Edit shows notes textarea with current notes', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
 
     expect(screen.getByRole('textbox', { name: /edit notes/i })).toHaveValue('Clinic B dispatch today');
   });
 
-  test('clicking Cancel hides textarea and restores original notes', async () => {
+  test('clicking Edit shows quantity and stock type editable with current values', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ quantity: 5, medicineStockType: 'REGULAR_MEDICINE_STOCK' })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByRole('spinbutton', { name: /edit quantity/i })).toHaveValue(5);
+    expect(screen.getByRole('combobox', { name: /edit stock type/i })).toHaveValue('REGULAR_MEDICINE_STOCK');
+    expect(screen.getByLabelText(/replace screenshots/i)).toBeInTheDocument();
+  });
+
+  test('clicking Cancel hides the edit form and restores original notes', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
     await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
     expect(screen.queryByRole('textbox', { name: /edit notes/i })).not.toBeInTheDocument();
     expect(screen.getByText('Clinic B dispatch today')).toBeInTheDocument();
   });
 
-  test('saving notes calls updateTransaction and updates row', async () => {
+  test('saving notes-only edit calls updateTransaction and updates row', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     api.updateTransaction.mockResolvedValue({
       data: { ...makeTx(), notes: 'Updated note here today' },
@@ -251,17 +265,52 @@ describe('AdminEditDispatch — edit notes', () => {
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
     const textarea = screen.getByRole('textbox', { name: /edit notes/i });
     await userEvent.clear(textarea);
     await userEvent.type(textarea, 'Updated note here today');
     await userEvent.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() =>
-      expect(api.updateTransaction).toHaveBeenCalledWith(1, { notes: 'Updated note here today' })
+      expect(api.updateTransaction).toHaveBeenCalledWith(1, {
+        notes: 'Updated note here today',
+        quantity: '5',
+        medicineStockType: 'REGULAR_MEDICINE_STOCK',
+        screenshotFiles: [],
+      })
     );
     await waitFor(() =>
       expect(screen.getByText('Updated note here today')).toBeInTheDocument()
+    );
+  });
+
+  test('editing quantity and stock type sends the new values, including on an APPROVED record', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ status: 'APPROVED', quantity: 5 })]));
+    api.updateTransaction.mockResolvedValue({
+      data: makeTx({ status: 'APPROVED', quantity: 8, medicineStockType: 'ADMIN_MEDICINE_STOCK' }),
+    });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    const qtyInput = screen.getByRole('spinbutton', { name: /edit quantity/i });
+    await userEvent.clear(qtyInput);
+    await userEvent.type(qtyInput, '8');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /edit stock type/i }), 'ADMIN_MEDICINE_STOCK');
+    const textarea = screen.getByRole('textbox', { name: /edit notes/i });
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, 'Correcting quantity and stock type after review');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(api.updateTransaction).toHaveBeenCalledWith(1, {
+        notes: 'Correcting quantity and stock type after review',
+        quantity: '8',
+        medicineStockType: 'ADMIN_MEDICINE_STOCK',
+        screenshotFiles: [],
+      })
     );
   });
 
@@ -275,7 +324,7 @@ describe('AdminEditDispatch — edit notes', () => {
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.click(screen.getByRole('button', { name: /edit notes/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
     await userEvent.click(screen.getByRole('button', { name: /save/i }));
 
     await waitFor(() =>

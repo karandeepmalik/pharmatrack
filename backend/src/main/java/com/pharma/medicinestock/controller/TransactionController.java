@@ -4,7 +4,6 @@ import com.pharma.medicinestock.dto.ApprovalRequest;
 import com.pharma.medicinestock.dto.PagedResponse;
 import com.pharma.medicinestock.dto.TransactionRequest;
 import com.pharma.medicinestock.dto.TransactionResponse;
-import com.pharma.medicinestock.dto.UpdateTransactionRequest;
 import com.pharma.medicinestock.service.ScreenshotProcessor;
 import com.pharma.medicinestock.service.TransactionService;
 import org.springframework.data.domain.Page;
@@ -139,12 +138,34 @@ public class TransactionController {
         return ResponseEntity.noContent().build();
     }
 
-    @PatchMapping("/{id}")
+    /**
+     * Admin edit of a past dispatch record — every field is correctable after the fact
+     * (including on an already-APPROVED record), not just notes. {@code notes} is always
+     * required, deliberately: it's this endpoint's only audit trail for a change to quantity
+     * or stock type, since — unlike {@code /medicine-stock/adjust} — there's no separate
+     * adjustment-ledger entry recorded for it.
+     *
+     * @param quantity          optional — omit to leave unchanged
+     * @param medicineStockType optional — omit to leave unchanged
+     * @param screenshots       optional — if provided (non-empty), replaces the existing set
+     *                          entirely; omit to leave existing screenshots unchanged
+     */
+    @PatchMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<TransactionResponse> updateNotes(
+    public ResponseEntity<TransactionResponse> updateTransaction(
             @PathVariable Long id,
-            @Valid @RequestBody UpdateTransactionRequest req) {
-        return ResponseEntity.ok(transactionService.updateNotes(id, req));
+            @RequestParam("notes") String notes,
+            @RequestParam(value = "quantity", required = false) BigDecimal quantity,
+            @RequestParam(value = "medicineStockType", required = false) String medicineStockType,
+            @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots)
+            throws IOException {
+        // Encoding here, not in the service, mirrors submit()/buildRequest() — screenshot
+        // compression is an HTTP-boundary concern (MultipartFile), not business logic.
+        // encodeAll(...) already treats null/empty input as "nothing to encode", which is
+        // exactly this endpoint's "screenshots omitted -> leave existing ones alone" contract.
+        List<String[]> encodedScreenshots = screenshotProcessor.encodeAll(screenshots);
+        return ResponseEntity.ok(
+                transactionService.updateTransaction(id, notes, quantity, medicineStockType, encodedScreenshots));
     }
 
     // ── Assembly helper (no logic — only construction) ─────────────────

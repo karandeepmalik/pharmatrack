@@ -4,7 +4,6 @@ import com.pharma.medicinestock.dto.ApprovalRequest;
 import com.pharma.medicinestock.dto.ScreenshotDto;
 import com.pharma.medicinestock.dto.TransactionRequest;
 import com.pharma.medicinestock.dto.TransactionResponse;
-import com.pharma.medicinestock.dto.UpdateTransactionRequest;
 import com.pharma.medicinestock.entity.*;
 import com.pharma.medicinestock.entity.Transaction.TransactionStatus;
 import com.pharma.medicinestock.exception.InsufficientMedicineStockException;
@@ -962,72 +961,219 @@ class TransactionServiceTest {
         }
     }
 
-    // ── updateNotes() ─────────────────────────────────────────────────
+    // ── updateTransaction() ───────────────────────────────────────────
 
-    @Nested @DisplayName("updateNotes()")
-    class UpdateNotes {
+    @Nested @DisplayName("updateTransaction()")
+    class UpdateTransaction {
 
         private Transaction existingTx;
+        private MedicineStock regularStock;
+        private MedicineStock adminStock;
 
         @BeforeEach
         void setup() {
             existingTx = Transaction.builder()
                     .id(1L).submittedBy(regularUser).medicine(medicine)
                     .quantity(BigDecimal.valueOf(5)).status(TransactionStatus.PENDING)
+                    .medicineStockType(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK)
                     .notes("Original notes here at dispatch").build();
             existingTx.setSubmittedAt(LocalDateTime.now());
+
+            regularStock = MedicineStock.builder()
+                    .id(1L).user(regularUser).medicine(medicine)
+                    .quantity(BigDecimal.valueOf(20))
+                    .medicineStockType(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK).build();
+            adminStock = MedicineStock.builder()
+                    .id(2L).user(regularUser).medicine(medicine)
+                    .quantity(BigDecimal.valueOf(10))
+                    .medicineStockType(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK).build();
+
+            lenient().when(transactionRepository.findById(1L)).thenReturn(Optional.of(existingTx));
+            lenient().when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            lenient().when(transactionMapper.toResponse(any())).thenAnswer(inv -> {
+                Transaction t = inv.getArgument(0);
+                TransactionResponse r = new TransactionResponse();
+                r.setNotes(t.getNotes());
+                r.setQuantity(t.getQuantity());
+                r.setMedicineStockType(t.getMedicineStockType().name());
+                return r;
+            });
         }
 
         @Test @DisplayName("updates notes and returns updated response")
-        void updateNotes_valid_savesAndReturns() {
-            UpdateTransactionRequest req = new UpdateTransactionRequest();
-            req.setNotes("Updated notes for this record");
-
-            when(transactionRepository.findById(1L)).thenReturn(Optional.of(existingTx));
-            when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(transactionMapper.toResponse(any())).thenAnswer(inv -> {
-                Transaction t = inv.getArgument(0);
-                TransactionResponse r = new TransactionResponse();
-                r.setNotes(t.getNotes()); return r;
-            });
-
-            TransactionResponse res = transactionService.updateNotes(1L, req);
+        void notesOnly_savesAndReturns() {
+            TransactionResponse res = transactionService.updateTransaction(
+                    1L, "Updated notes for this record", null, null, List.of());
 
             assertThat(res.getNotes()).isEqualTo("Updated notes for this record");
             verify(transactionRepository).save(argThat(t -> "Updated notes for this record".equals(t.getNotes())));
         }
 
         @Test @DisplayName("throws ResourceNotFoundException when transaction not found")
-        void updateNotes_notFound_throwsResourceNotFound() {
+        void notFound_throwsResourceNotFound() {
             when(transactionRepository.findById(99L)).thenReturn(Optional.empty());
-            UpdateTransactionRequest req = new UpdateTransactionRequest();
-            req.setNotes("Valid note here");
 
-            assertThatThrownBy(() -> transactionService.updateNotes(99L, req))
+            assertThatThrownBy(() -> transactionService.updateTransaction(
+                    99L, "Valid note here", null, null, List.of()))
                     .isInstanceOf(ResourceNotFoundException.class)
                     .hasMessageContaining("Transaction").hasMessageContaining("99");
         }
 
         @Test @DisplayName("throws IllegalArgumentException when notes are blank")
-        void updateNotes_blankNotes_throwsIllegalArgument() {
-            when(transactionRepository.findById(1L)).thenReturn(Optional.of(existingTx));
-            UpdateTransactionRequest req = new UpdateTransactionRequest();
-            req.setNotes("   ");
-
-            assertThatThrownBy(() -> transactionService.updateNotes(1L, req))
+        void blankNotes_throwsIllegalArgument() {
+            assertThatThrownBy(() -> transactionService.updateTransaction(
+                    1L, "   ", null, null, List.of()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("adjustment note is required");
         }
 
         @Test @DisplayName("throws IllegalArgumentException when notes are too short")
-        void updateNotes_tooShort_throwsIllegalArgument() {
-            when(transactionRepository.findById(1L)).thenReturn(Optional.of(existingTx));
-            UpdateTransactionRequest req = new UpdateTransactionRequest();
-            req.setNotes("Hi");
-
-            assertThatThrownBy(() -> transactionService.updateNotes(1L, req))
+        void tooShortNotes_throwsIllegalArgument() {
+            assertThatThrownBy(() -> transactionService.updateTransaction(
+                    1L, "Hi", null, null, List.of()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("5 and 500");
+        }
+
+        @Test @DisplayName("notes is still required even when only quantity/stock type change")
+        void notesRequired_evenForQuantityOnlyEdit() {
+            assertThatThrownBy(() -> transactionService.updateTransaction(
+                    1L, "", BigDecimal.valueOf(8), null, List.of()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("adjustment note is required");
+        }
+
+        @Test @DisplayName("throws IllegalArgumentException for a quantity below 0.1")
+        void quantityTooLow_throwsIllegalArgument() {
+            assertThatThrownBy(() -> transactionService.updateTransaction(
+                    1L, "Correcting a data entry mistake", BigDecimal.valueOf(0.05), null, List.of()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("at least 0.1");
+        }
+
+        @Test @DisplayName("PENDING: quantity change reconciles the same stock bucket")
+        void pendingQuantityChange_reconcilesSameBucket() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(regularStock));
+
+            transactionService.updateTransaction(
+                    1L, "Corrected quantity after recount", BigDecimal.valueOf(8), null, List.of());
+
+            // Original submit reserved 5; now reserving 8 -> credit back 5, debit 8 -> net -3 from 20.
+            verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(17)) == 0));
+            assertThat(existingTx.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(8));
+        }
+
+        @Test @DisplayName("APPROVED: quantity change still reconciles stock (not just PENDING)")
+        void approvedQuantityChange_reconcilesSameBucket() {
+            existingTx.setStatus(TransactionStatus.APPROVED);
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(regularStock));
+
+            transactionService.updateTransaction(
+                    1L, "Admin approved the wrong quantity, correcting", BigDecimal.valueOf(3), null, List.of());
+
+            // Original reserved 5; now reserving 3 -> credit back 5, debit 3 -> net +2 on 20 -> 22.
+            verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(22)) == 0));
+        }
+
+        @Test @DisplayName("REJECTED: quantity change does NOT touch medicineStock (already reversed)")
+        void rejectedQuantityChange_doesNotReconcile() {
+            existingTx.setStatus(TransactionStatus.REJECTED);
+
+            transactionService.updateTransaction(
+                    1L, "Correcting the record after rejection", BigDecimal.valueOf(8), null, List.of());
+
+            verify(medicineStockRepository, never()).findByUserIdAndMedicineIdAndMedicineStockType(any(), any(), any());
+            verify(medicineStockRepository, never()).save(any());
+            assertThat(existingTx.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(8));
+        }
+
+        @Test @DisplayName("stock type change moves the reservation between buckets, creating the target if needed")
+        void stockTypeChange_movesReservationBetweenBuckets() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(regularStock));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    1L, 1L, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(Optional.empty());
+
+            transactionService.updateTransaction(
+                    1L, "This was actually an admin-stock dispatch", null, "ADMIN_MEDICINE_STOCK", List.of());
+
+            verify(medicineStockRepository).save(argThat(s ->
+                    s.getMedicineStockType() == MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK
+                            && s.getQuantity().compareTo(BigDecimal.valueOf(25)) == 0)); // 20 + 5 credited back
+            verify(medicineStockRepository).save(argThat(s ->
+                    s.getMedicineStockType() == MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK
+                            && s.getQuantity().compareTo(BigDecimal.valueOf(-5)) == 0)); // 0 - 5, newly created
+            assertThat(existingTx.getMedicineStockType()).isEqualTo(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK);
+        }
+
+        @Test @DisplayName("stock type change into an existing bucket debits from it, not a fresh zero")
+        void stockTypeChange_intoExistingBucket() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(regularStock));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    1L, 1L, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(adminStock));
+
+            transactionService.updateTransaction(
+                    1L, "Reassigning to the existing admin-stock bucket", null, "ADMIN_MEDICINE_STOCK", List.of());
+
+            verify(medicineStockRepository).save(argThat(s ->
+                    s.getMedicineStockType() == MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK
+                            && s.getQuantity().compareTo(BigDecimal.valueOf(5)) == 0)); // 10 - 5
+        }
+
+        @Test @DisplayName("no reconciliation when neither quantity nor stock type actually changed")
+        void unchangedQuantityAndType_noReconciliation() {
+            transactionService.updateTransaction(
+                    1L, "Just fixing a typo in the notes", BigDecimal.valueOf(5),
+                    "REGULAR_MEDICINE_STOCK", List.of());
+
+            verify(medicineStockRepository, never()).findByUserIdAndMedicineIdAndMedicineStockType(any(), any(), any());
+        }
+
+        @Test @DisplayName("omitting screenshots leaves the existing ones unchanged")
+        void omittedScreenshots_leavesExistingUnchanged() {
+            existingTx.getScreenshots().add(TransactionScreenshot.builder()
+                    .transaction(existingTx).data("original").mimeType("image/png").displayOrder(0).build());
+
+            transactionService.updateTransaction(1L, "No screenshot change here", null, null, List.of());
+
+            assertThat(existingTx.getScreenshots()).hasSize(1);
+            assertThat(existingTx.getScreenshots().get(0).getData()).isEqualTo("original");
+        }
+
+        @Test @DisplayName("providing screenshots replaces the existing set entirely")
+        void providedScreenshots_replaceExistingSet() {
+            existingTx.getScreenshots().add(TransactionScreenshot.builder()
+                    .transaction(existingTx).data("old-one").mimeType("image/png").displayOrder(0).build());
+            existingTx.getScreenshots().add(TransactionScreenshot.builder()
+                    .transaction(existingTx).data("old-two").mimeType("image/png").displayOrder(1).build());
+
+            transactionService.updateTransaction(1L, "Replacing with the correct screenshot", null, null,
+                    List.<String[]>of(new String[]{"new-data", "image/jpeg"}));
+
+            assertThat(existingTx.getScreenshots()).hasSize(1);
+            assertThat(existingTx.getScreenshots().get(0).getData()).isEqualTo("new-data");
+            assertThat(existingTx.getScreenshots().get(0).getMimeType()).isEqualTo("image/jpeg");
+        }
+
+        @Test @DisplayName("providing multiple screenshots replaces the set in order")
+        void providedMultipleScreenshots_replaceInOrder() {
+            transactionService.updateTransaction(1L, "Adding two corrected screenshots", null, null,
+                    List.of(new String[]{"first", "image/png"}, new String[]{"second", "image/jpeg"}));
+
+            assertThat(existingTx.getScreenshots()).hasSize(2);
+            assertThat(existingTx.getScreenshots().get(0).getData()).isEqualTo("first");
+            assertThat(existingTx.getScreenshots().get(0).getDisplayOrder()).isEqualTo(0);
+            assertThat(existingTx.getScreenshots().get(1).getData()).isEqualTo("second");
+            assertThat(existingTx.getScreenshots().get(1).getDisplayOrder()).isEqualTo(1);
         }
     }
 }
