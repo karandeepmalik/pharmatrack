@@ -6,6 +6,7 @@ import com.pharma.medicinestock.config.SecurityConfig;
 import com.pharma.medicinestock.dto.LoginRequest;
 import com.pharma.medicinestock.entity.User;
 import com.pharma.medicinestock.repository.UserRepository;
+import com.pharma.medicinestock.security.AppUserDetails;
 import com.pharma.medicinestock.security.InMemoryRateLimitCounter;
 import com.pharma.medicinestock.security.JwtService;
 import com.pharma.medicinestock.security.LoginRateLimiter;
@@ -68,8 +69,7 @@ class AuthControllerTest {
         @DisplayName("returns 200 with the token in the response body on valid credentials, no Set-Cookie")
         void returnsOkWithTokenInBodyOnValidCredentials() throws Exception {
             when(authenticationManager.authenticate(any())).thenReturn(
-                    new UsernamePasswordAuthenticationToken("john.doe", null));
-            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(activeUser));
+                    new UsernamePasswordAuthenticationToken(new AppUserDetails(activeUser), null));
             when(jwtService.generateToken("john.doe")).thenReturn("test.jwt.token");
 
             mockMvc.perform(post("/api/auth/login")
@@ -138,8 +138,7 @@ class AuthControllerTest {
                     .email("a@a.com").role(User.Role.ADMIN).active(true).password("hashed").build();
 
             when(authenticationManager.authenticate(any())).thenReturn(
-                    new UsernamePasswordAuthenticationToken("admin", null));
-            when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
+                    new UsernamePasswordAuthenticationToken(new AppUserDetails(admin), null));
             when(jwtService.generateToken("admin")).thenReturn("admin.jwt.token");
 
             mockMvc.perform(post("/api/auth/login")
@@ -232,9 +231,8 @@ class AuthControllerTest {
 
             reset(authenticationManager, userRepository, jwtService);
             when(authenticationManager.authenticate(any())).thenReturn(
-                    new UsernamePasswordAuthenticationToken(otherUser, null));
-            when(userRepository.findByUsername(otherUser)).thenReturn(Optional.of(activeUser));
-            when(jwtService.generateToken(otherUser)).thenReturn("other.jwt.token");
+                    new UsernamePasswordAuthenticationToken(new AppUserDetails(activeUser), null));
+            when(jwtService.generateToken(activeUser.getUsername())).thenReturn("other.jwt.token");
             when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
 
             mockMvc.perform(post("/api/auth/login")
@@ -260,9 +258,8 @@ class AuthControllerTest {
 
             reset(authenticationManager, userRepository, jwtService);
             when(authenticationManager.authenticate(any())).thenReturn(
-                    new UsernamePasswordAuthenticationToken(username, null));
-            when(userRepository.findByUsername(username)).thenReturn(Optional.of(activeUser));
-            when(jwtService.generateToken(username)).thenReturn("reset.jwt.token");
+                    new UsernamePasswordAuthenticationToken(new AppUserDetails(activeUser), null));
+            when(jwtService.generateToken(activeUser.getUsername())).thenReturn("reset.jwt.token");
             when(jwtService.getExpirationMs()).thenReturn(86_400_000L);
 
             mockMvc.perform(post("/api/auth/login")
