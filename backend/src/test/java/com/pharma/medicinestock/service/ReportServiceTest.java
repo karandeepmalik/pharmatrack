@@ -295,6 +295,30 @@ class ReportServiceTest {
             assertThat(adminBlock).doesNotContain("TOTAL: 0");
             assertThat(adminBlock).contains("john.doe: 7");
         }
+
+        @Test
+        void twoBlankLinesSeparateOneManufacturersSpecsFromTheNext() {
+            PharmaCompany otherPharma = new PharmaCompany();
+            otherPharma.setId(2L); otherPharma.setName("Acme Labs");
+            Medicine otherVial = new Medicine();
+            otherVial.setId(20L); otherVial.setName("Acme Labs Vial 10 ml");
+            otherVial.setType(Medicine.MedicineType.VIAL); otherVial.setSpecification(10.0);
+            otherVial.setConcentrationMgPerMl(20.0);
+            otherVial.setPrice(4000); otherVial.setPharmaCompany(otherPharma);
+
+            when(medicineStockRepository.findAllNonZeroRegularOrderByMedicineAndUser(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(
+                            makeInv(1L, john, vial, 10, null),
+                            makeInv(2L, john, otherVial, 5, null)));
+            stubAdminStockEmpty();
+
+            ReportResponse r = reportService.medicineStockByUser();
+
+            int endOfShieldFxBlock = r.getContent().indexOf("TOTAL: 10") + "TOTAL: 10".length();
+            int startOfAcmeHeading = r.getContent().indexOf("Acme Labs");
+            String gap = r.getContent().substring(endOfShieldFxBlock, startOfAcmeHeading);
+            assertThat(gap).isEqualTo("\n\n\n");
+        }
     }
 
     @Nested @DisplayName("medicineStockValuation")
@@ -408,6 +432,30 @@ class ReportServiceTest {
 
             assertThat(r.getContent()).contains("Capsule 500 mg");
             assertThat(r.getContent()).contains("Valuation: 5 units x Rs 1,000 = Rs 5,000");
+        }
+
+        @Test
+        void twoBlankLinesSeparateOneManufacturersSpecsFromTheNext() {
+            PharmaCompany otherPharma = new PharmaCompany();
+            otherPharma.setId(2L); otherPharma.setName("Acme Labs");
+            Medicine otherVial = new Medicine();
+            otherVial.setId(20L); otherVial.setName("Acme Labs Vial 10 ml");
+            otherVial.setType(Medicine.MedicineType.VIAL); otherVial.setSpecification(10.0);
+            otherVial.setConcentrationMgPerMl(20.0);
+            otherVial.setPrice(4000); otherVial.setPharmaCompany(otherPharma);
+
+            when(medicineStockRepository.findAllNonZeroRegularForValuation(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(
+                            makeInv(1L, john, vial, 10, null),
+                            makeInv(2L, john, otherVial, 5, null)));
+            stubInTransitEmpty();
+
+            ReportResponse r = reportService.medicineStockValuation();
+
+            int endOfShieldFxBlock = r.getContent().indexOf("Rs 40,000") + "Rs 40,000".length();
+            int startOfAcmeHeading = r.getContent().indexOf("Acme Labs");
+            String gap = r.getContent().substring(endOfShieldFxBlock, startOfAcmeHeading);
+            assertThat(gap).isEqualTo("\n\n\n");
         }
 
         @Test
@@ -1183,6 +1231,31 @@ class ReportServiceTest {
             int pos5ml  = r.getContent().indexOf("Vial 5 ml");
             assertThat(pos10ml).isGreaterThanOrEqualTo(0);
             assertThat(pos10ml).isLessThan(pos5ml);
+        }
+
+        @Test
+        void twoBlankLinesSeparateOneManufacturersSpecsFromTheNext() {
+            PharmaCompany otherPharma = new PharmaCompany();
+            otherPharma.setId(2L); otherPharma.setName("Acme Labs");
+            Medicine otherVial = new Medicine();
+            otherVial.setId(20L); otherVial.setName("Acme Labs Vial 10 ml");
+            otherVial.setType(Medicine.MedicineType.VIAL); otherVial.setSpecification(10.0);
+            otherVial.setConcentrationMgPerMl(20.0);
+            otherVial.setPrice(4000); otherVial.setPharmaCompany(otherPharma);
+
+            when(medicineStockAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial,      MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK, 10, PAST),
+                            makeRegularAdj(john, otherVial, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK, 5,  PAST)));
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            int endOfShieldFxBlock = r.getContent().indexOf("TOTAL: 10") + "TOTAL: 10".length();
+            int startOfAcmeHeading = r.getContent().indexOf("Acme Labs");
+            String gap = r.getContent().substring(endOfShieldFxBlock, startOfAcmeHeading);
+            assertThat(gap).isEqualTo("\n\n\n");
         }
 
         @Test

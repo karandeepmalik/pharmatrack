@@ -123,12 +123,13 @@ public class ReportService {
 
         long grandTotal = 0;
 
+        boolean first = true;
         for (Map.Entry<Long, String> pharmaEntry : pharmaNames.entrySet()) {
             Long pharmaId = pharmaEntry.getKey();
             String pharmaName = pharmaEntry.getValue();
 
-            sb.append(pharmaName).append("\n");
-            sb.append("-".repeat(pharmaName.length())).append("\n");
+            appendPharmaHeading(sb, pharmaName, first);
+            first = false;
 
             Map<String, List<MedicineStock>> specRecs  = pharmaSpecRecords.getOrDefault(pharmaId, Collections.emptyMap());
             Map<String, Integer>         specPrice = pharmaSpecPrice.getOrDefault(pharmaId, Collections.emptyMap());
@@ -247,11 +248,12 @@ public class ReportService {
 
         long grandTotal = 0;
 
+        boolean first = true;
         for (Map.Entry<Long, String> pharmaEntry : pharmaNames.entrySet()) {
             Long pharmaId = pharmaEntry.getKey();
             String pharmaName = pharmaEntry.getValue();
-            sb.append(pharmaName).append("\n");
-            sb.append("-".repeat(pharmaName.length())).append("\n");
+            appendPharmaHeading(sb, pharmaName, first);
+            first = false;
 
             Map<String, List<UserQty>>    specUserQty  = pharmaSpecUserQty.getOrDefault(pharmaId, Collections.emptyMap());
             Map<String, Medicine>          specMed      = pharmaSpecMedicine.getOrDefault(pharmaId, Collections.emptyMap());
