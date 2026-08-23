@@ -93,9 +93,9 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 });
 
     const firstRow = page.getByRole('row').nth(1);
-    // Column order: Date, User, Medicine, Qty, Stock Type, Status, Notes, Screenshot, Actions —
-    // Notes is index 6, not 5, since the Stock Type column was added before it.
-    const originalNote = await firstRow.locator('td').nth(6).innerText();
+    // Column order: Date, User, Medicine, Qty, Stock Type, Price/Unit, Status, Notes, Screenshot,
+    // Actions — Notes is index 7, since Stock Type and Price/Unit both come before it.
+    const originalNote = await firstRow.locator('td').nth(7).innerText();
     await firstRow.getByRole('button', { name: /^edit$/i }).click();
     await firstRow.getByRole('textbox', { name: /edit notes/i }).fill('This should not be saved');
     await firstRow.getByRole('button', { name: /^cancel$/i }).click();
@@ -141,6 +141,40 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await expect(row.locator('td').nth(3)).toHaveText('0.2');
     await expect(row.getByText('Admin Stock')).toBeVisible();
     await expect(row.getByRole('button', { name: /view payment screenshot/i })).toBeVisible();
+  });
+
+  test('editing price per unit persists after save, leaving quantity untouched', async ({ page }) => {
+    test.setTimeout(60000);
+    const note = `Price edit test ${Date.now()}`;
+
+    await loginAsUser(page, 'john');
+    await page.goto('/user/submit');
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption({ index: 1 });
+    await page.locator('#spec-select').selectOption({ index: 1 });
+    await page.locator('#quantity-input').fill('0.1');
+    await page.locator('#notes-input').fill(note);
+    await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+    await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/submitted successfully/i, { timeout: 10000 });
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/dispatch-records');
+    await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('button', { name: /^search$/i }).click();
+
+    const row = page.getByRole('row', { name: new RegExp(note) });
+    await expect(row).toBeVisible({ timeout: 10000 });
+
+    await row.getByRole('button', { name: /^edit$/i }).click();
+    await row.getByRole('spinbutton', { name: /edit price per unit/i }).fill('4321');
+    const editedNote = `${note} — price corrected`;
+    await row.getByRole('textbox', { name: /edit notes/i }).fill(editedNote);
+    await row.getByRole('button', { name: /^save$/i }).click();
+
+    await expect(row.getByText(editedNote)).toBeVisible({ timeout: 10000 });
+    await expect(row.getByText('Rs 4,321')).toBeVisible();
+    await expect(row.locator('td').nth(3)).toHaveText('0.1');
   });
 
   test('cancelling an edit discards quantity and stock type changes too', async ({ page }) => {

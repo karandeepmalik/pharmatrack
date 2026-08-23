@@ -172,6 +172,39 @@ describe('AdminEditDispatch — stock type column', () => {
   });
 });
 
+// ── Price/Unit column ───────────────────────────────────────────────────
+
+describe('AdminEditDispatch — price/unit column', () => {
+  test('renders the Price/Unit column header', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /price\/unit/i })).toBeInTheDocument()
+    );
+  });
+
+  test('shows the transaction pricePerUnit when set', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ pricePerUnit: 4500, price: 4000 })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(screen.getByText('Rs 4,500')).toBeInTheDocument());
+  });
+
+  test('falls back to the medicine catalogue price when pricePerUnit is not set', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ pricePerUnit: null, price: 4000 })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(screen.getByText('Rs 4,000')).toBeInTheDocument());
+  });
+});
+
 // ── Screenshot column ──────────────────────────────────────────────────
 
 describe('AdminEditDispatch — screenshot column', () => {
@@ -241,6 +274,57 @@ describe('AdminEditDispatch — edit', () => {
     expect(screen.getByLabelText(/replace screenshots/i)).toBeInTheDocument();
   });
 
+  test('clicking Edit shows price per unit editable, prefilled from pricePerUnit', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ pricePerUnit: 4500 })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByRole('spinbutton', { name: /edit price per unit/i })).toHaveValue(4500);
+  });
+
+  test('clicking Edit leaves price per unit blank when the record has no override', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ pricePerUnit: null, price: 4000 })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByRole('spinbutton', { name: /edit price per unit/i })).toHaveValue(null);
+  });
+
+  test('editing price per unit sends the new value', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ pricePerUnit: null, price: 4000 })]));
+    api.updateTransaction.mockResolvedValue({ data: makeTx({ pricePerUnit: 4200 }) });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    const priceInput = screen.getByRole('spinbutton', { name: /edit price per unit/i });
+    await userEvent.type(priceInput, '4200');
+    const textarea = screen.getByRole('textbox', { name: /edit notes/i });
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, 'Correcting the recorded price for this dispatch');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(api.updateTransaction).toHaveBeenCalledWith(1, {
+        notes: 'Correcting the recorded price for this dispatch',
+        quantity: '5',
+        medicineStockType: 'REGULAR_MEDICINE_STOCK',
+        pricePerUnit: '4200',
+        screenshotFiles: [],
+      })
+    );
+  });
+
   test('clicking Cancel hides the edit form and restores original notes', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
@@ -276,6 +360,7 @@ describe('AdminEditDispatch — edit', () => {
         notes: 'Updated note here today',
         quantity: '5',
         medicineStockType: 'REGULAR_MEDICINE_STOCK',
+        pricePerUnit: null,
         screenshotFiles: [],
       })
     );
@@ -309,6 +394,7 @@ describe('AdminEditDispatch — edit', () => {
         notes: 'Correcting quantity and stock type after review',
         quantity: '8',
         medicineStockType: 'ADMIN_MEDICINE_STOCK',
+        pricePerUnit: null,
         screenshotFiles: [],
       })
     );
