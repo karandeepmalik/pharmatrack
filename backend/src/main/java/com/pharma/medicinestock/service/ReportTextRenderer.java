@@ -83,6 +83,24 @@ final class ReportTextRenderer {
         return new ArrayList<>(ordered.values());
     }
 
+    /**
+     * Appends a pharma company heading (name + underline), inserting a couple of blank lines
+     * before it when it isn't the first heading in the section — so one manufacturer's specs
+     * don't run straight into the next one's. Trims whatever trailing newlines the previous
+     * block left (that count varies by section) before inserting a fixed 2-blank-line gap, so
+     * the gap is consistent regardless of caller.
+     */
+    static void appendPharmaHeading(StringBuilder sb, String pharmaName, boolean first) {
+        if (!first) {
+            while (sb.length() > 0 && sb.charAt(sb.length() - 1) == '\n') {
+                sb.setLength(sb.length() - 1);
+            }
+            sb.append("\n\n\n");
+        }
+        sb.append(pharmaName).append("\n");
+        sb.append("-".repeat(pharmaName.length())).append("\n");
+    }
+
     static String specDisplayName(Medicine m) {
         String key = specKey(m);
         for (String[] spec : DAILY_SPEC_ORDER) {
@@ -135,10 +153,11 @@ final class ReportTextRenderer {
                          .add(inv);
         }
 
+        boolean first = true;
         for (Map.Entry<Long, String> pe : pharmaNames.entrySet()) {
             String pharmaName = pe.getValue();
-            sb.append(pharmaName).append("\n");
-            sb.append("-".repeat(pharmaName.length())).append("\n");
+            appendPharmaHeading(sb, pharmaName, first);
+            first = false;
 
             Map<String, List<MedicineStock>> bySpec = pharmaSpecMap.get(pe.getKey());
             for (String[] spec : specOrderFor(bySpec.keySet(), k -> bySpec.get(k).get(0).getMedicine())) {
@@ -181,10 +200,11 @@ final class ReportTextRenderer {
                          .add(inv);
         }
 
+        boolean first = true;
         for (Map.Entry<Long, String> pe : pharmaNames.entrySet()) {
             String pharmaName = pe.getValue();
-            sb.append(pharmaName).append("\n");
-            sb.append("-".repeat(pharmaName.length())).append("\n");
+            appendPharmaHeading(sb, pharmaName, first);
+            first = false;
             Map<String, List<MedicineStock>> bySpec = pharmaSpecMap.get(pe.getKey());
             for (String[] spec : specOrderFor(bySpec.keySet(), k -> bySpec.get(k).get(0).getMedicine())) {
                 String key = spec[0] + "|" + spec[1];
@@ -219,10 +239,11 @@ final class ReportTextRenderer {
                          .add(inv);
         }
 
+        boolean first = true;
         for (Map.Entry<Long, String> pe : pharmaNames.entrySet()) {
             String pharmaName = pe.getValue();
-            sb.append(pharmaName).append("\n");
-            sb.append("-".repeat(pharmaName.length())).append("\n");
+            appendPharmaHeading(sb, pharmaName, first);
+            first = false;
             Map<String, List<MedicineStock>> bySpec = pharmaSpecMap.get(pe.getKey());
             for (String[] spec : specOrderFor(bySpec.keySet(), k -> bySpec.get(k).get(0).getMedicine())) {
                 String key = spec[0] + "|" + spec[1];
