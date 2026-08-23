@@ -15,6 +15,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Renders report data into the plain-text lines/sections {@link ReportService} assembles into
@@ -57,6 +59,30 @@ final class ReportTextRenderer {
         return m.getType().name() + "|" + m.getSpecification();
     }
 
+    /**
+     * Returns spec[] tuples (type, spec value, display name) for every key in presentKeys,
+     * ordered as DAILY_SPEC_ORDER's known specs first (stable ordering for the original
+     * catalogue), followed by any other spec actually present in the data — in encounter
+     * order — that DAILY_SPEC_ORDER doesn't know about. Without this, a medicine from a new
+     * manufacturer (or an existing one with a spec outside the original 5) is silently
+     * dropped from stock/valuation reports instead of appearing under its own heading.
+     */
+    static List<String[]> specOrderFor(Set<String> presentKeys, Function<String, Medicine> medicineForKey) {
+        LinkedHashMap<String, String[]> ordered = new LinkedHashMap<>();
+        for (String[] spec : DAILY_SPEC_ORDER) {
+            String key = spec[0] + "|" + spec[1];
+            if (presentKeys.contains(key)) ordered.put(key, spec);
+        }
+        for (String key : presentKeys) {
+            ordered.computeIfAbsent(key, k -> {
+                Medicine m = medicineForKey.apply(k);
+                String[] parts = k.split("\\|", 2);
+                return new String[]{parts[0], parts[1], specDisplayName(m)};
+            });
+        }
+        return new ArrayList<>(ordered.values());
+    }
+
     static String specDisplayName(Medicine m) {
         String key = specKey(m);
         for (String[] spec : DAILY_SPEC_ORDER) {
@@ -92,35 +118,49 @@ final class ReportTextRenderer {
     }
 
     /**
-     * Appends per-spec, per-user medicine stock lines for the medicine-stock-by-user report.
-     * Uses full medicine name as header; skips specs with no data.
+     * Appends per-pharma, per-spec, per-user medicine stock lines for the medicine-stock-by-user
+     * report. Groups by pharma company (like appendMedicineStockSection/appendMedicineStockAdminSection)
+     * so records from more than one manufacturer are never merged under one arbitrary heading;
+     * skips specs with no data.
      */
     static void appendMedicineStockByUserSection(StringBuilder sb, List<MedicineStock> records,
                                                   Map<String, BigDecimal> inTransitMap) {
-        Map<String, List<MedicineStock>> bySpec = new LinkedHashMap<>();
+        LinkedHashMap<Long, String> pharmaNames = new LinkedHashMap<>();
+        LinkedHashMap<Long, Map<String, List<MedicineStock>>> pharmaSpecMap = new LinkedHashMap<>();
         for (MedicineStock inv : records) {
-            bySpec.computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>()).add(inv);
+            Long pid = inv.getMedicine().getPharmaCompany().getId();
+            pharmaNames.putIfAbsent(pid, inv.getMedicine().getPharmaCompany().getName());
+            pharmaSpecMap.computeIfAbsent(pid, k -> new LinkedHashMap<>())
+                         .computeIfAbsent(specKey(inv.getMedicine()), k -> new ArrayList<>())
+                         .add(inv);
         }
 
-        for (String[] spec : DAILY_SPEC_ORDER) {
-            String key = spec[0] + "|" + spec[1];
-            List<MedicineStock> entries = bySpec.get(key);
-            if (entries == null || entries.isEmpty()) continue;
+        for (Map.Entry<Long, String> pe : pharmaNames.entrySet()) {
+            String pharmaName = pe.getValue();
+            sb.append(pharmaName).append("\n");
+            sb.append("-".repeat(pharmaName.length())).append("\n");
 
-            // Short format: "Vial 10 ml | 20 mg/ml" or "Tablet 50 mg (10 Tablets)"
-            String header = "VIAL".equals(spec[0])
-                    ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
-                    : spec[2];
+            Map<String, List<MedicineStock>> bySpec = pharmaSpecMap.get(pe.getKey());
+            for (String[] spec : specOrderFor(bySpec.keySet(), k -> bySpec.get(k).get(0).getMedicine())) {
+                String key = spec[0] + "|" + spec[1];
+                List<MedicineStock> entries = bySpec.getOrDefault(key, Collections.emptyList());
+                if (entries.isEmpty()) continue;
 
-            sb.append(header).append("\n");
-            sb.append("-".repeat(35)).append("\n");
-            BigDecimal total = BigDecimal.ZERO;
-            for (MedicineStock inv : entries) {
-                appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
-                        inv.getMedicine().getId(), inv.getMedicineStockType(), inv.getQuantity(), inTransitMap);
-                total = total.add(inv.getQuantity());
+                // Short format: "Vial 10 ml | 20 mg/ml" or "Tablet 50 mg (10 Tablets)"
+                String header = "VIAL".equals(spec[0])
+                        ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
+                        : spec[2];
+
+                sb.append(header).append("\n");
+                sb.append("-".repeat(35)).append("\n");
+                BigDecimal total = BigDecimal.ZERO;
+                for (MedicineStock inv : entries) {
+                    appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
+                            inv.getMedicine().getId(), inv.getMedicineStockType(), inv.getQuantity(), inTransitMap);
+                    total = total.add(inv.getQuantity());
+                }
+                sb.append("  TOTAL: ").append(total.toPlainString()).append("\n\n");
             }
-            sb.append("  TOTAL: ").append(total.toPlainString()).append("\n\n");
         }
     }
 
@@ -146,7 +186,7 @@ final class ReportTextRenderer {
             sb.append(pharmaName).append("\n");
             sb.append("-".repeat(pharmaName.length())).append("\n");
             Map<String, List<MedicineStock>> bySpec = pharmaSpecMap.get(pe.getKey());
-            for (String[] spec : DAILY_SPEC_ORDER) {
+            for (String[] spec : specOrderFor(bySpec.keySet(), k -> bySpec.get(k).get(0).getMedicine())) {
                 String key = spec[0] + "|" + spec[1];
                 List<MedicineStock> entries = bySpec.getOrDefault(key, Collections.emptyList());
                 if (entries.isEmpty()) continue;
@@ -184,7 +224,7 @@ final class ReportTextRenderer {
             sb.append(pharmaName).append("\n");
             sb.append("-".repeat(pharmaName.length())).append("\n");
             Map<String, List<MedicineStock>> bySpec = pharmaSpecMap.get(pe.getKey());
-            for (String[] spec : DAILY_SPEC_ORDER) {
+            for (String[] spec : specOrderFor(bySpec.keySet(), k -> bySpec.get(k).get(0).getMedicine())) {
                 String key = spec[0] + "|" + spec[1];
                 List<MedicineStock> entries = bySpec.getOrDefault(key, Collections.emptyList());
                 if (entries.isEmpty()) continue;

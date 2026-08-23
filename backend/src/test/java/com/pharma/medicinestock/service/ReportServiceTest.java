@@ -239,6 +239,26 @@ class ReportServiceTest {
         }
 
         @Test
+        void medicineWithSpecOutsideFixedOrderStillAppears() {
+            // A spec DAILY_SPEC_ORDER doesn't know about (e.g. a new manufacturer's catalogue
+            // entry) must still be rendered under its own heading, not silently dropped.
+            Medicine capsule = new Medicine();
+            capsule.setId(9L); capsule.setName("Shield FX Capsule 500 mg");
+            capsule.setType(Medicine.MedicineType.CAPSULE); capsule.setSpecification(500.0);
+            capsule.setPrice(1000); capsule.setPharmaCompany(pharma);
+
+            when(medicineStockRepository.findAllNonZeroRegularOrderByMedicineAndUser(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, capsule, 15, null)));
+            stubAdminStockEmpty();
+
+            ReportResponse r = reportService.medicineStockByUser();
+
+            assertThat(r.getContent()).contains("Capsule 500 mg");
+            assertThat(r.getContent()).contains("john.doe: 15");
+            assertThat(r.getContent()).contains("TOTAL: 15");
+        }
+
+        @Test
         void reportContainsAdminMedicineStockSectionAfterRegular() {
             when(medicineStockRepository.findAllNonZeroRegularOrderByMedicineAndUser(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
                     .thenReturn(List.of(makeInv(1L, john, vial, 10, null)));
@@ -371,6 +391,23 @@ class ReportServiceTest {
             ReportResponse r = reportService.medicineStockValuation();
 
             assertThat(r.getContent()).contains("TOTAL VALUATION: Rs 0");
+        }
+
+        @Test
+        void medicineWithSpecOutsideFixedOrderStillAppearsInValuation() {
+            Medicine capsule = new Medicine();
+            capsule.setId(9L); capsule.setName("Shield FX Capsule 500 mg");
+            capsule.setType(Medicine.MedicineType.CAPSULE); capsule.setSpecification(500.0);
+            capsule.setPrice(1000); capsule.setPharmaCompany(pharma);
+
+            when(medicineStockRepository.findAllNonZeroRegularForValuation(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(List.of(makeInv(1L, john, capsule, 5, null)));
+            stubInTransitEmpty();
+
+            ReportResponse r = reportService.medicineStockValuation();
+
+            assertThat(r.getContent()).contains("Capsule 500 mg");
+            assertThat(r.getContent()).contains("Valuation: 5 units x Rs 1,000 = Rs 5,000");
         }
 
         @Test
