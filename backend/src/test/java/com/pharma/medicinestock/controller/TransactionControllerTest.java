@@ -687,7 +687,7 @@ class TransactionControllerTest {
         void updateTransaction_notesOnly_200() throws Exception {
             sampleResponse.setNotes("Updated dispatch note for this record");
             when(transactionService.updateTransaction(eq(1L), eq("Updated dispatch note for this record"),
-                    isNull(), isNull(), anyList())).thenReturn(sampleResponse);
+                    isNull(), isNull(), isNull(), anyList())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Updated dispatch note for this record")
@@ -701,7 +701,7 @@ class TransactionControllerTest {
         @DisplayName("admin updates quantity and stock type — passes both through to the service")
         void updateTransaction_quantityAndStockType_200() throws Exception {
             when(transactionService.updateTransaction(eq(1L), eq("Correcting quantity and stock type"),
-                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), anyList())).thenReturn(sampleResponse);
+                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), anyList())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Correcting quantity and stock type")
@@ -711,7 +711,24 @@ class TransactionControllerTest {
                     .andExpect(status().isOk());
 
             verify(transactionService).updateTransaction(eq(1L), eq("Correcting quantity and stock type"),
-                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), anyList());
+                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), anyList());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("admin updates price per unit — passes it through to the service")
+        void updateTransaction_pricePerUnit_200() throws Exception {
+            when(transactionService.updateTransaction(eq(1L), eq("Correcting the recorded price"),
+                    isNull(), isNull(), eq(4500), anyList())).thenReturn(sampleResponse);
+
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "Correcting the recorded price")
+                    .param("pricePerUnit", "4500")
+                    .with(csrf()))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).updateTransaction(eq(1L), eq("Correcting the recorded price"),
+                    isNull(), isNull(), eq(4500), anyList());
         }
 
         @Test
@@ -726,7 +743,7 @@ class TransactionControllerTest {
             when(screenshotProcessor.encodeAll(any()))
                     .thenReturn(List.<String[]>of(new String[]{expectedB64, "image/png"}));
             when(transactionService.updateTransaction(eq(1L), eq("Replacing the wrong screenshot"),
-                    isNull(), isNull(), eq(List.<String[]>of(new String[]{expectedB64, "image/png"}))))
+                    isNull(), isNull(), isNull(), eq(List.<String[]>of(new String[]{expectedB64, "image/png"}))))
                     .thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
@@ -750,7 +767,7 @@ class TransactionControllerTest {
         @WithMockUser(username = "admin", roles = "ADMIN")
         @DisplayName("invalid notes returns 400 from service validation")
         void updateTransaction_invalidNotes_400() throws Exception {
-            when(transactionService.updateTransaction(eq(1L), eq("Hi"), isNull(), isNull(), anyList()))
+            when(transactionService.updateTransaction(eq(1L), eq("Hi"), isNull(), isNull(), isNull(), anyList()))
                     .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")

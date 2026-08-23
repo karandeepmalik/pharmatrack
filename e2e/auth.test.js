@@ -1842,6 +1842,37 @@ async function run() {
     assert(Math.abs(current - expected) < 0.001, `Expected ${expected}, got ${current}`);
   });
 
+  await test('Admin edits price per unit, leaving quantity/stock type/screenshots unchanged', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Correcting the recorded price for this dispatch',
+      pricePerUnit: '4500',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.pricePerUnit === 4500, `Expected pricePerUnit 4500, got ${r.data.pricePerUnit}`);
+    assert(r.data.quantity === 3 || Number(r.data.quantity) === 3,
+      `Quantity should stay unchanged at 3, got ${r.data.quantity}`);
+    assert(r.data.medicineStockType === 'REGULAR_MEDICINE_STOCK',
+      `Stock type should stay unchanged, got ${r.data.medicineStockType}`);
+    assert(Array.isArray(r.data.screenshots) && r.data.screenshots.length === 2,
+      `Screenshots should stay unchanged at 2 entries, got ${r.data.screenshots?.length}`);
+  });
+
+  await test('Omitting pricePerUnit on a later edit leaves the price unchanged', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Unrelated follow-up correction, price not touched',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.pricePerUnit === 4500, `Expected pricePerUnit to remain 4500, got ${r.data.pricePerUnit}`);
+  });
+
+  await test('Setting pricePerUnit to zero is rejected with 400', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Trying to set an invalid price',
+      pricePerUnit: '0',
+    }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
   await test('Admin moves the record from REGULAR to ADMIN_MEDICINE_STOCK (get-or-create bucket)', async () => {
     const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
       notes: 'This was actually dispatched from admin stock, correcting',

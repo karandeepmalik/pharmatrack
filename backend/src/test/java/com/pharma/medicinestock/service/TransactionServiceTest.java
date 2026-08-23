@@ -1003,7 +1003,7 @@ class TransactionServiceTest {
         @Test @DisplayName("updates notes and returns updated response")
         void notesOnly_savesAndReturns() {
             TransactionResponse res = transactionService.updateTransaction(
-                    1L, "Updated notes for this record", null, null, List.of());
+                    1L, "Updated notes for this record", null, null, null, List.of());
 
             assertThat(res.getNotes()).isEqualTo("Updated notes for this record");
             verify(transactionRepository).save(argThat(t -> "Updated notes for this record".equals(t.getNotes())));
@@ -1014,7 +1014,7 @@ class TransactionServiceTest {
             when(transactionRepository.findById(99L)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    99L, "Valid note here", null, null, List.of()))
+                    99L, "Valid note here", null, null, null, List.of()))
                     .isInstanceOf(ResourceNotFoundException.class)
                     .hasMessageContaining("Transaction").hasMessageContaining("99");
         }
@@ -1022,7 +1022,7 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException when notes are blank")
         void blankNotes_throwsIllegalArgument() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "   ", null, null, List.of()))
+                    1L, "   ", null, null, null, List.of()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("adjustment note is required");
         }
@@ -1030,7 +1030,7 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException when notes are too short")
         void tooShortNotes_throwsIllegalArgument() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "Hi", null, null, List.of()))
+                    1L, "Hi", null, null, null, List.of()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("5 and 500");
         }
@@ -1038,7 +1038,7 @@ class TransactionServiceTest {
         @Test @DisplayName("notes is still required even when only quantity/stock type change")
         void notesRequired_evenForQuantityOnlyEdit() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "", BigDecimal.valueOf(8), null, List.of()))
+                    1L, "", BigDecimal.valueOf(8), null, null, List.of()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("adjustment note is required");
         }
@@ -1046,7 +1046,7 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException for a quantity below 0.1")
         void quantityTooLow_throwsIllegalArgument() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "Correcting a data entry mistake", BigDecimal.valueOf(0.05), null, List.of()))
+                    1L, "Correcting a data entry mistake", BigDecimal.valueOf(0.05), null, null, List.of()))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("at least 0.1");
         }
@@ -1058,7 +1058,7 @@ class TransactionServiceTest {
                     .thenReturn(Optional.of(regularStock));
 
             transactionService.updateTransaction(
-                    1L, "Corrected quantity after recount", BigDecimal.valueOf(8), null, List.of());
+                    1L, "Corrected quantity after recount", BigDecimal.valueOf(8), null, null, List.of());
 
             // Original submit reserved 5; now reserving 8 -> credit back 5, debit 8 -> net -3 from 20.
             verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(17)) == 0));
@@ -1073,7 +1073,7 @@ class TransactionServiceTest {
                     .thenReturn(Optional.of(regularStock));
 
             transactionService.updateTransaction(
-                    1L, "Admin approved the wrong quantity, correcting", BigDecimal.valueOf(3), null, List.of());
+                    1L, "Admin approved the wrong quantity, correcting", BigDecimal.valueOf(3), null, null, List.of());
 
             // Original reserved 5; now reserving 3 -> credit back 5, debit 3 -> net +2 on 20 -> 22.
             verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(22)) == 0));
@@ -1084,7 +1084,7 @@ class TransactionServiceTest {
             existingTx.setStatus(TransactionStatus.REJECTED);
 
             transactionService.updateTransaction(
-                    1L, "Correcting the record after rejection", BigDecimal.valueOf(8), null, List.of());
+                    1L, "Correcting the record after rejection", BigDecimal.valueOf(8), null, null, List.of());
 
             verify(medicineStockRepository, never()).findByUserIdAndMedicineIdAndMedicineStockType(any(), any(), any());
             verify(medicineStockRepository, never()).save(any());
@@ -1101,7 +1101,7 @@ class TransactionServiceTest {
                     .thenReturn(Optional.empty());
 
             transactionService.updateTransaction(
-                    1L, "This was actually an admin-stock dispatch", null, "ADMIN_MEDICINE_STOCK", List.of());
+                    1L, "This was actually an admin-stock dispatch", null, "ADMIN_MEDICINE_STOCK", null, List.of());
 
             verify(medicineStockRepository).save(argThat(s ->
                     s.getMedicineStockType() == MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK
@@ -1122,7 +1122,7 @@ class TransactionServiceTest {
                     .thenReturn(Optional.of(adminStock));
 
             transactionService.updateTransaction(
-                    1L, "Reassigning to the existing admin-stock bucket", null, "ADMIN_MEDICINE_STOCK", List.of());
+                    1L, "Reassigning to the existing admin-stock bucket", null, "ADMIN_MEDICINE_STOCK", null, List.of());
 
             verify(medicineStockRepository).save(argThat(s ->
                     s.getMedicineStockType() == MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK
@@ -1133,9 +1133,42 @@ class TransactionServiceTest {
         void unchangedQuantityAndType_noReconciliation() {
             transactionService.updateTransaction(
                     1L, "Just fixing a typo in the notes", BigDecimal.valueOf(5),
-                    "REGULAR_MEDICINE_STOCK", List.of());
+                    "REGULAR_MEDICINE_STOCK", null, List.of());
 
             verify(medicineStockRepository, never()).findByUserIdAndMedicineIdAndMedicineStockType(any(), any(), any());
+        }
+
+        @Test @DisplayName("provided pricePerUnit updates the transaction's recorded price")
+        void providedPricePerUnit_updatesRecordedPrice() {
+            existingTx.setPricePerUnit(4000);
+
+            transactionService.updateTransaction(
+                    1L, "Correcting the recorded price", null, null, 4500, List.of());
+
+            assertThat(existingTx.getPricePerUnit()).isEqualTo(4500);
+        }
+
+        @Test @DisplayName("omitting pricePerUnit leaves the existing price unchanged")
+        void omittedPricePerUnit_leavesExistingUnchanged() {
+            existingTx.setPricePerUnit(4000);
+
+            transactionService.updateTransaction(
+                    1L, "No price change here", null, null, null, List.of());
+
+            assertThat(existingTx.getPricePerUnit()).isEqualTo(4000);
+        }
+
+        @Test @DisplayName("throws IllegalArgumentException for a zero or negative pricePerUnit")
+        void nonPositivePricePerUnit_throwsIllegalArgument() {
+            assertThatThrownBy(() -> transactionService.updateTransaction(
+                    1L, "Trying to set a bad price", null, null, 0, List.of()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must be positive");
+
+            assertThatThrownBy(() -> transactionService.updateTransaction(
+                    1L, "Trying to set a bad price", null, null, -100, List.of()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must be positive");
         }
 
         @Test @DisplayName("omitting screenshots leaves the existing ones unchanged")
@@ -1143,7 +1176,7 @@ class TransactionServiceTest {
             existingTx.getScreenshots().add(TransactionScreenshot.builder()
                     .transaction(existingTx).data("original").mimeType("image/png").displayOrder(0).build());
 
-            transactionService.updateTransaction(1L, "No screenshot change here", null, null, List.of());
+            transactionService.updateTransaction(1L, "No screenshot change here", null, null, null, List.of());
 
             assertThat(existingTx.getScreenshots()).hasSize(1);
             assertThat(existingTx.getScreenshots().get(0).getData()).isEqualTo("original");
@@ -1156,7 +1189,7 @@ class TransactionServiceTest {
             existingTx.getScreenshots().add(TransactionScreenshot.builder()
                     .transaction(existingTx).data("old-two").mimeType("image/png").displayOrder(1).build());
 
-            transactionService.updateTransaction(1L, "Replacing with the correct screenshot", null, null,
+            transactionService.updateTransaction(1L, "Replacing with the correct screenshot", null, null, null,
                     List.<String[]>of(new String[]{"new-data", "image/jpeg"}));
 
             assertThat(existingTx.getScreenshots()).hasSize(1);
@@ -1166,7 +1199,7 @@ class TransactionServiceTest {
 
         @Test @DisplayName("providing multiple screenshots replaces the set in order")
         void providedMultipleScreenshots_replaceInOrder() {
-            transactionService.updateTransaction(1L, "Adding two corrected screenshots", null, null,
+            transactionService.updateTransaction(1L, "Adding two corrected screenshots", null, null, null,
                     List.of(new String[]{"first", "image/png"}, new String[]{"second", "image/jpeg"}));
 
             assertThat(existingTx.getScreenshots()).hasSize(2);

@@ -285,12 +285,14 @@ public class TransactionService {
      *
      * @param quantity           null to leave unchanged
      * @param medicineStockType  null to leave unchanged
+     * @param pricePerUnit       null to leave unchanged; otherwise overrides the price recorded
+     *                           for this dispatch (independent of the medicine's catalogue price)
      * @param encodedScreenshots empty to leave existing screenshots unchanged; non-empty fully
      *                           replaces them (already compressed/encoded by the caller)
      */
     @Transactional
     public TransactionResponse updateTransaction(Long id, String notes, BigDecimal quantity,
-                                                   String medicineStockType,
+                                                   String medicineStockType, Integer pricePerUnit,
                                                    List<String[]> encodedScreenshots) {
         Transaction tx = transactionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction", id));
@@ -306,6 +308,9 @@ public class TransactionService {
         BigDecimal newQuantity = quantity != null ? QuantityUtil.round(quantity) : oldQuantity;
         MedicineStock.MedicineStockType newType = medicineStockType != null
                 ? resolveMedicineStockType(medicineStockType) : oldType;
+
+        if (pricePerUnit != null) validatePricePerUnit(pricePerUnit);
+        tx.setPricePerUnit(pricePerUnit != null ? pricePerUnit : tx.getPricePerUnit());
 
         // A PENDING or APPROVED transaction still has an "active" stock deduction from submission
         // time (see submit()) that a quantity/stock-type change must stay consistent with — a
@@ -385,6 +390,11 @@ public class TransactionService {
     private void validateQuantity(BigDecimal quantity) {
         if (quantity.compareTo(BigDecimal.valueOf(0.1)) < 0)
             throw new IllegalArgumentException("Quantity must be at least 0.1");
+    }
+
+    private void validatePricePerUnit(Integer pricePerUnit) {
+        if (pricePerUnit <= 0)
+            throw new IllegalArgumentException("Price per unit must be positive");
     }
 
     private User findUserByUsername(String username) {

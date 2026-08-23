@@ -22,7 +22,7 @@ export default function AdminEditDispatch() {
     const [loading, setLoading]         = useState(false);
     const [error, setError]             = useState('');
 
-    // Inline edit state: { [id]: { active, notes, quantity, medicineStockType, screenshotFiles, saving, error } }
+    // Inline edit state: { [id]: { active, notes, quantity, medicineStockType, pricePerUnit, screenshotFiles, saving, error } }
     const [editState, setEditState]     = useState({});
     // Inline delete state: { [id]: { confirming: bool, deleting: bool, error: string } }
     const [deleteState, setDeleteState] = useState({});
@@ -57,6 +57,9 @@ export default function AdminEditDispatch() {
                 notes: tx.notes || '',
                 quantity: String(tx.quantity ?? ''),
                 medicineStockType: tx.medicineStockType || 'REGULAR_MEDICINE_STOCK',
+                // Blank means "no override" — same as the underlying record — so leaving it
+                // untouched keeps using the medicine's catalogue price, exactly as before.
+                pricePerUnit: tx.pricePerUnit != null ? String(tx.pricePerUnit) : '',
                 screenshotFiles: [],
                 saving: false,
                 error: '',
@@ -80,6 +83,7 @@ export default function AdminEditDispatch() {
                 notes: edit.notes ?? '',
                 quantity: edit.quantity === '' ? null : edit.quantity,
                 medicineStockType: edit.medicineStockType,
+                pricePerUnit: edit.pricePerUnit === '' ? null : edit.pricePerUnit,
                 screenshotFiles: edit.screenshotFiles,
             });
             setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, ...res.data } : tx));
@@ -184,6 +188,7 @@ export default function AdminEditDispatch() {
                                         <th>Medicine</th>
                                         <th>Qty</th>
                                         <th>Stock Type</th>
+                                        <th>Price/Unit</th>
                                         <th>Status</th>
                                         <th>Notes</th>
                                         <th>Screenshot</th>
@@ -229,6 +234,26 @@ export default function AdminEditDispatch() {
                                                         <span className={`status-badge ${tx.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
                                                             {medicineStockTypeLabel(tx.medicineStockType)}
                                                         </span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {edit.active ? (
+                                                        <input
+                                                            aria-label="Edit price per unit"
+                                                            type="number"
+                                                            min="1"
+                                                            step="1"
+                                                            placeholder={`Default: Rs ${tx.price ?? '—'}`}
+                                                            value={edit.pricePerUnit}
+                                                            onChange={e => handleFieldChange(tx.id, 'pricePerUnit', e.target.value)}
+                                                            style={{ width: '6rem' }}
+                                                        />
+                                                    ) : (
+                                                        tx.pricePerUnit != null
+                                                            ? `Rs ${tx.pricePerUnit.toLocaleString('en-IN')}`
+                                                            : tx.price != null
+                                                                ? `Rs ${tx.price.toLocaleString('en-IN')}`
+                                                                : '—'
                                                     )}
                                                 </td>
                                                 <td>{statusBadge(tx.status)}</td>

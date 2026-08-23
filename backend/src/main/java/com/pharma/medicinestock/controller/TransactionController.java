@@ -147,6 +147,8 @@ public class TransactionController {
      *
      * @param quantity          optional — omit to leave unchanged
      * @param medicineStockType optional — omit to leave unchanged
+     * @param pricePerUnit      optional — omit to leave unchanged; overrides the price recorded
+     *                          for this dispatch (independent of the medicine's catalogue price)
      * @param screenshots       optional — if provided (non-empty), replaces the existing set
      *                          entirely; omit to leave existing screenshots unchanged
      */
@@ -157,6 +159,7 @@ public class TransactionController {
             @RequestParam("notes") String notes,
             @RequestParam(value = "quantity", required = false) BigDecimal quantity,
             @RequestParam(value = "medicineStockType", required = false) String medicineStockType,
+            @RequestParam(value = "pricePerUnit", required = false) Integer pricePerUnit,
             @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots)
             throws IOException {
         // Encoding here, not in the service, mirrors submit()/buildRequest() — screenshot
@@ -165,7 +168,7 @@ public class TransactionController {
         // exactly this endpoint's "screenshots omitted -> leave existing ones alone" contract.
         List<String[]> encodedScreenshots = screenshotProcessor.encodeAll(screenshots);
         return ResponseEntity.ok(
-                transactionService.updateTransaction(id, notes, quantity, medicineStockType, encodedScreenshots));
+                transactionService.updateTransaction(id, notes, quantity, medicineStockType, pricePerUnit, encodedScreenshots));
     }
 
     // ── Assembly helper (no logic — only construction) ─────────────────

@@ -98,14 +98,16 @@ export const deleteMyTransaction = (id)     => api.delete(`/transactions/my/${id
 /**
  * Admin edit of a past dispatch record. `notes` is always required — it's the audit trail
  * for a quantity/stock-type correction, since there's no separate adjustment-ledger entry
- * recorded for it. `quantity`/`medicineStockType` are optional (omit to leave unchanged);
- * `screenshotFiles`, if provided non-empty, replaces the existing screenshot set entirely.
+ * recorded for it. `quantity`/`medicineStockType`/`pricePerUnit` are optional (omit to leave
+ * unchanged); `screenshotFiles`, if provided non-empty, replaces the existing screenshot set
+ * entirely.
  */
-export const updateTransaction  = (id, { notes, quantity, medicineStockType, screenshotFiles }) => {
+export const updateTransaction  = (id, { notes, quantity, medicineStockType, pricePerUnit, screenshotFiles }) => {
   const form = new FormData();
   form.append('notes', notes);
   if (quantity != null) form.append('quantity', String(quantity));
   if (medicineStockType) form.append('medicineStockType', medicineStockType);
+  if (pricePerUnit != null) form.append('pricePerUnit', String(pricePerUnit));
   (screenshotFiles || []).forEach((file) => form.append('screenshots', file));
   return api.patch(`/transactions/${id}`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
