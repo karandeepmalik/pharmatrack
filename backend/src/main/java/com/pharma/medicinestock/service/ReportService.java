@@ -67,15 +67,6 @@ public class ReportService {
         List<MedicineStock> adminStockRecords = medicineStockRepository.findAllNonZeroOrderByMedicineAndUser(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK);
         Map<String, BigDecimal> inTransitMap = buildInTransitMap(LocalDateTime.now(IST_ZONE));
 
-        // Derive pharma name from whichever list is non-empty
-        String pharmaName = regularRecords.stream()
-                .map(i -> i.getMedicine().getPharmaCompany().getName())
-                .findFirst()
-                .orElseGet(() -> adminStockRecords.stream()
-                        .map(i -> i.getMedicine().getPharmaCompany().getName())
-                        .findFirst()
-                        .orElse("Shield FX"));
-
         StringBuilder sb = new StringBuilder();
         sb.append("CURRENT MEDICINE STOCK PER USER\n");
         sb.append("Generated: ").append(nowIST()).append("\n");
@@ -84,19 +75,12 @@ public class ReportService {
         // ── REGULAR MEDICINE STOCK section ──────────────────────────────
         sb.append("REGULAR MEDICINE STOCK\n");
         sb.append("-".repeat(22)).append("\n");
-        sb.append(pharmaName).append("\n");
-        sb.append("-".repeat(pharmaName.length())).append("\n");
         appendMedicineStockByUserSection(sb, regularRecords, inTransitMap);
 
         // ── ADMIN MEDICINE STOCK section ────────────────────────────────
         sb.append("\n").append("=".repeat(40)).append("\n");
         sb.append("ADMIN MEDICINE STOCK\n");
         sb.append("-".repeat(20)).append("\n");
-        if (!adminStockRecords.isEmpty()) {
-            String adminPharma = adminStockRecords.get(0).getMedicine().getPharmaCompany().getName();
-            sb.append(adminPharma).append("\n");
-            sb.append("-".repeat(adminPharma.length())).append("\n");
-        }
         appendMedicineStockByUserSection(sb, adminStockRecords, inTransitMap);
 
         return new ReportResponse("MEDICINE_STOCK_BY_USER", nowIST(), sb.toString());
@@ -149,7 +133,7 @@ public class ReportService {
             Map<String, List<MedicineStock>> specRecs  = pharmaSpecRecords.getOrDefault(pharmaId, Collections.emptyMap());
             Map<String, Integer>         specPrice = pharmaSpecPrice.getOrDefault(pharmaId, Collections.emptyMap());
 
-            for (String[] spec : DAILY_SPEC_ORDER) {
+            for (String[] spec : specOrderFor(specRecs.keySet(), k -> specRecs.get(k).get(0).getMedicine())) {
                 String key = spec[0] + "|" + spec[1];
                 List<MedicineStock> entries = specRecs.getOrDefault(key, Collections.emptyList());
                 if (entries.isEmpty()) continue;
@@ -273,7 +257,7 @@ public class ReportService {
             Map<String, Medicine>          specMed      = pharmaSpecMedicine.getOrDefault(pharmaId, Collections.emptyMap());
             Map<String, Map<Long, String>> specUsernames = pharmaSpecUsernames.getOrDefault(pharmaId, Collections.emptyMap());
 
-            for (String[] spec : DAILY_SPEC_ORDER) {
+            for (String[] spec : specOrderFor(specUserQty.keySet(), specMed::get)) {
                 String sk = spec[0] + "|" + spec[1];
                 List<UserQty> userQtys = specUserQty.getOrDefault(sk, Collections.emptyList());
                 if (userQtys.isEmpty()) continue;
