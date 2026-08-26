@@ -57,6 +57,38 @@ test.describe('Manage Users', () => {
     await expect(row.getByText('Active')).toBeVisible({ timeout: 10000 });
   });
 
+  test('creating a user with a location shows it in the table', async ({ page }) => {
+    const username = `pw_loc_create_${Date.now()}`;
+    await page.locator('#fullName').fill('Location Test User');
+    await page.locator('#username').fill(username);
+    await page.locator('#email').fill(`${username}@example.com`);
+    await page.locator('#password').fill('TestPass@123');
+    await page.locator('#location').fill('Delhi');
+    await page.getByRole('button', { name: /create user/i }).click();
+
+    await expect(page.getByRole('alert')).toContainText(/created successfully/i, { timeout: 10000 });
+    const row = page.getByRole('row', { name: new RegExp(username) });
+    await expect(row.getByText('Delhi')).toBeVisible();
+  });
+
+  test('editing a user\'s location persists after save', async ({ page }) => {
+    const username = `pw_loc_edit_${Date.now()}`;
+    await page.locator('#fullName').fill('Location Edit User');
+    await page.locator('#username').fill(username);
+    await page.locator('#email').fill(`${username}@example.com`);
+    await page.locator('#password').fill('TestPass@123');
+    await page.getByRole('button', { name: /create user/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/created successfully/i, { timeout: 10000 });
+
+    const row = page.getByRole('row', { name: new RegExp(username) });
+    await row.getByRole('button', { name: /edit location/i }).click();
+    await page.getByLabel(new RegExp(`location for ${username}`, 'i')).fill('Mumbai');
+    await page.getByRole('button', { name: /save location/i }).click();
+
+    await expect(page.getByRole('alert')).toContainText(/location.*updated successfully/i, { timeout: 10000 });
+    await expect(row.getByText('Mumbai')).toBeVisible();
+  });
+
   test('changing a freshly created user password succeeds', async ({ page }) => {
     const username = `pw_changepass_${Date.now()}`;
     await page.locator('#fullName').fill('Password Change User');

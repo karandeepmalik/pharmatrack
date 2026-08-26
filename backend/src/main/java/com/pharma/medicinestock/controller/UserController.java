@@ -26,4 +26,7 @@ public class UserController {
     @PutMapping("/{id}/password") @PreAuthorize("hasRole('ADMIN')") public ResponseEntity<Void> adminChangePassword(@PathVariable Long id, @RequestBody Map<String,String> body){
         userService.adminChangePassword(id, body.get("newPassword")); return ResponseEntity.ok().build();
     }
+    @PutMapping("/{id}/location") @PreAuthorize("hasRole('ADMIN')") public ResponseEntity<UserResponse> updateLocation(@PathVariable Long id, @RequestBody Map<String,String> body){
+        return ResponseEntity.ok(userService.updateLocation(id, body.get("location")));
+    }
 }

@@ -122,10 +122,17 @@ final class ReportTextRenderer {
     static void appendUserQtyLine(StringBuilder sb, String username, Long userId, Long medicineId,
                                    MedicineStock.MedicineStockType type, BigDecimal qty,
                                    Map<String, BigDecimal> inTransitMap) {
+        appendUserQtyLine(sb, "  ", username, userId, medicineId, type, qty, inTransitMap);
+    }
+
+    /** Same as above, with a caller-supplied indent — used to nest a line under a sub-heading. */
+    static void appendUserQtyLine(StringBuilder sb, String indent, String username, Long userId, Long medicineId,
+                                   MedicineStock.MedicineStockType type, BigDecimal qty,
+                                   Map<String, BigDecimal> inTransitMap) {
         String key = userId + "|" + medicineId + "|"
                 + (type != null ? type.name() : "REGULAR_MEDICINE_STOCK");
         BigDecimal transit = inTransitMap.getOrDefault(key, BigDecimal.ZERO);
-        sb.append("  ").append(username).append(": ");
+        sb.append(indent).append(username).append(": ");
         if (transit.compareTo(BigDecimal.ZERO) > 0) {
             sb.append(qty.subtract(transit).toPlainString()).append(" + ")
               .append(transit.toPlainString()).append(" (in transit)");
@@ -133,6 +140,33 @@ final class ReportTextRenderer {
             sb.append(qty.toPlainString());
         }
         sb.append("\n");
+    }
+
+    /**
+     * Groups a spec's dispatch entries by the submitting user's location (falling back to
+     * "Unassigned" when a user has none set) and appends each group under its own heading, in
+     * first-encounter order — so the daily report shows who dispatched from where without the
+     * reader having to cross-reference a separate roster. Returns the total quantity across all
+     * entries so callers don't need a second pass to print the spec's TOTAL line.
+     */
+    static BigDecimal appendUsersByLocation(StringBuilder sb, List<MedicineStock> entries,
+                                             Map<String, BigDecimal> inTransitMap) {
+        LinkedHashMap<String, List<MedicineStock>> byLocation = new LinkedHashMap<>();
+        for (MedicineStock inv : entries) {
+            String location = inv.getUser().getLocation();
+            String key = (location == null || location.isBlank()) ? "Unassigned" : location;
+            byLocation.computeIfAbsent(key, k -> new ArrayList<>()).add(inv);
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (Map.Entry<String, List<MedicineStock>> le : byLocation.entrySet()) {
+            sb.append("  ").append(le.getKey()).append("\n");
+            for (MedicineStock inv : le.getValue()) {
+                appendUserQtyLine(sb, "    ", inv.getUser().getUsername(), inv.getUser().getId(),
+                        inv.getMedicine().getId(), inv.getMedicineStockType(), inv.getQuantity(), inTransitMap);
+                total = total.add(inv.getQuantity());
+            }
+        }
+        return total;
     }
 
     /**
@@ -210,13 +244,8 @@ final class ReportTextRenderer {
                 String key = spec[0] + "|" + spec[1];
                 List<MedicineStock> entries = bySpec.getOrDefault(key, Collections.emptyList());
                 if (entries.isEmpty()) continue;
-                BigDecimal total = BigDecimal.ZERO;
                 sb.append("\n").append(spec[2]).append("\n");
-                for (MedicineStock inv : entries) {
-                    appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
-                            inv.getMedicine().getId(), inv.getMedicineStockType(), inv.getQuantity(), inTransitMap);
-                    total = total.add(inv.getQuantity());
-                }
+                BigDecimal total = appendUsersByLocation(sb, entries, inTransitMap);
                 sb.append("  TOTAL: ").append(total.toPlainString()).append("\n");
             }
         }
@@ -253,12 +282,7 @@ final class ReportTextRenderer {
                         ? spec[2] + " | " + vialConc(entries.get(0).getMedicine()) + " mg/ml"
                         : spec[2];
                 sb.append("\n").append(header).append("\n");
-                BigDecimal total = BigDecimal.ZERO;
-                for (MedicineStock inv : entries) {
-                    appendUserQtyLine(sb, inv.getUser().getUsername(), inv.getUser().getId(),
-                            inv.getMedicine().getId(), inv.getMedicineStockType(), inv.getQuantity(), inTransitMap);
-                    total = total.add(inv.getQuantity());
-                }
+                BigDecimal total = appendUsersByLocation(sb, entries, inTransitMap);
                 sb.append("  TOTAL: ").append(total.toPlainString()).append("\n");
             }
         }

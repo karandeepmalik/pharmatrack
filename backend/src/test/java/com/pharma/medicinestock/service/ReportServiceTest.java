@@ -1272,6 +1272,66 @@ class ReportServiceTest {
         }
 
         @Test
+        void usersGroupedByLocationUnderEachSpec() {
+            john.setLocation("Delhi");
+            jane.setLocation("Mumbai");
+            when(medicineStockAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(
+                            makeRegularAdj(john, vial, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK, 10, PAST),
+                            makeRegularAdj(jane, vial, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK, 5, PAST)));
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport(null);
+            String content = r.getContent();
+
+            assertThat(content).contains("Delhi");
+            assertThat(content).contains("Mumbai");
+            assertThat(content).contains("john.doe: 10");
+            assertThat(content).contains("jane.smith: 5");
+            assertThat(content).contains("TOTAL: 15");
+            // First-encounter order: john/Delhi's adjustment comes first in the stub list.
+            int delhiIdx = content.indexOf("Delhi");
+            int mumbaiIdx = content.indexOf("Mumbai");
+            int johnIdx = content.indexOf("john.doe: 10");
+            int janeIdx = content.indexOf("jane.smith: 5");
+            assertThat(delhiIdx).isLessThan(mumbaiIdx);
+            assertThat(delhiIdx).isLessThan(johnIdx);
+            assertThat(mumbaiIdx).isLessThan(janeIdx);
+        }
+
+        @Test
+        void usersWithNoLocationAreGroupedUnderUnassigned() {
+            // john has no location set in this test's fixture (default null).
+            when(medicineStockAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK, 10, PAST)));
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport(null);
+
+            assertThat(r.getContent()).contains("Unassigned");
+            assertThat(r.getContent()).contains("john.doe: 10");
+        }
+
+        @Test
+        void adminMedicineStockSectionAlsoGroupsUsersByLocation() {
+            john.setLocation("Goa");
+            when(medicineStockAdjustmentRepository.findAllUpTo(any()))
+                    .thenReturn(List.of(makeRegularAdj(john, vial, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK, 8, PAST)));
+            when(transactionRepository.findNonRejectedSubmittedUpTo(any(), any())).thenReturn(List.of());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            ReportResponse r = reportService.dailyReport(null);
+            String content = r.getContent();
+
+            int adminIdx = content.indexOf("ADMIN MEDICINE STOCK");
+            String adminBlock = content.substring(adminIdx);
+            assertThat(adminBlock).contains("Goa");
+            assertThat(adminBlock).contains("john.doe: 8");
+        }
+
+        @Test
         void specsWithZeroMedicineStockAreNotShown() {
             // Only vial 10 ml has stock — other specs must be absent from the report
             when(medicineStockAdjustmentRepository.findAllUpTo(any()))

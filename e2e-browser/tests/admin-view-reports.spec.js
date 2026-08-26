@@ -65,6 +65,42 @@ test.describe('View Reports', () => {
     await expect(page.locator('pre.report-content')).not.toBeEmpty();
   });
 
+  test('a user with a location shows grouped under it in the Daily Report', async ({ page }) => {
+    test.setTimeout(60000);
+    const suffix = Date.now();
+    const username = `pw_loc_${suffix}`;
+    const fullName = `Playwright Location User ${suffix}`;
+    const location = `Playwright City ${suffix}`;
+
+    await page.goto('/admin/users');
+    await page.locator('#fullName').fill(fullName);
+    await page.locator('#username').fill(username);
+    await page.locator('#email').fill(`${username}@example.com`);
+    await page.locator('#password').fill('TestPass@123');
+    await page.locator('#location').fill(location);
+    await page.getByRole('button', { name: /create user/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/created successfully/i, { timeout: 10000 });
+
+    await page.goto('/admin/modify-medicine-stock');
+    await page.locator('#user-select').selectOption({ label: `${fullName} (${username})` });
+    await page.locator('#medicine-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption('ADD');
+    await page.locator('#qty-input').fill('1');
+    await page.locator('#note-input').fill(`Playwright location-grouping stock ${suffix}`);
+    await page.getByRole('button', { name: /add medicine stock/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/added successfully/i, { timeout: 10000 });
+
+    await page.goto('/admin/reports');
+    await page.locator('#report-select').selectOption('daily');
+    await page.locator('#daily-date-input').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('button', { name: /generate report/i }).click();
+
+    await expect(page.getByRole('heading', { name: /daily report/i })).toBeVisible({ timeout: 10000 });
+    const reportContent = page.locator('pre.report-content');
+    await expect(reportContent).toContainText(location);
+    await expect(reportContent).toContainText(username);
+  });
+
   test('generates the Sales Report for a chosen date range', async ({ page }) => {
     await page.locator('#report-select').selectOption('today-sales');
     const today = new Date().toISOString().slice(0, 10);
