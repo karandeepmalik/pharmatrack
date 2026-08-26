@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 
-const EMPTY_FORM = { username: '', email: '', fullName: '', password: '', role: 'USER' };
+const EMPTY_FORM = { username: '', email: '', fullName: '', password: '', role: 'USER', location: '' };
 
 export default function ManageUsers() {
     const [users, setUsers] = useState([]);
@@ -18,6 +18,11 @@ export default function ManageUsers() {
     const [pwForm, setPwForm] = useState({});   // { [id]: newPassword }
     const [pwSubmitting, setPwSubmitting] = useState(null);
     const [pwExpanded, setPwExpanded] = useState(null); // which row has pw form open
+
+    // Location edit state — keyed by user id
+    const [locForm, setLocForm] = useState({});   // { [id]: location }
+    const [locSubmitting, setLocSubmitting] = useState(null);
+    const [locExpanded, setLocExpanded] = useState(null); // which row has the location form open
 
     const fetchUsers = useCallback(() => {
         api.getUsers()
@@ -88,6 +93,21 @@ export default function ManageUsers() {
         }
     };
 
+    const handleLocationChange = async (userId, username) => {
+        const location = (locForm[userId] ?? '').trim();
+        setError(''); setLocSubmitting(userId);
+        try {
+            await api.updateUserLocation(userId, location);
+            setSuccess(`Location for "${username}" updated successfully.`);
+            setLocExpanded(null);
+            fetchUsers();
+        } catch (ex) {
+            setError(ex.response?.data?.message || 'Failed to update location.');
+        } finally {
+            setLocSubmitting(null);
+        }
+    };
+
     const set = field => e => setForm(f => ({ ...f, [field]: e.target.value }));
 
     return (
@@ -126,6 +146,10 @@ export default function ManageUsers() {
                             <option value="ADMIN">Admin</option>
                         </select>
                     </div>
+                    <div className="form-group">
+                        <label htmlFor="location">Location (city/state)</label>
+                        <input id="location" type="text" value={form.location} onChange={set('location')} placeholder="e.g. Delhi" />
+                    </div>
                     <button type="submit" className="btn btn-primary" disabled={submitting}>
                         {submitting ? 'Creating…' : 'Create User'}
                     </button>
@@ -143,6 +167,7 @@ export default function ManageUsers() {
                                     <th>Full Name</th>
                                     <th>Email</th>
                                     <th>Role</th>
+                                    <th>Location</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -155,6 +180,7 @@ export default function ManageUsers() {
                                             <td>{u.fullName}</td>
                                             <td>{u.email}</td>
                                             <td><span className={`role-badge role-${u.role.toLowerCase()}`}>{u.role}</span></td>
+                                            <td>{u.location || '—'}</td>
                                             <td><span className={`status-badge ${u.active ? 'active' : 'inactive'}`}>{u.active ? 'Active' : 'Inactive'}</span></td>
                                             <td className="actions-cell">
                                                 <button
@@ -172,6 +198,19 @@ export default function ManageUsers() {
                                                 </button>
                                                 <button
                                                     type="button"
+                                                    className="btn btn-sm btn-secondary"
+                                                    onClick={() => {
+                                                        if (locExpanded === u.id) {
+                                                            setLocExpanded(null);
+                                                        } else {
+                                                            setLocForm(f => ({ ...f, [u.id]: u.location || '' }));
+                                                            setLocExpanded(u.id);
+                                                        }
+                                                    }}>
+                                                    {locExpanded === u.id ? 'Cancel' : 'Edit Location'}
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     className="btn btn-sm btn-delete"
                                                     disabled={deletingId === u.id}
                                                     onClick={() => handleDelete(u.id, u.username)}>
@@ -181,7 +220,7 @@ export default function ManageUsers() {
                                         </tr>
                                         {pwExpanded === u.id && (
                                             <tr>
-                                                <td colSpan={6}>
+                                                <td colSpan={7}>
                                                     <div className="pw-row">
                                                         <input
                                                             type="password"
@@ -197,6 +236,28 @@ export default function ManageUsers() {
                                                             disabled={pwSubmitting === u.id || (pwForm[u.id] || '').length < 8}
                                                             onClick={() => handlePasswordChange(u.id, u.username)}>
                                                             {pwSubmitting === u.id ? 'Saving…' : 'Set Password'}
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {locExpanded === u.id && (
+                                            <tr>
+                                                <td colSpan={7}>
+                                                    <div className="pw-row">
+                                                        <input
+                                                            type="text"
+                                                            aria-label={`Location for ${u.username}`}
+                                                            placeholder="e.g. Delhi"
+                                                            value={locForm[u.id] ?? ''}
+                                                            onChange={e => setLocForm(f => ({ ...f, [u.id]: e.target.value }))}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-primary btn-sm"
+                                                            disabled={locSubmitting === u.id}
+                                                            onClick={() => handleLocationChange(u.id, u.username)}>
+                                                            {locSubmitting === u.id ? 'Saving…' : 'Save Location'}
                                                         </button>
                                                     </div>
                                                 </td>

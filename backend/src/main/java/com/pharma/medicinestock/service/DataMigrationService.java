@@ -37,6 +37,57 @@ public class DataMigrationService {
         dropDuplicateMedicineStockUniqueConstraint();
         addMissingForeignKeyIndexes();
         addTransactionHotPathIndex();
+        addUserLocationColumn();
+        backfillUserLocations();
+    }
+
+    /** ddl-auto=validate in prod won't create this new column — add it if missing. */
+    private void addUserLocationColumn() {
+        try {
+            Integer exists = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                "WHERE table_name = 'users' AND column_name = 'location'", Integer.class);
+            if (exists != null && exists > 0) return;
+            jdbc.execute("ALTER TABLE users ADD COLUMN location VARCHAR(100)");
+            log.info("DataMigration: added location column to users table");
+        } catch (Exception e) {
+            log.debug("DataMigration: users.location column add skipped — {}", e.getMessage());
+        }
+    }
+
+    /**
+     * One-time seed of the known field-team roster's city/state, keyed by username. Guarded by
+     * "location IS NULL" so it only ever fills a blank value — once set (here or later edited by
+     * an admin via Manage Users), it's never overwritten by a future restart. The one accepted
+     * edge case: an admin who deliberately clears one of these 12 back to blank will see it
+     * re-seeded on the next restart, same tradeoff as setDefaultMedicineStockType() above.
+     */
+    private void backfillUserLocations() {
+        Map<String, String> seed = Map.ofEntries(
+            Map.entry("Vasu", "Delhi"),
+            Map.entry("Riona", "Delhi"),
+            Map.entry("Atif", "Mumbai"),
+            Map.entry("Allwyn", "Mumbai"),
+            Map.entry("Dhairya", "Mumbai"),
+            Map.entry("Farheen", "Bangalore"),
+            Map.entry("Karan", "Bangalore"),
+            Map.entry("Swati", "Hyderabad"),
+            Map.entry("manipurinv", "Manipur"),
+            Map.entry("Anubhuti", "Assam"),
+            Map.entry("nepalinv", "Nepal"),
+            Map.entry("Arnab", "Goa")
+        );
+        try {
+            int total = 0;
+            for (Map.Entry<String, String> e : seed.entrySet()) {
+                total += jdbc.update(
+                    "UPDATE users SET location = ? WHERE username = ? AND location IS NULL",
+                    e.getValue(), e.getKey());
+            }
+            if (total > 0) log.info("DataMigration: backfilled location for {} users", total);
+        } catch (Exception e) {
+            log.debug("DataMigration: user location backfill skipped — {}", e.getMessage());
+        }
     }
 
     /**

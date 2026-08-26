@@ -1,5 +1,6 @@
 package com.pharma.medicinestock.service;
 
+import com.pharma.medicinestock.dto.RegisterRequest;
 import com.pharma.medicinestock.dto.UserResponse;
 import com.pharma.medicinestock.entity.User;
 import com.pharma.medicinestock.exception.ResourceNotFoundException;
@@ -106,6 +107,74 @@ class UserServiceTest {
             when(userRepository.findById(99L)).thenReturn(Optional.empty());
             assertThatThrownBy(() -> userService.toggleActive(99L))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("updateLocation")
+    class UpdateLocation {
+
+        @Test
+        void setsLocationOnTheUser() {
+            when(userRepository.findById(2L)).thenReturn(Optional.of(user));
+            when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            UserResponse result = userService.updateLocation(2L, "Delhi");
+
+            assertThat(result.getLocation()).isEqualTo("Delhi");
+            assertThat(user.getLocation()).isEqualTo("Delhi");
+        }
+
+        @Test
+        void blankLocationClearsItToNull() {
+            user.setLocation("Delhi");
+            when(userRepository.findById(2L)).thenReturn(Optional.of(user));
+            when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            UserResponse result = userService.updateLocation(2L, "   ");
+
+            assertThat(result.getLocation()).isNull();
+        }
+
+        @Test
+        void throwsWhenUserNotFound() {
+            when(userRepository.findById(99L)).thenReturn(Optional.empty());
+            assertThatThrownBy(() -> userService.updateLocation(99L, "Delhi"))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("register")
+    class Register {
+
+        private RegisterRequest req;
+
+        @BeforeEach
+        void setUp() {
+            req = new RegisterRequest();
+            req.setUsername("new.hire"); req.setEmail("new.hire@pharma.com");
+            req.setPassword("password123"); req.setFullName("New Hire");
+            when(userRepository.existsByUsername(any())).thenReturn(false);
+            when(userRepository.existsByEmail(any())).thenReturn(false);
+            when(passwordEncoder.encode(any())).thenReturn("hashed");
+            when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        }
+
+        @Test
+        void setsLocationWhenProvided() {
+            req.setLocation("Bangalore");
+
+            UserResponse result = userService.register(req);
+
+            assertThat(result.getLocation()).isEqualTo("Bangalore");
+        }
+
+        @Test
+        void locationRemainsNullWhenNotProvided() {
+            UserResponse result = userService.register(req);
+
+            assertThat(result.getLocation()).isNull();
         }
     }
 }

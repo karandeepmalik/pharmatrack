@@ -161,6 +161,31 @@ describe('ManageUsers — add new user form', () => {
     expect(screen.getByLabelText(/role/i)).toHaveValue('USER');
   });
 
+  test('renders a location field', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    renderPage();
+    expect(screen.getByLabelText(/location/i)).toBeInTheDocument();
+  });
+
+  test('calls createUser API with location when provided', async () => {
+    api.getUsers.mockResolvedValue({ data: [] });
+    api.createUser.mockResolvedValue({});
+    renderPage();
+
+    await userEvent.type(screen.getByLabelText(/full name/i), 'New User');
+    await userEvent.type(screen.getByLabelText(/^username$/i), 'new.user');
+    await userEvent.type(screen.getByLabelText(/email/i), 'new@pharma.com');
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'password123');
+    await userEvent.type(screen.getByLabelText(/location/i), 'Delhi');
+    await userEvent.click(screen.getByRole('button', { name: /create user/i }));
+
+    await waitFor(() =>
+      expect(api.createUser).toHaveBeenCalledWith(
+        expect.objectContaining({ username: 'new.user', location: 'Delhi' })
+      )
+    );
+  });
+
   test('shows success alert after creating a user', async () => {
     api.getUsers.mockResolvedValue({ data: [] });
     api.createUser.mockResolvedValue({});
@@ -314,5 +339,81 @@ describe('ManageUsers — change password', () => {
     await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
     expect(screen.queryByLabelText(/new password for john\.doe/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── Location ─────────────────────────────────────────────────────────────
+
+describe('ManageUsers — location', () => {
+  test('shows the Location column with the user\'s current value', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser({ location: 'Delhi' })] });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Delhi')).toBeInTheDocument());
+  });
+
+  test('shows a placeholder when a user has no location set', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser({ location: null })] });
+    renderPage();
+    await waitFor(() => expect(screen.getByText('john.doe')).toBeInTheDocument());
+    expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  test('clicking Edit Location reveals a location input prefilled with the current value', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser({ location: 'Delhi' })] });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /edit location/i }));
+    await userEvent.click(screen.getByRole('button', { name: /edit location/i }));
+
+    expect(screen.getByLabelText(/location for john\.doe/i)).toHaveValue('Delhi');
+  });
+
+  test('calls updateUserLocation with the new value and refreshes', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser({ location: null })] });
+    api.updateUserLocation.mockResolvedValue({ data: makeUser({ location: 'Mumbai' }) });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /edit location/i }));
+    await userEvent.click(screen.getByRole('button', { name: /edit location/i }));
+    await userEvent.type(screen.getByLabelText(/location for john\.doe/i), 'Mumbai');
+    await userEvent.click(screen.getByRole('button', { name: /save location/i }));
+
+    await waitFor(() =>
+      expect(api.updateUserLocation).toHaveBeenCalledWith(2, 'Mumbai')
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/location.*updated/i)
+    );
+  });
+
+  test('shows error alert when updateUserLocation fails', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser({ location: null })] });
+    api.updateUserLocation.mockRejectedValue({
+      response: { data: { message: 'Failed to update location.' } },
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /edit location/i }));
+    await userEvent.click(screen.getByRole('button', { name: /edit location/i }));
+    await userEvent.type(screen.getByLabelText(/location for john\.doe/i), 'Mumbai');
+    await userEvent.click(screen.getByRole('button', { name: /save location/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/failed to update location/i)
+    );
+  });
+
+  test('Cancel button hides the location row', async () => {
+    api.getUsers.mockResolvedValue({ data: [makeUser({ location: 'Delhi' })] });
+    renderPage();
+
+    await waitFor(() => screen.getByRole('button', { name: /edit location/i }));
+    await userEvent.click(screen.getByRole('button', { name: /edit location/i }));
+
+    expect(screen.getByLabelText(/location for john\.doe/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    expect(screen.queryByLabelText(/location for john\.doe/i)).not.toBeInTheDocument();
   });
 });

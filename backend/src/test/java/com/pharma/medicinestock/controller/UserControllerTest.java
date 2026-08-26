@@ -322,4 +322,55 @@ class UserControllerTest {
                     .andExpect(status().isUnauthorized());
         }
     }
+
+    // ── PUT /api/users/{id}/location — admin sets a user's city/state ──
+
+    @Nested
+    @DisplayName("PUT /api/users/{id}/location — admin sets a user's location")
+    class UpdateLocation {
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        void adminCanSetLocation() throws Exception {
+            var withLocation = User.builder().id(2L).username("john.doe").fullName("John Doe")
+                    .email("john@pharma.com").role(User.Role.USER).active(true).password("hashed").build();
+            var dto = toDto(withLocation);
+            dto.setLocation("Delhi");
+            when(userService.updateLocation(2L, "Delhi")).thenReturn(dto);
+
+            mockMvc.perform(put("/api/users/2/location").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("location", "Delhi"))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.location").value("Delhi"));
+            verify(userService).updateLocation(2L, "Delhi");
+        }
+
+        @Test
+        @WithMockUser(roles = "ADMIN")
+        void notFoundUserReturns404() throws Exception {
+            doThrow(new ResourceNotFoundException("User", 999L)).when(userService).updateLocation(eq(999L), any());
+            mockMvc.perform(put("/api/users/999/location").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("location", "Delhi"))))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        @WithMockUser(roles = "USER")
+        void regularUserCannotSetLocation() throws Exception {
+            mockMvc.perform(put("/api/users/2/location").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("location", "Delhi"))))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedCannotSetLocation() throws Exception {
+            mockMvc.perform(put("/api/users/2/location").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("location", "Delhi"))))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
 }

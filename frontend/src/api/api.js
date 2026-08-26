@@ -120,6 +120,7 @@ export const createUser          = (data)       => api.post('/users', data);
 export const toggleUser          = (id)         => api.post(`/users/${id}/toggle`);
 export const deleteUser          = (id)         => api.delete(`/users/${id}`);
 export const adminChangePassword = (id, data)   => api.put(`/users/${id}/password`, data);
+export const updateUserLocation  = (id, location) => api.put(`/users/${id}/location`, { location });
 
 // ── Medicine stock adjustments (admin) ──────────────────────────────────
 export const getMedicineStockAdjustments    = (from, to) =>

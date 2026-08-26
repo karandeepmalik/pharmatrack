@@ -26,7 +26,9 @@ public class UserService {
             .username(req.getUsername()).email(req.getEmail()).fullName(req.getFullName())
             .password(passwordEncoder.encode(req.getPassword()))
             .role("ADMIN".equalsIgnoreCase(req.getRole())?User.Role.ADMIN:User.Role.USER)
-            .active(true).build());
+            .active(true)
+            .location(req.getLocation()!=null&&!req.getLocation().isBlank()?req.getLocation().trim():null)
+            .build());
         return toResponse(saved);
     }
     @Transactional(readOnly=true)
@@ -39,6 +41,12 @@ public class UserService {
     public UserResponse toggleActive(Long id){
         User u=userRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("User",id));
         u.setActive(!u.isActive());
+        return toResponse(userRepository.save(u));
+    }
+    @Transactional
+    public UserResponse updateLocation(Long id, String location){
+        User u=userRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("User",id));
+        u.setLocation(location!=null&&!location.isBlank()?location.trim():null);
         return toResponse(userRepository.save(u));
     }
     @Transactional
@@ -72,6 +80,7 @@ public class UserService {
         UserResponse r = new UserResponse();
         r.setId(u.getId()); r.setUsername(u.getUsername()); r.setFullName(u.getFullName());
         r.setEmail(u.getEmail()); r.setRole(u.getRole().name()); r.setActive(u.isActive());
+        r.setLocation(u.getLocation());
         return r;
     }
 }
