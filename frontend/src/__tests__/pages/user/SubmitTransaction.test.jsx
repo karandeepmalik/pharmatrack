@@ -270,6 +270,31 @@ describe('Price override input', () => {
     expect(screen.queryByLabelText(/price per unit/i)).not.toBeInTheDocument();
   });
 
+  test('defaults from the selected Stock Type\'s own bucket, not the other bucket, when both hold the same spec', async () => {
+    // Regression test: the same (pharma, type, spec) combination exists in BOTH buckets here
+    // but at different prices. Previously, the price-autofill looked up the raw (unfiltered)
+    // medicineStock list, so whichever bucket's row happened to come first in the array won
+    // regardless of which Stock Type the admin/user actually had selected.
+    const bothBuckets = [
+      { pharmaId: 1, pharmaName: 'Shield FX', medicineId: 10, medicineName: 'Shield FX Tablet 12 mg',
+        medicineType: 'TABLET', specification: 12, quantity: 20, specUnit: 'mg (10 Tablets)', price: 1750,
+        medicineStockType: 'REGULAR_MEDICINE_STOCK' },
+      { pharmaId: 1, pharmaName: 'Shield FX', medicineId: 11, medicineName: 'Shield FX Tablet 12 mg (Admin)',
+        medicineType: 'TABLET', specification: 12, quantity: 5, specUnit: 'mg (10 Tablets)', price: 2000,
+        medicineStockType: 'ADMIN_MEDICINE_STOCK' },
+    ];
+    api.getAvailableMedicineStock.mockResolvedValue({ data: bothBuckets });
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/stock type/i));
+
+    await userEvent.selectOptions(screen.getByLabelText(/stock type/i), 'ADMIN_MEDICINE_STOCK');
+    await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'TABLET');
+    await userEvent.selectOptions(screen.getByLabelText(/specification/i), '12');
+
+    expect(screen.getByLabelText(/price per unit/i)).toHaveValue(2000);
+  });
+
   test('submit call includes pricePerUnit when user changes price', async () => {
     api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
     await fillValidForm();

@@ -232,7 +232,11 @@ export default function SubmitTransaction() {
               const newSpec = e.target.value;
               setSelectedSpec(newSpec);
               setQuantity('');
-              const newItem = medicineStock.find(
+              // Must match against filteredMedicineStock (scoped to the selected Stock Type),
+              // same as selectedItem below — matching against the raw, unfiltered medicineStock
+              // could silently pick the Regular-bucket medicine's price while Admin Medicine
+              // Stock is selected (or vice versa) whenever both buckets hold the same spec.
+              const newItem = filteredMedicineStock.find(
                 (i) => String(i.pharmaId) === selectedPharma &&
                        i.medicineType === selectedType &&
                        String(i.specification) === newSpec
