@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsUser, PAYMENT_SCREENSHOT } = require('./helpers');
+const { loginAsUser, loginAsAdmin, PAYMENT_SCREENSHOT } = require('./helpers');
 
 test.describe('Submit Medicine Dispatch', () => {
   test.beforeEach(async ({ page }) => {
@@ -104,6 +104,59 @@ test.describe('Submit Medicine Dispatch', () => {
     await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
 
     await expect(page.getByRole('alert')).toContainText(/pending admin approval/i, { timeout: 10000 });
+  });
+
+  // Regression: the Price per Unit default used to be looked up from the raw, unfiltered
+  // medicineStock list — ignoring which Stock Type (Regular vs Admin) was actually selected.
+  // When the same (pharma, type, spec) exists as two different catalog entries — one the user
+  // holds as REGULAR_MEDICINE_STOCK, the other as ADMIN_MEDICINE_STOCK, at a different price —
+  // the wrong bucket's price would silently win regardless of the Stock Type dropdown.
+  test('Price per Unit default respects the selected Stock Type when both buckets share a spec', async ({ page }) => {
+    test.setTimeout(60000);
+    const suffix = Date.now();
+    const dupName = `Playwright Duplicate Tablet 12mg ${suffix}`;
+    const dupPrice = 9999;
+
+    // Create a second Tablet-12mg catalog entry under the same pharma, at a different price.
+    await loginAsAdmin(page);
+    await page.goto('/admin/medicines');
+    await page.locator('#med-pharma-select').selectOption({ index: 1 });
+    await page.locator('#med-name-input').fill(dupName);
+    await page.locator('#med-type-select').selectOption('TABLET');
+    await page.locator('#med-spec-input').fill('12');
+    await page.locator('#med-price-input').fill(String(dupPrice));
+    await page.getByRole('button', { name: /add medicine/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/created successfully/i, { timeout: 10000 });
+
+    // Give john ADMIN_MEDICINE_STOCK of that duplicate entry.
+    await page.goto('/admin/modify-medicine-stock');
+    const johnOption = page.locator('#user-select option', { hasText: 'John Doe' });
+    await page.locator('#user-select').selectOption(await johnOption.getAttribute('value'));
+    const dupOption = page.locator(`#medicine-select option`, { hasText: dupName });
+    const dupValue = await dupOption.getAttribute('value');
+    await page.locator('#medicine-select').selectOption(dupValue);
+    await page.locator('#medicine-stock-type-select').selectOption('ADMIN_MEDICINE_STOCK');
+    await page.locator('#type-select').selectOption('ADD');
+    await page.locator('#qty-input').fill('5');
+    await page.locator('#note-input').fill(`Playwright dup-price setup ${suffix}`);
+    await page.getByRole('button', { name: /add medicine stock/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/added successfully/i, { timeout: 10000 });
+
+    // Regular bucket's own Tablet 12mg must show its own (different, seeded) price.
+    await loginAsUser(page, 'john');
+    await page.goto('/user/submit');
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption('TABLET');
+    await page.locator('#spec-select').selectOption({ label: '12 mg (10 Tablets)' });
+    const regularPrice = await page.locator('#price-input').inputValue();
+    expect(Number(regularPrice)).not.toBe(dupPrice);
+
+    // Admin bucket's Tablet 12mg must show the duplicate's own price, not the Regular one.
+    await page.locator('#medicine-stock-type-select').selectOption('ADMIN_MEDICINE_STOCK');
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption('TABLET');
+    await page.locator('#spec-select').selectOption({ label: '12 mg (10 Tablets)' });
+    await expect(page.locator('#price-input')).toHaveValue(String(dupPrice));
   });
 
   // Regression: a successful submit used to be immediately followed, in the same try/catch, by an
