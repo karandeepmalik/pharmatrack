@@ -158,33 +158,41 @@ public class TransactionService {
         return ids.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
     }
 
-    /** Shared status/username/notes normalization for getHistory and getHistoryTotalQuantity —
-     *  both must filter identically or the displayed total quantity would silently disagree
-     *  with what the results table actually shows. */
-    private record HistoryFilters(TransactionStatus status, String username, String notesPattern) {}
+    /** Shared status/username/stockType/notes normalization for getHistory and
+     *  getHistoryTotalQuantity — both must filter identically or the displayed total quantity
+     *  would silently disagree with what the results table actually shows. */
+    private record HistoryFilters(TransactionStatus status, String username,
+                                   MedicineStock.MedicineStockType stockType, String notesPattern) {}
 
-    private HistoryFilters normalizeHistoryFilters(String status, String username, String notes) {
+    private HistoryFilters normalizeHistoryFilters(String status, String username, String medicineStockType, String notes) {
         TransactionStatus txStatus = (status == null || "ALL".equalsIgnoreCase(status))
                 ? null : TransactionStatus.valueOf(status.toUpperCase());
         String usernameFilter = (username == null || username.isBlank() || "ALL".equalsIgnoreCase(username))
                 ? null : username;
+        // Unlike resolveMedicineStockType() (used at submission time, where a bucket is always
+        // implied), a blank/ALL filter here means "don't filter by stock type at all" — it must
+        // never silently default to REGULAR_MEDICINE_STOCK, or admin-bucket records would vanish
+        // from an unfiltered search.
+        MedicineStock.MedicineStockType stockTypeFilter = (medicineStockType == null || medicineStockType.isBlank()
+                || "ALL".equalsIgnoreCase(medicineStockType))
+                ? null : MedicineStock.MedicineStockType.valueOf(medicineStockType.toUpperCase());
         // Built as a complete LIKE pattern here, not passed raw — see searchHistory's Javadoc for
         // why binding a raw substring through LOWER(CONCAT(...)) at the SQL level breaks on Postgres.
         String notesPattern = (notes == null || notes.isBlank())
                 ? null : "%" + notes.trim().toLowerCase() + "%";
-        return new HistoryFilters(txStatus, usernameFilter, notesPattern);
+        return new HistoryFilters(txStatus, usernameFilter, stockTypeFilter, notesPattern);
     }
 
     @Transactional(readOnly = true)
     public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status, int page, int size,
-                                                 String username, Long medicineId, String notes) {
+                                                 String username, Long medicineId, String notes, String medicineStockType) {
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end   = to.plusDays(1).atStartOfDay();
         PageRequest pageable = PageRequest.of(page, size);
-        HistoryFilters f = normalizeHistoryFilters(status, username, notes);
+        HistoryFilters f = normalizeHistoryFilters(status, username, medicineStockType, notes);
 
         Page<Transaction> txPage = transactionRepository.searchHistory(
-                start, end, f.status(), f.username(), medicineId, f.notesPattern(), pageable);
+                start, end, f.status(), f.username(), medicineId, f.stockType(), f.notesPattern(), pageable);
         return txPage.map(transactionMapper::toResponse);
     }
 
@@ -193,13 +201,13 @@ public class TransactionService {
      *  Medicine Dispatches. */
     @Transactional(readOnly = true)
     public BigDecimal getHistoryTotalQuantity(LocalDate from, LocalDate to, String status,
-                                               String username, Long medicineId, String notes) {
+                                               String username, Long medicineId, String notes, String medicineStockType) {
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end   = to.plusDays(1).atStartOfDay();
-        HistoryFilters f = normalizeHistoryFilters(status, username, notes);
+        HistoryFilters f = normalizeHistoryFilters(status, username, medicineStockType, notes);
 
         return transactionRepository.sumQuantityForHistory(
-                start, end, f.status(), f.username(), medicineId, f.notesPattern());
+                start, end, f.status(), f.username(), medicineId, f.stockType(), f.notesPattern());
     }
 
     @Transactional
@@ -287,12 +295,15 @@ public class TransactionService {
      * @param medicineStockType  null to leave unchanged
      * @param pricePerUnit       null to leave unchanged; otherwise overrides the price recorded
      *                           for this dispatch (independent of the medicine's catalogue price)
+     * @param submittedDate      null to leave unchanged; otherwise corrects the dispatch date —
+     *                           must not be in the future, same rule as submit()
      * @param encodedScreenshots empty to leave existing screenshots unchanged; non-empty fully
      *                           replaces them (already compressed/encoded by the caller)
      */
     @Transactional
     public TransactionResponse updateTransaction(Long id, String notes, BigDecimal quantity,
                                                    String medicineStockType, Integer pricePerUnit,
+                                                   LocalDate submittedDate,
                                                    List<String[]> encodedScreenshots) {
         Transaction tx = transactionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction", id));
@@ -311,6 +322,11 @@ public class TransactionService {
 
         if (pricePerUnit != null) validatePricePerUnit(pricePerUnit);
         tx.setPricePerUnit(pricePerUnit != null ? pricePerUnit : tx.getPricePerUnit());
+
+        if (submittedDate != null) {
+            validateSubmittedDate(submittedDate);
+            tx.setSubmittedAt(submittedDate.atStartOfDay());
+        }
 
         // A PENDING or APPROVED transaction still has an "active" stock deduction from submission
         // time (see submit()) that a quantity/stock-type change must stay consistent with — a

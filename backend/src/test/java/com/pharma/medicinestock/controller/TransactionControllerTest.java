@@ -29,6 +29,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -425,7 +426,7 @@ class TransactionControllerTest {
         void history_allStatus_200() throws Exception {
             sampleResponse.setStatus("APPROVED");
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt(), any(), any(), any()))
+            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt(), any(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -442,7 +443,7 @@ class TransactionControllerTest {
         void history_approvedStatus_200() throws Exception {
             sampleResponse.setStatus("APPROVED");
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getHistory(any(), any(), eq("APPROVED"), anyInt(), anyInt(), any(), any(), any()))
+            when(transactionService.getHistory(any(), any(), eq("APPROVED"), anyInt(), anyInt(), any(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -478,7 +479,7 @@ class TransactionControllerTest {
         void history_includesMedicineStockType() throws Exception {
             sampleResponse.setMedicineStockType("REGULAR_MEDICINE_STOCK");
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt(), any(), any(), any()))
+            when(transactionService.getHistory(any(), any(), eq("ALL"), anyInt(), anyInt(), any(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -494,7 +495,7 @@ class TransactionControllerTest {
         @DisplayName("accepts page and size query params")
         void history_pageParams_passedToService() throws Exception {
             Page<TransactionResponse> page = new PageImpl<>(List.of());
-            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -504,15 +505,15 @@ class TransactionControllerTest {
                     .param("size", "10"))
                     .andExpect(status().isOk());
 
-            verify(transactionService).getHistory(any(), any(), anyString(), eq(1), eq(10), any(), any(), any());
+            verify(transactionService).getHistory(any(), any(), anyString(), eq(1), eq(10), any(), any(), any(), any());
         }
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("passes username, medicineId and notes query params through to the service")
+        @DisplayName("passes username, medicineId, notes and medicineStockType query params through to the service")
         void history_optionalFilters_passedToService() throws Exception {
             Page<TransactionResponse> page = new PageImpl<>(List.of());
-            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -520,19 +521,20 @@ class TransactionControllerTest {
                     .param("to", "2026-05-04")
                     .param("username", "john.doe")
                     .param("medicineId", "7")
-                    .param("notes", "clinic"))
+                    .param("notes", "clinic")
+                    .param("medicineStockType", "ADMIN_MEDICINE_STOCK"))
                     .andExpect(status().isOk());
 
             verify(transactionService).getHistory(
-                    any(), any(), anyString(), anyInt(), anyInt(), eq("john.doe"), eq(7L), eq("clinic"));
+                    any(), any(), anyString(), anyInt(), anyInt(), eq("john.doe"), eq(7L), eq("clinic"), eq("ADMIN_MEDICINE_STOCK"));
         }
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("omitting username, medicineId and notes passes nulls through to the service")
+        @DisplayName("omitting username, medicineId, notes and medicineStockType passes nulls through to the service")
         void history_optionalFiltersOmitted_passesNulls() throws Exception {
             Page<TransactionResponse> page = new PageImpl<>(List.of());
-            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any(), any()))
                     .thenReturn(page);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -541,7 +543,7 @@ class TransactionControllerTest {
                     .andExpect(status().isOk());
 
             verify(transactionService).getHistory(
-                    any(), any(), anyString(), anyInt(), anyInt(), isNull(), isNull(), isNull());
+                    any(), any(), anyString(), anyInt(), anyInt(), isNull(), isNull(), isNull(), isNull());
         }
 
         @Test
@@ -549,9 +551,9 @@ class TransactionControllerTest {
         @DisplayName("includes totalQuantity from the service in the response")
         void history_includesTotalQuantity() throws Exception {
             Page<TransactionResponse> page = new PageImpl<>(List.of(sampleResponse));
-            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any(), any()))
                     .thenReturn(page);
-            when(transactionService.getHistoryTotalQuantity(any(), any(), anyString(), any(), any(), any()))
+            when(transactionService.getHistoryTotalQuantity(any(), any(), anyString(), any(), any(), any(), any()))
                     .thenReturn(new BigDecimal("37.5"));
 
             mockMvc.perform(get("/api/transactions/history")
@@ -563,12 +565,12 @@ class TransactionControllerTest {
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("passes the same status/username/medicineId/notes filters to getHistoryTotalQuantity as to getHistory")
+        @DisplayName("passes the same status/username/medicineId/notes/medicineStockType filters to getHistoryTotalQuantity as to getHistory")
         void history_totalQuantity_sameFiltersAsGetHistory() throws Exception {
             Page<TransactionResponse> page = new PageImpl<>(List.of());
-            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any()))
+            when(transactionService.getHistory(any(), any(), anyString(), anyInt(), anyInt(), any(), any(), any(), any()))
                     .thenReturn(page);
-            when(transactionService.getHistoryTotalQuantity(any(), any(), anyString(), any(), any(), any()))
+            when(transactionService.getHistoryTotalQuantity(any(), any(), anyString(), any(), any(), any(), any()))
                     .thenReturn(BigDecimal.ZERO);
 
             mockMvc.perform(get("/api/transactions/history")
@@ -577,11 +579,12 @@ class TransactionControllerTest {
                     .param("status", "APPROVED")
                     .param("username", "john.doe")
                     .param("medicineId", "7")
-                    .param("notes", "clinic"))
+                    .param("notes", "clinic")
+                    .param("medicineStockType", "ADMIN_MEDICINE_STOCK"))
                     .andExpect(status().isOk());
 
             verify(transactionService).getHistoryTotalQuantity(
-                    any(), any(), eq("APPROVED"), eq("john.doe"), eq(7L), eq("clinic"));
+                    any(), any(), eq("APPROVED"), eq("john.doe"), eq(7L), eq("clinic"), eq("ADMIN_MEDICINE_STOCK"));
         }
     }
 
@@ -687,7 +690,7 @@ class TransactionControllerTest {
         void updateTransaction_notesOnly_200() throws Exception {
             sampleResponse.setNotes("Updated dispatch note for this record");
             when(transactionService.updateTransaction(eq(1L), eq("Updated dispatch note for this record"),
-                    isNull(), isNull(), isNull(), anyList())).thenReturn(sampleResponse);
+                    isNull(), isNull(), isNull(), isNull(), anyList())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Updated dispatch note for this record")
@@ -701,7 +704,7 @@ class TransactionControllerTest {
         @DisplayName("admin updates quantity and stock type — passes both through to the service")
         void updateTransaction_quantityAndStockType_200() throws Exception {
             when(transactionService.updateTransaction(eq(1L), eq("Correcting quantity and stock type"),
-                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), anyList())).thenReturn(sampleResponse);
+                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), isNull(), anyList())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Correcting quantity and stock type")
@@ -711,7 +714,7 @@ class TransactionControllerTest {
                     .andExpect(status().isOk());
 
             verify(transactionService).updateTransaction(eq(1L), eq("Correcting quantity and stock type"),
-                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), anyList());
+                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), isNull(), anyList());
         }
 
         @Test
@@ -719,7 +722,7 @@ class TransactionControllerTest {
         @DisplayName("admin updates price per unit — passes it through to the service")
         void updateTransaction_pricePerUnit_200() throws Exception {
             when(transactionService.updateTransaction(eq(1L), eq("Correcting the recorded price"),
-                    isNull(), isNull(), eq(4500), anyList())).thenReturn(sampleResponse);
+                    isNull(), isNull(), eq(4500), isNull(), anyList())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Correcting the recorded price")
@@ -728,7 +731,24 @@ class TransactionControllerTest {
                     .andExpect(status().isOk());
 
             verify(transactionService).updateTransaction(eq(1L), eq("Correcting the recorded price"),
-                    isNull(), isNull(), eq(4500), anyList());
+                    isNull(), isNull(), eq(4500), isNull(), anyList());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("admin updates the dispatch date — passes it through to the service")
+        void updateTransaction_submittedDate_200() throws Exception {
+            when(transactionService.updateTransaction(eq(1L), eq("Correcting the dispatch date"),
+                    isNull(), isNull(), isNull(), eq(LocalDate.of(2026, 1, 15)), anyList())).thenReturn(sampleResponse);
+
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "Correcting the dispatch date")
+                    .param("submittedDate", "2026-01-15")
+                    .with(csrf()))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).updateTransaction(eq(1L), eq("Correcting the dispatch date"),
+                    isNull(), isNull(), isNull(), eq(LocalDate.of(2026, 1, 15)), anyList());
         }
 
         @Test
@@ -743,7 +763,7 @@ class TransactionControllerTest {
             when(screenshotProcessor.encodeAll(any()))
                     .thenReturn(List.<String[]>of(new String[]{expectedB64, "image/png"}));
             when(transactionService.updateTransaction(eq(1L), eq("Replacing the wrong screenshot"),
-                    isNull(), isNull(), isNull(), eq(List.<String[]>of(new String[]{expectedB64, "image/png"}))))
+                    isNull(), isNull(), isNull(), isNull(), eq(List.<String[]>of(new String[]{expectedB64, "image/png"}))))
                     .thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
@@ -767,7 +787,7 @@ class TransactionControllerTest {
         @WithMockUser(username = "admin", roles = "ADMIN")
         @DisplayName("invalid notes returns 400 from service validation")
         void updateTransaction_invalidNotes_400() throws Exception {
-            when(transactionService.updateTransaction(eq(1L), eq("Hi"), isNull(), isNull(), isNull(), anyList()))
+            when(transactionService.updateTransaction(eq(1L), eq("Hi"), isNull(), isNull(), isNull(), isNull(), anyList()))
                     .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
