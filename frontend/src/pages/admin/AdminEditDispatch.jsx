@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import { medicineStockTypeLabel } from '../../constants';
@@ -14,6 +14,11 @@ const weekAgoStr = () => {
 const specLabel = (type, spec) =>
     type === 'VIAL' ? `${spec} ml` : `${spec} mg (10 Tablets)`;
 
+const medOptionLabel = (m) =>
+    m.type === 'VIAL'
+        ? `Vial ${m.specification} ml`
+        : `Tablet ${m.specification} mg (10 Tablets)`;
+
 export default function AdminEditDispatch() {
     const [from, setFrom]               = useState(weekAgoStr());
     const [to, setTo]                   = useState(todayStr());
@@ -22,12 +27,30 @@ export default function AdminEditDispatch() {
     const [loading, setLoading]         = useState(false);
     const [error, setError]             = useState('');
 
-    // Inline edit state: { [id]: { active, notes, quantity, medicineStockType, pricePerUnit, screenshotFiles, saving, error } }
+    const [users, setUsers]                       = useState([]);
+    const [medicines, setMedicines]               = useState([]);
+    const [userFilter, setUserFilter]             = useState('ALL');
+    const [medicineFilter, setMedicineFilter]     = useState('ALL');
+    const [stockTypeFilter, setStockTypeFilter]   = useState('ALL');
+    const [notesSearch, setNotesSearch]           = useState('');
+
+    // Inline edit state: { [id]: { active, notes, quantity, medicineStockType, pricePerUnit, date, screenshotFiles, saving, error } }
     const [editState, setEditState]     = useState({});
     // Inline delete state: { [id]: { confirming: bool, deleting: bool, error: string } }
     const [deleteState, setDeleteState] = useState({});
 
     const isValid = Boolean(from) && Boolean(to) && from <= to;
+
+    useEffect(() => {
+        api.getUsers().then(r => setUsers(
+            (r.data || []).filter(u => u.role !== 'ADMIN')
+        )).catch(() => {});
+        api.getMedicines().then(r => setMedicines(r.data || [])).catch(() => {});
+    }, []);
+
+    // Any filter change invalidates the currently-displayed (already-searched) results — the
+    // admin must press Search again for it to take effect, consistent with From/To.
+    const invalidateSearch = () => setSearched(false);
 
     const handleSearch = async () => {
         if (!isValid) return;
@@ -37,7 +60,11 @@ export default function AdminEditDispatch() {
         setEditState({});
         setDeleteState({});
         try {
-            const res = await api.getTransactionHistory(from, to, 'ALL', 0, 1000);
+            const username      = userFilter === 'ALL' ? undefined : userFilter;
+            const medicineId    = medicineFilter === 'ALL' ? undefined : medicineFilter;
+            const stockType     = stockTypeFilter === 'ALL' ? undefined : stockTypeFilter;
+            const notes         = notesSearch.trim() ? notesSearch.trim() : undefined;
+            const res = await api.getTransactionHistory(from, to, 'ALL', 0, 1000, username, medicineId, notes, stockType);
             setTransactions(res.data?.content ?? []);
             setSearched(true);
         } catch {
@@ -60,6 +87,7 @@ export default function AdminEditDispatch() {
                 // Blank means "no override" — same as the underlying record — so leaving it
                 // untouched keeps using the medicine's catalogue price, exactly as before.
                 pricePerUnit: tx.pricePerUnit != null ? String(tx.pricePerUnit) : '',
+                date: tx.submittedAt ? tx.submittedAt.slice(0, 10) : '',
                 screenshotFiles: [],
                 saving: false,
                 error: '',
@@ -84,6 +112,7 @@ export default function AdminEditDispatch() {
                 quantity: edit.quantity === '' ? null : edit.quantity,
                 medicineStockType: edit.medicineStockType,
                 pricePerUnit: edit.pricePerUnit === '' ? null : edit.pricePerUnit,
+                submittedDate: edit.date === '' ? null : edit.date,
                 screenshotFiles: edit.screenshotFiles,
             });
             setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, ...res.data } : tx));
@@ -158,6 +187,58 @@ export default function AdminEditDispatch() {
                     </div>
                 </div>
 
+                <div className="form-row">
+                    <div className="form-group">
+                        <label htmlFor="user-filter">User</label>
+                        <select
+                            id="user-filter"
+                            value={userFilter}
+                            onChange={e => { setUserFilter(e.target.value); invalidateSearch(); }}>
+                            <option value="ALL">All Users</option>
+                            {users.map(u => (
+                                <option key={u.id} value={u.username}>
+                                    {u.fullName} ({u.username})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="medicine-filter">Medicine Spec</label>
+                        <select
+                            id="medicine-filter"
+                            value={medicineFilter}
+                            onChange={e => { setMedicineFilter(e.target.value); invalidateSearch(); }}>
+                            <option value="ALL">All Medicines</option>
+                            {medicines.map(m => (
+                                <option key={m.id} value={String(m.id)}>
+                                    {medOptionLabel(m)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="stock-type-filter">Stock Type</label>
+                        <select
+                            id="stock-type-filter"
+                            value={stockTypeFilter}
+                            onChange={e => { setStockTypeFilter(e.target.value); invalidateSearch(); }}>
+                            <option value="ALL">All Stock Types</option>
+                            <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
+                            <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="notes-search">Search Notes</label>
+                        <input
+                            id="notes-search"
+                            type="text"
+                            placeholder="Search by dispatch note…"
+                            value={notesSearch}
+                            onChange={e => { setNotesSearch(e.target.value); invalidateSearch(); }}
+                        />
+                    </div>
+                </div>
+
                 {from > to && (
                     <p className="form-error" role="alert">
                         "From" date must be before or equal to "To" date.
@@ -175,7 +256,7 @@ export default function AdminEditDispatch() {
 
             {searched && (
                 transactions.length === 0 ? (
-                    <p className="empty-state">No dispatch records found for the selected date range.</p>
+                    <p className="empty-state">No dispatch records found for the selected criteria.</p>
                 ) : (
                     <div className="form-section" style={{ marginTop: '1.5rem' }}>
                         <h2>Results ({transactions.length})</h2>
@@ -201,9 +282,21 @@ export default function AdminEditDispatch() {
                                         const del  = deleteState[tx.id] || {};
                                         return (
                                             <tr key={tx.id}>
-                                                <td>{tx.submittedAt
-                                                    ? new Date(tx.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                                                    : '—'}</td>
+                                                <td>
+                                                    {edit.active ? (
+                                                        <input
+                                                            aria-label="Edit dispatch date"
+                                                            type="date"
+                                                            max={todayStr()}
+                                                            value={edit.date}
+                                                            onChange={e => handleFieldChange(tx.id, 'date', e.target.value)}
+                                                        />
+                                                    ) : (
+                                                        tx.submittedAt
+                                                            ? new Date(tx.submittedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                            : '—'
+                                                    )}
+                                                </td>
                                                 <td>{tx.submittedByUsername}</td>
                                                 <td>{tx.medicineName}<br /><small>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</small></td>
                                                 <td>

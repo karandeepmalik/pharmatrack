@@ -1723,6 +1723,40 @@ async function run() {
       `Expected ADMIN_MEDICINE_STOCK, got ${adminTx.medicineStockType}`);
   });
 
+  await test('GET /transactions/history filters by medicineStockType=ADMIN_MEDICINE_STOCK', async () => {
+    const today = istDateString(new Date());
+    const r = await apiGet(
+      `${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100&medicineStockType=ADMIN_MEDICINE_STOCK`,
+      adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(r.data.content.some(t => t.id === adminStockTxId),
+      `Admin-stock transaction #${adminStockTxId} should be included when filtering by ADMIN_MEDICINE_STOCK`);
+    assert(!r.data.content.some(t => t.id === regularStockTxId),
+      `Regular-stock transaction #${regularStockTxId} should be excluded when filtering by ADMIN_MEDICINE_STOCK`);
+  });
+
+  await test('GET /transactions/history filters by medicineStockType=REGULAR_MEDICINE_STOCK', async () => {
+    const today = istDateString(new Date());
+    const r = await apiGet(
+      `${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100&medicineStockType=REGULAR_MEDICINE_STOCK`,
+      adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(r.data.content.some(t => t.id === regularStockTxId),
+      `Regular-stock transaction #${regularStockTxId} should be included when filtering by REGULAR_MEDICINE_STOCK`);
+    assert(!r.data.content.some(t => t.id === adminStockTxId),
+      `Admin-stock transaction #${adminStockTxId} should be excluded when filtering by REGULAR_MEDICINE_STOCK`);
+  });
+
+  await test('GET /transactions/history medicineStockType=ALL matches the unfiltered result', async () => {
+    const today = istDateString(new Date());
+    const unfiltered = await apiGet(`${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100`, adminToken);
+    const explicitAll = await apiGet(
+      `${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100&medicineStockType=ALL`, adminToken);
+    assert(explicitAll.status === 200, `Expected 200, got ${explicitAll.status}`);
+    assert(explicitAll.data.totalElements === unfiltered.data.totalElements,
+      `medicineStockType=ALL (${explicitAll.data.totalElements}) should match no filter (${unfiltered.data.totalElements})`);
+  });
+
   // Regression guard: /transactions/history was changed from returning a bare array to a
   // PagedResponse ({content, last, totalElements, ...}). A frontend consumer of this endpoint
   // (AdminEditDispatch.jsx, "Modify or Delete a Medicine Dispatch Record") was missed when that
@@ -1855,6 +1889,32 @@ async function run() {
       `Stock type should stay unchanged, got ${r.data.medicineStockType}`);
     assert(Array.isArray(r.data.screenshots) && r.data.screenshots.length === 2,
       `Screenshots should stay unchanged at 2 entries, got ${r.data.screenshots?.length}`);
+  });
+
+  await test('Admin corrects the dispatch date, leaving quantity/price/stock type/screenshots unchanged', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Correcting the dispatch date for this record',
+      submittedDate: '2026-01-15',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(String(r.data.submittedAt).startsWith('2026-01-15'),
+      `Expected submittedAt to start with 2026-01-15, got ${r.data.submittedAt}`);
+    assert(r.data.quantity === 3 || Number(r.data.quantity) === 3,
+      `Quantity should stay unchanged at 3, got ${r.data.quantity}`);
+    assert(r.data.pricePerUnit === 4500, `Price should stay unchanged at 4500, got ${r.data.pricePerUnit}`);
+    assert(r.data.medicineStockType === 'REGULAR_MEDICINE_STOCK',
+      `Stock type should stay unchanged, got ${r.data.medicineStockType}`);
+    assert(Array.isArray(r.data.screenshots) && r.data.screenshots.length === 2,
+      `Screenshots should stay unchanged at 2 entries, got ${r.data.screenshots?.length}`);
+  });
+
+  await test('Setting the dispatch date to a future date is rejected with 400', async () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Trying to set a future dispatch date',
+      submittedDate: tomorrow,
+    }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status} ${JSON.stringify(r.data)}`);
   });
 
   await test('Omitting pricePerUnit on a later edit leaves the price unchanged', async () => {

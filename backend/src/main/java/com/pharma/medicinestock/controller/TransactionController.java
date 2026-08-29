@@ -95,6 +95,7 @@ public class TransactionController {
      * @param username   optional exact submittedBy username filter
      * @param medicineId optional exact medicine filter
      * @param notes      optional case-insensitive notes substring filter
+     * @param medicineStockType optional exact REGULAR_MEDICINE_STOCK/ADMIN_MEDICINE_STOCK filter
      */
     @GetMapping("/history")
     @PreAuthorize("hasRole('ADMIN')")
@@ -106,9 +107,10 @@ public class TransactionController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String username,
             @RequestParam(required = false) Long medicineId,
-            @RequestParam(required = false) String notes) {
-        Page<TransactionResponse> result = transactionService.getHistory(from, to, status, page, size, username, medicineId, notes);
-        BigDecimal totalQuantity = transactionService.getHistoryTotalQuantity(from, to, status, username, medicineId, notes);
+            @RequestParam(required = false) String notes,
+            @RequestParam(required = false) String medicineStockType) {
+        Page<TransactionResponse> result = transactionService.getHistory(from, to, status, page, size, username, medicineId, notes, medicineStockType);
+        BigDecimal totalQuantity = transactionService.getHistoryTotalQuantity(from, to, status, username, medicineId, notes, medicineStockType);
         return ResponseEntity.ok(PagedResponse.of(result, totalQuantity));
     }
 
@@ -149,6 +151,7 @@ public class TransactionController {
      * @param medicineStockType optional — omit to leave unchanged
      * @param pricePerUnit      optional — omit to leave unchanged; overrides the price recorded
      *                          for this dispatch (independent of the medicine's catalogue price)
+     * @param submittedDate     optional — omit to leave unchanged; corrects the dispatch date
      * @param screenshots       optional — if provided (non-empty), replaces the existing set
      *                          entirely; omit to leave existing screenshots unchanged
      */
@@ -160,6 +163,8 @@ public class TransactionController {
             @RequestParam(value = "quantity", required = false) BigDecimal quantity,
             @RequestParam(value = "medicineStockType", required = false) String medicineStockType,
             @RequestParam(value = "pricePerUnit", required = false) Integer pricePerUnit,
+            @RequestParam(value = "submittedDate", required = false)
+                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedDate,
             @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots)
             throws IOException {
         // Encoding here, not in the service, mirrors submit()/buildRequest() — screenshot
@@ -168,7 +173,7 @@ public class TransactionController {
         // exactly this endpoint's "screenshots omitted -> leave existing ones alone" contract.
         List<String[]> encodedScreenshots = screenshotProcessor.encodeAll(screenshots);
         return ResponseEntity.ok(
-                transactionService.updateTransaction(id, notes, quantity, medicineStockType, pricePerUnit, encodedScreenshots));
+                transactionService.updateTransaction(id, notes, quantity, medicineStockType, pricePerUnit, submittedDate, encodedScreenshots));
     }
 
     // ── Assembly helper (no logic — only construction) ─────────────────

@@ -35,7 +35,11 @@ const renderPage = () =>
     </MemoryRouter>
   );
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  api.getUsers.mockResolvedValue({ data: [] });
+  api.getMedicines.mockResolvedValue({ data: [] });
+});
 
 // ── Render ──────────────────────────────────────────────────────────────
 
@@ -79,7 +83,11 @@ describe('AdminEditDispatch — search', () => {
         expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         'ALL',
         expect.any(Number),
-        expect.any(Number)
+        expect.any(Number),
+        undefined,
+        undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -128,6 +136,76 @@ describe('AdminEditDispatch — search', () => {
     await waitFor(() =>
       expect(screen.getByText(/no dispatch records found/i)).toBeInTheDocument()
     );
+  });
+});
+
+// ── Filters ──────────────────────────────────────────────────────────────
+
+describe('AdminEditDispatch — filters', () => {
+  const users = [
+    { id: 2, username: 'john.doe', fullName: 'John Doe', role: 'USER' },
+    { id: 3, username: 'jane.smith', fullName: 'Jane Smith', role: 'USER' },
+  ];
+  const medicines = [
+    { id: 1, type: 'VIAL', specification: 10 },
+    { id: 2, type: 'TABLET', specification: 25 },
+  ];
+
+  test('renders User, Medicine Spec, Stock Type and Search Notes filter controls', async () => {
+    api.getUsers.mockResolvedValue({ data: users });
+    api.getMedicines.mockResolvedValue({ data: medicines });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^stock type$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/search notes/i)).toBeInTheDocument();
+  });
+
+  test('excludes admin accounts from the User filter', async () => {
+    api.getUsers.mockResolvedValue({
+      data: [...users, { id: 1, username: 'admin', fullName: 'Admin User', role: 'ADMIN' }],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument());
+    expect(screen.queryByText('Admin User (admin)')).not.toBeInTheDocument();
+    expect(screen.getByText('John Doe (john.doe)')).toBeInTheDocument();
+  });
+
+  test('passes user, medicine, stock type and notes filters to getTransactionHistory on Search', async () => {
+    api.getUsers.mockResolvedValue({ data: users });
+    api.getMedicines.mockResolvedValue({ data: medicines });
+    api.getTransactionHistory.mockResolvedValue(mkPage([]));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/^user$/i));
+    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '2');
+    await userEvent.selectOptions(screen.getByLabelText(/^stock type$/i), 'ADMIN_MEDICINE_STOCK');
+    await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), 'ALL', 0, 1000,
+        'john.doe', '2', 'clinic', 'ADMIN_MEDICINE_STOCK'
+      )
+    );
+  });
+
+  test('changing a filter after a search hides the table until Search is pressed again', async () => {
+    api.getUsers.mockResolvedValue({ data: users });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/^user$/i));
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 });
 
@@ -320,6 +398,48 @@ describe('AdminEditDispatch — edit', () => {
         quantity: '5',
         medicineStockType: 'REGULAR_MEDICINE_STOCK',
         pricePerUnit: '4200',
+        submittedDate: '2026-05-01',
+        screenshotFiles: [],
+      })
+    );
+  });
+
+  test('clicking Edit shows the dispatch date editable, prefilled from submittedAt', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ submittedAt: '2026-05-01T10:00:00' })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByLabelText(/edit dispatch date/i)).toHaveValue('2026-05-01');
+  });
+
+  test('editing the dispatch date sends the new value as submittedDate', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ submittedAt: '2026-05-01T10:00:00' })]));
+    api.updateTransaction.mockResolvedValue({ data: makeTx({ submittedAt: '2026-04-20T00:00:00' }) });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    const dateInput = screen.getByLabelText(/edit dispatch date/i);
+    await userEvent.clear(dateInput);
+    await userEvent.type(dateInput, '2026-04-20');
+    const textarea = screen.getByRole('textbox', { name: /edit notes/i });
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, 'Correcting the dispatch date for this record');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(api.updateTransaction).toHaveBeenCalledWith(1, {
+        notes: 'Correcting the dispatch date for this record',
+        quantity: '5',
+        medicineStockType: 'REGULAR_MEDICINE_STOCK',
+        pricePerUnit: null,
+        submittedDate: '2026-04-20',
         screenshotFiles: [],
       })
     );
@@ -361,6 +481,7 @@ describe('AdminEditDispatch — edit', () => {
         quantity: '5',
         medicineStockType: 'REGULAR_MEDICINE_STOCK',
         pricePerUnit: null,
+        submittedDate: '2026-05-01',
         screenshotFiles: [],
       })
     );
@@ -395,6 +516,7 @@ describe('AdminEditDispatch — edit', () => {
         quantity: '8',
         medicineStockType: 'ADMIN_MEDICINE_STOCK',
         pricePerUnit: null,
+        submittedDate: '2026-05-01',
         screenshotFiles: [],
       })
     );
