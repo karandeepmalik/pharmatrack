@@ -149,4 +149,89 @@ class MedicineServiceTest {
             verifyNoInteractions(medicineRepository);
         }
     }
+
+    @Nested @DisplayName("updateMedicine")
+    class UpdateMedicine {
+
+        private CreateMedicineRequest validUpdateRequest() {
+            CreateMedicineRequest req = new CreateMedicineRequest();
+            req.setPharmaCompanyId(1L);
+            req.setName("  Updated Name  ");
+            req.setType(Medicine.MedicineType.TABLET);
+            req.setSpecification(50.0);
+            req.setPrice(9000);
+            return req;
+        }
+
+        @Test @DisplayName("updates every field on the existing medicine and saves")
+        void updateMedicine_updatesAllFieldsAndSaves() {
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(pharmaCompanyRepository.findById(1L)).thenReturn(Optional.of(company));
+            when(medicineRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            MedicineResponse result = medicineService.updateMedicine(1L, validUpdateRequest());
+
+            ArgumentCaptor<Medicine> captor = ArgumentCaptor.forClass(Medicine.class);
+            verify(medicineRepository).save(captor.capture());
+            assertThat(captor.getValue()).isSameAs(medicine); // updates in place, not a new entity
+            assertThat(captor.getValue().getName()).isEqualTo("Updated Name");
+            assertThat(captor.getValue().getType()).isEqualTo(Medicine.MedicineType.TABLET);
+            assertThat(captor.getValue().getSpecification()).isEqualTo(50.0);
+            assertThat(captor.getValue().getPrice()).isEqualTo(9000);
+            assertThat(result.getName()).isEqualTo("Updated Name");
+            assertThat(result.getType()).isEqualTo("TABLET");
+        }
+
+        @Test @DisplayName("clears concentrationMgPerMl when the request omits it (e.g. switching away from VIAL)")
+        void updateMedicine_omittedConcentration_clearsIt() {
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(pharmaCompanyRepository.findById(1L)).thenReturn(Optional.of(company));
+            when(medicineRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            medicineService.updateMedicine(1L, validUpdateRequest());
+
+            assertThat(medicine.getConcentrationMgPerMl()).isNull();
+        }
+
+        @Test @DisplayName("reassigns to a different pharma company when pharmaCompanyId changes")
+        void updateMedicine_reassignsPharmaCompany() {
+            PharmaCompany otherCompany = PharmaCompany.builder().id(2L).name("MediCure").active(true).build();
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(pharmaCompanyRepository.findById(2L)).thenReturn(Optional.of(otherCompany));
+            when(medicineRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            CreateMedicineRequest req = validUpdateRequest();
+            req.setPharmaCompanyId(2L);
+
+            MedicineResponse result = medicineService.updateMedicine(1L, req);
+
+            assertThat(medicine.getPharmaCompany()).isSameAs(otherCompany);
+            assertThat(result.getPharmaCompany().getName()).isEqualTo("MediCure");
+        }
+
+        @Test @DisplayName("throws ResourceNotFoundException (404) when the medicine doesn't exist")
+        void updateMedicine_medicineNotFound_throwsResourceNotFound() {
+            when(medicineRepository.findById(99L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> medicineService.updateMedicine(99L, validUpdateRequest()))
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("99");
+            verifyNoInteractions(pharmaCompanyRepository);
+            verify(medicineRepository, never()).save(any());
+        }
+
+        @Test @DisplayName("throws ResourceNotFoundException (404) when the new pharma company doesn't exist")
+        void updateMedicine_companyNotFound_throwsResourceNotFound() {
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(pharmaCompanyRepository.findById(99L)).thenReturn(Optional.empty());
+
+            CreateMedicineRequest req = validUpdateRequest();
+            req.setPharmaCompanyId(99L);
+
+            assertThatThrownBy(() -> medicineService.updateMedicine(1L, req))
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("99");
+            verify(medicineRepository, never()).save(any());
+        }
+    }
 }

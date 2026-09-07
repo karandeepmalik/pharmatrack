@@ -57,6 +57,22 @@ public class MedicineService {
         return toResponse(medicineRepository.save(medicine));
     }
 
+    @Transactional
+    public MedicineResponse updateMedicine(Long id, CreateMedicineRequest req) {
+        Medicine medicine = medicineRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Medicine", id));
+        PharmaCompany company = pharmaCompanyRepository.findById(req.getPharmaCompanyId())
+                .orElseThrow(() -> new ResourceNotFoundException("PharmaCompany", req.getPharmaCompanyId()));
+
+        medicine.setName(req.getName().trim());
+        medicine.setType(req.getType());
+        medicine.setSpecification(req.getSpecification());
+        medicine.setConcentrationMgPerMl(req.getConcentrationMgPerMl());
+        medicine.setPrice(req.getPrice());
+        medicine.setPharmaCompany(company);
+        return toResponse(medicineRepository.save(medicine));
+    }
+
     private static PharmaCompanyResponse toResponse(PharmaCompany c) {
         PharmaCompanyResponse r = new PharmaCompanyResponse();
         r.setId(c.getId());

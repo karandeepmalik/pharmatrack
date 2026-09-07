@@ -30,4 +30,9 @@ public class MedicineController {
     public ResponseEntity<MedicineResponse> createMedicine(@Valid @RequestBody CreateMedicineRequest req) {
         return ResponseEntity.ok(medicineService.createMedicine(req));
     }
+
+    @PutMapping("/{id}") @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<MedicineResponse> updateMedicine(@PathVariable Long id, @Valid @RequestBody CreateMedicineRequest req) {
+        return ResponseEntity.ok(medicineService.updateMedicine(id, req));
+    }
 }

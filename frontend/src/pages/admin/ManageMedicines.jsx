@@ -25,6 +25,10 @@ export default function ManageMedicines() {
   const [medError, setMedError]               = useState('');
   const [savingMedicine, setSavingMedicine]   = useState(false);
 
+  // ── Edit Medicine (inline, per row) ─────────────────────────────────────
+  // { [id]: { active, pharmaCompanyId, name, type, specification, concentrationMgPerMl, price, saving, error } }
+  const [editState, setEditState] = useState({});
+
   useEffect(() => {
     loadData();
   }, []);
@@ -83,6 +87,60 @@ export default function ManageMedicines() {
   const isMedicineFormValid =
     Boolean(medPharmaId) && Boolean(medName.trim()) && Boolean(medType) &&
     Boolean(medSpec) && Boolean(medPrice);
+
+  // ── Edit Medicine handlers ───────────────────────────────────────────
+
+  const startEditMedicine = (m) => {
+    setEditState(prev => ({
+      ...prev,
+      [m.id]: {
+        active: true,
+        pharmaCompanyId: String(m.pharmaCompany?.id ?? ''),
+        name: m.name,
+        type: m.type,
+        specification: String(m.specification ?? ''),
+        concentrationMgPerMl: m.concentrationMgPerMl != null ? String(m.concentrationMgPerMl) : '',
+        price: String(m.price ?? ''),
+        saving: false,
+        error: '',
+      },
+    }));
+  };
+
+  const cancelEditMedicine = (id) => {
+    setEditState(prev => ({ ...prev, [id]: { ...prev[id], active: false } }));
+  };
+
+  const handleEditFieldChange = (id, field, value) => {
+    setEditState(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  };
+
+  const saveEditMedicine = async (id) => {
+    const edit = editState[id] || {};
+    setEditState(prev => ({ ...prev, [id]: { ...prev[id], saving: true, error: '' } }));
+    try {
+      const payload = {
+        pharmaCompanyId: Number(edit.pharmaCompanyId),
+        name: edit.name.trim(),
+        type: edit.type,
+        specification: Number(edit.specification),
+        price: Number(edit.price),
+      };
+      if (edit.type === 'VIAL' && edit.concentrationMgPerMl.trim()) {
+        payload.concentrationMgPerMl = Number(edit.concentrationMgPerMl);
+      }
+      await api.updateMedicine(id, payload);
+      setEditState(prev => ({ ...prev, [id]: { active: false, saving: false, error: '' } }));
+      loadData();
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to save changes.';
+      setEditState(prev => ({ ...prev, [id]: { ...prev[id], saving: false, error: msg } }));
+    }
+  };
+
+  const isEditValid = (edit) =>
+    Boolean(edit.pharmaCompanyId) && Boolean(edit.name?.trim()) && Boolean(edit.type) &&
+    Boolean(edit.specification) && Boolean(edit.price);
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -263,20 +321,138 @@ export default function ManageMedicines() {
                   <th>Concentration (mg/ml)</th>
                   <th>Price (Rs)</th>
                   <th>Pharma Company</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {medicines.map((m) => (
-                  <tr key={m.id}>
-                    <td>{m.id}</td>
-                    <td>{m.name}</td>
-                    <td>{m.type}</td>
-                    <td>{m.specification}</td>
-                    <td>{m.concentrationMgPerMl ?? '—'}</td>
-                    <td>{m.price}</td>
-                    <td>{m.pharmaCompany?.name ?? '—'}</td>
-                  </tr>
-                ))}
+                {medicines.map((m) => {
+                  const edit = editState[m.id] || {};
+                  return (
+                    <tr key={m.id}>
+                      <td>{m.id}</td>
+                      <td>
+                        {edit.active ? (
+                          <input
+                            aria-label="Edit medicine name"
+                            type="text"
+                            value={edit.name}
+                            onChange={(e) => handleEditFieldChange(m.id, 'name', e.target.value)}
+                          />
+                        ) : (
+                          m.name
+                        )}
+                      </td>
+                      <td>
+                        {edit.active ? (
+                          <select
+                            aria-label="Edit medicine type"
+                            value={edit.type}
+                            onChange={(e) => handleEditFieldChange(m.id, 'type', e.target.value)}>
+                            <option value="VIAL">VIAL</option>
+                            <option value="TABLET">TABLET</option>
+                            <option value="CAPSULE">CAPSULE</option>
+                            <option value="SYRUP">SYRUP</option>
+                          </select>
+                        ) : (
+                          m.type
+                        )}
+                      </td>
+                      <td>
+                        {edit.active ? (
+                          <input
+                            aria-label="Edit specification"
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={edit.specification}
+                            onChange={(e) => handleEditFieldChange(m.id, 'specification', e.target.value)}
+                            style={{ width: '5rem' }}
+                          />
+                        ) : (
+                          m.specification
+                        )}
+                      </td>
+                      <td>
+                        {edit.active ? (
+                          edit.type === 'VIAL' && (
+                            <input
+                              aria-label="Edit concentration"
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={edit.concentrationMgPerMl}
+                              onChange={(e) => handleEditFieldChange(m.id, 'concentrationMgPerMl', e.target.value)}
+                              style={{ width: '5rem' }}
+                            />
+                          )
+                        ) : (
+                          m.concentrationMgPerMl ?? '—'
+                        )}
+                      </td>
+                      <td>
+                        {edit.active ? (
+                          <input
+                            aria-label="Edit price"
+                            type="number"
+                            min="0"
+                            value={edit.price}
+                            onChange={(e) => handleEditFieldChange(m.id, 'price', e.target.value)}
+                            style={{ width: '6rem' }}
+                          />
+                        ) : (
+                          m.price
+                        )}
+                      </td>
+                      <td>
+                        {edit.active ? (
+                          <select
+                            aria-label="Edit pharma company"
+                            value={edit.pharmaCompanyId}
+                            onChange={(e) => handleEditFieldChange(m.id, 'pharmaCompanyId', e.target.value)}>
+                            <option value="">-- Select Pharma --</option>
+                            {companies.map((c) => (
+                              <option key={c.id} value={String(c.id)}>{c.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          m.pharmaCompany?.name ?? '—'
+                        )}
+                      </td>
+                      <td className="actions-cell">
+                        {edit.active ? (
+                          <div>
+                            {edit.error && (
+                              <p role="alert" className="form-error">{edit.error}</p>
+                            )}
+                            <div className="btn-group">
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                disabled={edit.saving || !isEditValid(edit)}
+                                onClick={() => saveEditMedicine(m.id)}>
+                                {edit.saving ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                disabled={edit.saving}
+                                onClick={() => cancelEditMedicine(m.id)}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => startEditMedicine(m)}>
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
