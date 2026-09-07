@@ -203,3 +203,110 @@ describe('ManageMedicines — add medicine', () => {
     );
   });
 });
+
+// ── Edit medicine ────────────────────────────────────────────────────────
+
+describe('ManageMedicines — edit medicine', () => {
+  test('shows an Edit button for each existing medicine', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Shield FX Vial 10 ml'));
+    expect(screen.getAllByRole('button', { name: /^edit$/i })).toHaveLength(2);
+  });
+
+  test('clicking Edit reveals editable fields prefilled with the medicine\'s current values', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Shield FX Vial 10 ml'));
+
+    await userEvent.click(screen.getAllByRole('button', { name: /^edit$/i })[0]);
+
+    expect(screen.getByLabelText(/edit medicine name/i)).toHaveValue('Shield FX Vial 10 ml');
+    expect(screen.getByLabelText(/edit medicine type/i)).toHaveValue('VIAL');
+    expect(screen.getByLabelText(/edit specification/i)).toHaveValue(10);
+    expect(screen.getByLabelText(/edit concentration/i)).toHaveValue(20);
+    expect(screen.getByLabelText(/edit price/i)).toHaveValue(4000);
+    expect(screen.getByLabelText(/edit pharma company/i)).toHaveValue('1');
+  });
+
+  test('the concentration field only appears while editing a VIAL medicine', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Shield FX Tablet 25 mg'));
+
+    await userEvent.click(screen.getAllByRole('button', { name: /^edit$/i })[1]); // TABLET row
+
+    expect(screen.queryByLabelText(/edit concentration/i)).not.toBeInTheDocument();
+  });
+
+  test('clicking Cancel discards changes and restores the original display values', async () => {
+    renderPage();
+    await waitFor(() => screen.getByText('Shield FX Vial 10 ml'));
+
+    await userEvent.click(screen.getAllByRole('button', { name: /^edit$/i })[0]);
+    await userEvent.clear(screen.getByLabelText(/edit medicine name/i));
+    await userEvent.type(screen.getByLabelText(/edit medicine name/i), 'Should not be saved');
+    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    expect(screen.queryByLabelText(/edit medicine name/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Shield FX Vial 10 ml')).toBeInTheDocument();
+  });
+
+  test('saving calls updateMedicine with the edited values and refreshes the table', async () => {
+    api.updateMedicine.mockResolvedValue({ data: {} });
+    renderPage();
+    await waitFor(() => screen.getByText('Shield FX Vial 10 ml'));
+
+    await userEvent.click(screen.getAllByRole('button', { name: /^edit$/i })[0]);
+    await userEvent.clear(screen.getByLabelText(/edit medicine name/i));
+    await userEvent.type(screen.getByLabelText(/edit medicine name/i), 'Shield FX Vial 10 ml (Updated)');
+    await userEvent.clear(screen.getByLabelText(/edit price/i));
+    await userEvent.type(screen.getByLabelText(/edit price/i), '4500');
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(api.updateMedicine).toHaveBeenCalledWith(1, {
+        pharmaCompanyId: 1,
+        name: 'Shield FX Vial 10 ml (Updated)',
+        type: 'VIAL',
+        specification: 10,
+        price: 4500,
+        concentrationMgPerMl: 20,
+      })
+    );
+    await waitFor(() => expect(api.getMedicines).toHaveBeenCalledTimes(2)); // initial load + post-save refresh
+  });
+
+  test('switching type away from VIAL while editing omits concentrationMgPerMl from the save payload', async () => {
+    api.updateMedicine.mockResolvedValue({ data: {} });
+    renderPage();
+    await waitFor(() => screen.getByText('Shield FX Vial 10 ml'));
+
+    await userEvent.click(screen.getAllByRole('button', { name: /^edit$/i })[0]);
+    await userEvent.selectOptions(screen.getByLabelText(/edit medicine type/i), 'TABLET');
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(api.updateMedicine).toHaveBeenCalledWith(1, {
+        pharmaCompanyId: 1,
+        name: 'Shield FX Vial 10 ml',
+        type: 'TABLET',
+        specification: 10,
+        price: 4000,
+      })
+    );
+  });
+
+  test('shows an inline error and keeps the row editable when saving fails', async () => {
+    api.updateMedicine.mockRejectedValue({
+      response: { data: { message: 'Medicine name already exists' } },
+    });
+    renderPage();
+    await waitFor(() => screen.getByText('Shield FX Vial 10 ml'));
+
+    await userEvent.click(screen.getAllByRole('button', { name: /^edit$/i })[0]);
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/medicine name already exists/i)
+    );
+    expect(screen.getByLabelText(/edit medicine name/i)).toBeInTheDocument();
+  });
+});

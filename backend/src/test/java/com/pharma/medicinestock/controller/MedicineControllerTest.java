@@ -246,4 +246,96 @@ class MedicineControllerTest {
                     .andExpect(status().isUnauthorized());
         }
     }
+
+    // ── PUT /api/medicines/{id} ────────────────────────────────────────
+
+    @Nested @DisplayName("PUT /api/medicines/{id}")
+    class UpdateMedicine {
+
+        private Map<String,Object> validMedicineRequest() {
+            return Map.of(
+                    "pharmaCompanyId", 1,
+                    "name", "Shield FX Vial 10 ml (Updated)",
+                    "type", "VIAL",
+                    "specification", 10.0,
+                    "concentrationMgPerMl", 25.0,
+                    "price", 4500
+            );
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanUpdateMedicine() throws Exception {
+            sampleMedicine.setName("Shield FX Vial 10 ml (Updated)");
+            sampleMedicine.setPrice(4500);
+            when(medicineService.updateMedicine(eq(1L), any())).thenReturn(sampleMedicine);
+
+            mockMvc.perform(put("/api/medicines/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validMedicineRequest())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.name").value("Shield FX Vial 10 ml (Updated)"))
+                    .andExpect(jsonPath("$.price").value(4500));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void returnsNotFoundWhenMedicineMissing() throws Exception {
+            when(medicineService.updateMedicine(eq(99L), any()))
+                    .thenThrow(new ResourceNotFoundException("Medicine", 99L));
+
+            mockMvc.perform(put("/api/medicines/99").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validMedicineRequest())))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void returnsNotFoundWhenPharmaCompanyMissing() throws Exception {
+            when(medicineService.updateMedicine(eq(1L), any()))
+                    .thenThrow(new ResourceNotFoundException("PharmaCompany", 1L));
+
+            mockMvc.perform(put("/api/medicines/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validMedicineRequest())))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsMissingRequiredFields() throws Exception {
+            Map<String,Object> req = Map.of("pharmaCompanyId", 1, "name", "Some Med");
+            mockMvc.perform(put("/api/medicines/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+            verifyNoInteractions(medicineService);
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsInvalidTypeValue() throws Exception {
+            Map<String,Object> req = Map.of(
+                    "pharmaCompanyId", 1, "name", "Some Med",
+                    "type", "NOT_A_REAL_TYPE", "specification", 10.0, "price", 4000
+            );
+            mockMvc.perform(put("/api/medicines/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+            verifyNoInteractions(medicineService);
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userForbidden() throws Exception {
+            mockMvc.perform(put("/api/medicines/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validMedicineRequest())))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedUnauthorized() throws Exception {
+            mockMvc.perform(put("/api/medicines/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validMedicineRequest())))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
 }

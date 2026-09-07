@@ -51,6 +51,7 @@ export const adjustMedicineStock   = (data) => api.post('/medicine-stock/adjust'
 // ── Medicines ──────────────────────────────────────────────────────────
 export const getMedicines    = ()     => api.get('/medicines');
 export const createMedicine  = (data) => api.post('/medicines', data);
+export const updateMedicine  = (id, data) => api.put(`/medicines/${id}`, data);
 
 // ── Pharma companies ───────────────────────────────────────────────────
 export const getPharmaCompanies    = ()     => api.get('/medicines/companies');
