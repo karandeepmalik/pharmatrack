@@ -150,6 +150,13 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await firstRow.getByRole('button', { name: /^save$/i }).click();
 
     await expect(firstRow.getByText(newNote)).toBeVisible({ timeout: 10000 });
+
+    // Re-run Search to force a fresh fetch from the backend/DB, not just the in-memory
+    // response Save already applied to the row — the immediate post-save assertion above
+    // would pass even if the edit never actually reached the database.
+    await page.getByRole('button', { name: /^search$/i }).click();
+    await expect(page.getByRole('row', { name: new RegExp(newNote) }).getByText(newNote))
+      .toBeVisible({ timeout: 10000 });
   });
 
   test('clicking Cancel on an in-progress edit discards the change', async ({ page }) => {
@@ -208,6 +215,16 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await expect(row.locator('td').nth(3)).toHaveText('0.2');
     await expect(row.getByText('Admin Stock')).toBeVisible();
     await expect(row.getByRole('button', { name: /view payment screenshot/i })).toBeVisible();
+
+    // Re-search to force a fresh fetch from the backend/DB rather than trusting the
+    // in-memory row state Save already applied — proves every field actually reached the DB.
+    await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('button', { name: /^search$/i }).click();
+    const reloadedRow = page.getByRole('row', { name: new RegExp(editedNote) });
+    await expect(reloadedRow).toBeVisible({ timeout: 10000 });
+    await expect(reloadedRow.locator('td').nth(3)).toHaveText('0.2');
+    await expect(reloadedRow.getByText('Admin Stock')).toBeVisible();
+    await expect(reloadedRow.getByRole('button', { name: /view payment screenshot/i })).toBeVisible();
   });
 
   test('editing price per unit persists after save, leaving quantity untouched', async ({ page }) => {
@@ -242,9 +259,18 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await expect(row.getByText(editedNote)).toBeVisible({ timeout: 10000 });
     await expect(row.getByText('Rs 4,321')).toBeVisible();
     await expect(row.locator('td').nth(3)).toHaveText('0.1');
+
+    // Re-search to force a fresh fetch from the backend/DB, not just the in-memory row
+    // state Save already applied.
+    await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('button', { name: /^search$/i }).click();
+    const reloadedRow = page.getByRole('row', { name: new RegExp(editedNote) });
+    await expect(reloadedRow).toBeVisible({ timeout: 10000 });
+    await expect(reloadedRow.getByText('Rs 4,321')).toBeVisible();
+    await expect(reloadedRow.locator('td').nth(3)).toHaveText('0.1');
   });
 
-  test('editing the dispatch date persists after save', async ({ page }) => {
+  test('editing the dispatch date persists after save (survives a fresh reload from the DB)', async ({ page }) => {
     test.setTimeout(60000);
     const note = `Date edit test ${Date.now()}`;
 
@@ -275,6 +301,100 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
 
     await expect(row.getByText(editedNote)).toBeVisible({ timeout: 10000 });
     await expect(row.locator('td').nth(0)).toHaveText('15 Jan 2026');
+
+    // The row assertions above only reflect Save's in-memory response — this is exactly the
+    // gap that let a real bug ship: the backend accepted and echoed back the new date, but
+    // never actually wrote it (Transaction.submittedAt was mapped non-updatable), so the
+    // change vanished on the next real fetch. Re-run Search — with a "from" wide enough to
+    // still catch the now-earlier date — to force a fresh read from the DB.
+    await page.locator('#from-date').fill('2020-01-01');
+    await page.getByRole('button', { name: /^search$/i }).click();
+    const reloadedRow = page.getByRole('row', { name: new RegExp(editedNote) });
+    await expect(reloadedRow).toBeVisible({ timeout: 10000 });
+    await expect(reloadedRow.locator('td').nth(0)).toHaveText('15 Jan 2026');
+
+    // And once more after a full page reload, to rule out any client-side cache entirely.
+    await page.reload();
+    await page.locator('#from-date').fill('2020-01-01');
+    await page.getByRole('button', { name: /^search$/i }).click();
+    const reReloadedRow = page.getByRole('row', { name: new RegExp(editedNote) });
+    await expect(reReloadedRow).toBeVisible({ timeout: 10000 });
+    await expect(reReloadedRow.locator('td').nth(0)).toHaveText('15 Jan 2026');
+  });
+
+  test('submitting a dispatch with multiple screenshots (up to 8) attaches all of them', async ({ page }) => {
+    test.setTimeout(60000);
+    const note = `Multi-screenshot submit test ${Date.now()}`;
+    const files = Array(4).fill(PAYMENT_SCREENSHOT);
+
+    await loginAsUser(page, 'john');
+    await page.goto('/user/submit');
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption({ index: 1 });
+    await page.locator('#spec-select').selectOption({ index: 1 });
+    await page.locator('#quantity-input').fill('0.1');
+    await page.locator('#notes-input').fill(note);
+    await page.locator('#screenshot-input').setInputFiles(files);
+    await expect(page.getByText(/4 screenshots attached/i)).toBeVisible();
+    await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/submitted successfully/i, { timeout: 10000 });
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/dispatch-records');
+    await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('button', { name: /^search$/i }).click();
+
+    const row = page.getByRole('row', { name: new RegExp(note) });
+    await expect(row).toBeVisible({ timeout: 10000 });
+    // "4 of 4" on the last thumbnail's label proves all four screenshots reached the DB,
+    // not just the first one.
+    await expect(row.getByRole('button', { name: /view payment screenshot 4 of 4/i })).toBeVisible();
+  });
+
+  test('replacing screenshots with multiple images in edit mode persists the full new set after reload', async ({ page }) => {
+    test.setTimeout(60000);
+    const note = `Multi-screenshot edit test ${Date.now()}`;
+
+    await loginAsUser(page, 'john');
+    await page.goto('/user/submit');
+    await page.locator('#pharma-select').selectOption({ index: 1 });
+    await page.locator('#type-select').selectOption({ index: 1 });
+    await page.locator('#spec-select').selectOption({ index: 1 });
+    await page.locator('#quantity-input').fill('0.1');
+    await page.locator('#notes-input').fill(note);
+    await page.locator('#screenshot-input').setInputFiles(PAYMENT_SCREENSHOT);
+    await page.getByRole('button', { name: /submit medicine dispatch/i }).click();
+    await expect(page.getByRole('alert')).toContainText(/submitted successfully/i, { timeout: 10000 });
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/dispatch-records');
+    await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('button', { name: /^search$/i }).click();
+
+    const row = page.getByRole('row', { name: new RegExp(note) });
+    await expect(row).toBeVisible({ timeout: 10000 });
+    // Starts out with the raw multi-select input replaced by the proper picker: only one
+    // screenshot was submitted, so there's no "Nth image" ambiguity to disambiguate against.
+    await expect(row.getByRole('button', { name: /view payment screenshot 1 of 1/i })).toBeVisible();
+
+    await row.getByRole('button', { name: /^edit$/i }).click();
+    // The edit picker's hidden input is always present (canAddMore only hides the "Add"
+    // button, not the input) and accepts a multi-file selection directly, same as submit.
+    await row.getByLabel(/replace screenshots/i).setInputFiles([PAYMENT_SCREENSHOT, PAYMENT_SCREENSHOT, PAYMENT_SCREENSHOT]);
+    await expect(row.getByText(/3 screenshots attached/i)).toBeVisible();
+    const editedNote = `${note} — replaced with three screenshots`;
+    await row.getByRole('textbox', { name: /edit notes/i }).fill(editedNote);
+    await row.getByRole('button', { name: /^save$/i }).click();
+
+    await expect(row.getByText(editedNote)).toBeVisible({ timeout: 10000 });
+    await expect(row.getByRole('button', { name: /view payment screenshot 3 of 3/i })).toBeVisible();
+
+    // Force a fresh fetch from the DB — proves all three screenshots (not just one, and not
+    // just the in-memory Save response) actually persisted.
+    await page.getByRole('button', { name: /^search$/i }).click();
+    const reloadedRow = page.getByRole('row', { name: new RegExp(editedNote) });
+    await expect(reloadedRow).toBeVisible({ timeout: 10000 });
+    await expect(reloadedRow.getByRole('button', { name: /view payment screenshot 3 of 3/i })).toBeVisible();
   });
 
   test('cancelling an edit discards quantity and stock type changes too', async ({ page }) => {

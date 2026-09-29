@@ -104,6 +104,55 @@ describe('useScreenshot hook', () => {
     });
   });
 
+  // ── addScreenshot — max count cap ───────────────────────────────────────
+  describe('addScreenshot — max count cap (8)', () => {
+    test('canAddMore becomes false once 8 screenshots are attached', () => {
+      const { result } = renderHook(() => useScreenshot());
+      mockFileReader();
+
+      act(() => result.current.addScreenshot(
+        makeInputEvent(...Array.from({ length: 8 }, (_, i) => makePngFile(`f${i}.png`)))
+      ));
+
+      expect(result.current.screenshots).toHaveLength(8);
+      expect(result.current.canAddMore).toBe(false);
+    });
+
+    test('a single event with more than 8 files is truncated to 8', () => {
+      const { result } = renderHook(() => useScreenshot());
+      mockFileReader();
+
+      act(() => result.current.addScreenshot(
+        makeInputEvent(...Array.from({ length: 10 }, (_, i) => makePngFile(`f${i}.png`)))
+      ));
+
+      expect(result.current.screenshots).toHaveLength(8);
+    });
+
+    test('adding more once already at 8 is a no-op', () => {
+      const { result } = renderHook(() => useScreenshot());
+      mockFileReader();
+
+      act(() => result.current.addScreenshot(
+        makeInputEvent(...Array.from({ length: 8 }, (_, i) => makePngFile(`f${i}.png`)))
+      ));
+      act(() => result.current.addScreenshot(makeInputEvent(makePngFile('ninth.png'))));
+
+      expect(result.current.screenshots).toHaveLength(8);
+    });
+
+    test('canAddMore is still true with 7 screenshots attached', () => {
+      const { result } = renderHook(() => useScreenshot());
+      mockFileReader();
+
+      act(() => result.current.addScreenshot(
+        makeInputEvent(...Array.from({ length: 7 }, (_, i) => makePngFile(`f${i}.png`)))
+      ));
+
+      expect(result.current.canAddMore).toBe(true);
+    });
+  });
+
   // ── addScreenshot — invalid type ──────────────────────────────────────
   describe('addScreenshot — invalid MIME type', () => {
     test.each(['application/pdf', 'text/plain', 'video/mp4'])(

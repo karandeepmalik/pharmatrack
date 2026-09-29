@@ -38,9 +38,9 @@ describe('ScreenshotUpload component', () => {
       expect(screen.getByText(new RegExp(SCREENSHOT_CONSTRAINTS.MAX_LABEL))).toBeInTheDocument();
     });
 
-    test('renders hint mentioning max count (5)', () => {
+    test(`renders hint mentioning max count (${SCREENSHOT_CONSTRAINTS.MAX_COUNT})`, () => {
       renderComponent();
-      expect(screen.getByText(/max 5/i)).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(`max ${SCREENSHOT_CONSTRAINTS.MAX_COUNT}`, 'i'))).toBeInTheDocument();
     });
   });
 
@@ -69,6 +69,21 @@ describe('ScreenshotUpload component', () => {
         target: { files: [makeFile()] },
       });
       expect(onAdd).toHaveBeenCalledTimes(1);
+    });
+
+    test('defaults to id "screenshot-input"', () => {
+      renderComponent();
+      expect(screen.getByLabelText(/upload payment screenshot/i)).toHaveAttribute('id', 'screenshot-input');
+    });
+
+    test('honours a custom idPrefix, for rendering more than one instance at once', () => {
+      renderComponent({ idPrefix: 'edit-screenshot-42' });
+      expect(screen.getByLabelText(/upload payment screenshot/i)).toHaveAttribute('id', 'edit-screenshot-42-input');
+    });
+
+    test('honours a custom ariaLabel', () => {
+      renderComponent({ ariaLabel: 'Replace screenshots' });
+      expect(screen.getByLabelText(/^replace screenshots$/i)).toBeInTheDocument();
     });
   });
 

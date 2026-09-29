@@ -15,6 +15,8 @@ export const SCREENSHOT_CONSTRAINTS = {
   MAX_BYTES: 5 * 1024 * 1024,
   /** Human-readable size limit label */
   MAX_LABEL: '5 MB',
+  /** Maximum number of screenshots attachable to a single dispatch (submit or admin edit) */
+  MAX_COUNT: 8,
 };
 
 // ── Transaction notes constraints (mirrors backend validation) ─────────

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import AdminEditDispatch from '../../../pages/admin/AdminEditDispatch';
@@ -520,6 +520,66 @@ describe('AdminEditDispatch — edit', () => {
         screenshotFiles: [],
       })
     );
+  });
+
+  test('shows an Add Screenshot button in edit mode instead of a bare native multi-select input', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByRole('button', { name: /add payment screenshot/i })).toBeInTheDocument();
+    expect(screen.getByText(/leave empty to keep existing screenshot/i)).toBeInTheDocument();
+  });
+
+  test('attaching two replacement screenshots stages both files for save', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
+    api.updateTransaction.mockResolvedValue({ data: makeTx() });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    const file1 = new File(['a'], 'a.png', { type: 'image/png' });
+    const file2 = new File(['b'], 'b.png', { type: 'image/png' });
+    const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
+    jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
+    fireEvent.change(screen.getByLabelText(/replace screenshots/i), { target: { files: [file1, file2] } });
+    readerMock.onloadend();
+    await waitFor(() => expect(screen.getByText(/2 screenshots attached/i)).toBeInTheDocument());
+
+    const textarea = screen.getByRole('textbox', { name: /edit notes/i });
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, 'Replacing with the correct pair of screenshots');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(api.updateTransaction).toHaveBeenCalledWith(1, expect.objectContaining({
+        screenshotFiles: [file1, file2],
+      }))
+    );
+  });
+
+  test('caps replacement screenshots at 8 in edit mode', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    const files = Array.from({ length: 9 }, (_, i) => new File([`${i}`], `f${i}.png`, { type: 'image/png' }));
+    const readerMock = { readAsDataURL: jest.fn(), onloadend: null, result: 'data:image/png;base64,x' };
+    jest.spyOn(global, 'FileReader').mockImplementation(() => readerMock);
+    fireEvent.change(screen.getByLabelText(/replace screenshots/i), { target: { files } });
+    readerMock.onloadend();
+
+    await waitFor(() => expect(screen.getByText(/8 screenshots attached/i)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /add.*screenshot/i })).not.toBeInTheDocument();
   });
 
   test('shows inline error when save fails', async () => {

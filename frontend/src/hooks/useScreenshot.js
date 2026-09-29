@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { SCREENSHOT_CONSTRAINTS } from '../constants';
 
-const MAX_SCREENSHOTS = 5;
+const MAX_SCREENSHOTS = SCREENSHOT_CONSTRAINTS.MAX_COUNT;
 
 /**
  * Custom hook encapsulating multiple-screenshot upload state and behaviour.
