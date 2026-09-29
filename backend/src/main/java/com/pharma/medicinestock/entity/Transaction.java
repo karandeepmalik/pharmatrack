@@ -49,7 +49,7 @@ public class Transaction {
     @Column(nullable = false)
     private TransactionStatus status;
 
-    @Column(nullable = false, updatable = false)
+    @Column(nullable = false)
     private LocalDateTime submittedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)

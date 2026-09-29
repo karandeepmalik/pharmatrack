@@ -11,6 +11,10 @@ import { SCREENSHOT_CONSTRAINTS } from '../constants';
  * @param {function}  props.onAdd          - change handler for <input type="file">
  * @param {function}  props.onRemove       - called with (index) when Remove is clicked
  * @param {boolean}   props.required       - whether at least one screenshot is required
+ * @param {string}    [props.idPrefix]     - DOM id prefix for the hidden input; override when
+ *                                           rendering more than one instance at once (e.g. one
+ *                                           per row of an editable table) to avoid duplicate ids
+ * @param {string}    [props.ariaLabel]    - accessible name for the hidden file input
  */
 export default function ScreenshotUpload({
   screenshots,
@@ -19,6 +23,8 @@ export default function ScreenshotUpload({
   onAdd,
   onRemove,
   required = false,
+  idPrefix = 'screenshot',
+  ariaLabel = 'Upload payment screenshot',
 }) {
   const validCount = screenshots.filter((s) => s.file != null).length;
 
@@ -32,7 +38,7 @@ export default function ScreenshotUpload({
       </label>
 
       <p className="field-hint">
-        Attach one or more screenshots of your payment confirmation (max 5).
+        Attach one or more screenshots of your payment confirmation (max {SCREENSHOT_CONSTRAINTS.MAX_COUNT}).
         Accepted: PNG, JPEG, WebP, GIF — max {SCREENSHOT_CONSTRAINTS.MAX_LABEL} each.
       </p>
 
@@ -70,12 +76,12 @@ export default function ScreenshotUpload({
 
       {/* Hidden file input */}
       <input
-        id="screenshot-input"
+        id={`${idPrefix}-input`}
         ref={fileInputRef}
         type="file"
         accept={SCREENSHOT_CONSTRAINTS.ACCEPT_ATTR}
         onChange={onAdd}
-        aria-label="Upload payment screenshot"
+        aria-label={ariaLabel}
         style={{ display: 'none' }}
         multiple
       />

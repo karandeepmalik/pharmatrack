@@ -203,6 +203,18 @@ describe('Screenshot upload section — mandatory', () => {
     expect(screen.getByAltText(/payment screenshot 1 preview/i)).toBeInTheDocument();
   });
 
+  test('allows attaching up to 8 screenshots and hides Add button beyond that', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/upload payment screenshot/i));
+
+    for (let i = 0; i < 8; i++) {
+      await attachScreenshot(`pay-${i}.png`);
+    }
+
+    expect(screen.getByText(/8 screenshots attached/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add.*screenshot/i })).not.toBeInTheDocument();
+  });
+
   test('shows error for non-image file', async () => {
     renderPage();
     await waitFor(() => screen.getByLabelText(/upload payment screenshot/i));

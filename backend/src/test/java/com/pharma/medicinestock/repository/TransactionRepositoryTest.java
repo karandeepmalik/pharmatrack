@@ -750,6 +750,49 @@ class TransactionRepositoryTest {
         }
     }
 
+    // ── submittedAt column is updatable ─────────────────────────────────────
+    //
+    // Regression coverage for a real bug: Transaction.submittedAt was mapped
+    // @Column(updatable = false), so admin dispatch-date edits (TransactionService
+    // .updateTransaction()) looked like they saved — the returned DTO reflected the new
+    // in-memory value — but Hibernate silently omitted the column from the UPDATE SQL, so
+    // the DB row never actually changed and the date reverted on the next fetch. A
+    // Mockito-based service test (TransactionServiceTest) can't catch this class of bug
+    // since it never exercises real Hibernate SQL generation — only a real flush+clear+
+    // refetch round trip like this one can.
+    @Nested @DisplayName("submittedAt column is updatable")
+    class SubmittedAtUpdatable {
+
+        @Test
+        @DisplayName("a changed submittedAt survives flush + clear + refetch")
+        void submittedAtChangeSurvivesRoundTrip() {
+            LocalDateTime corrected = LocalDateTime.of(2024, 6, 15, 0, 0);
+
+            tx1.setSubmittedAt(corrected);
+            em.merge(tx1);
+            em.flush();
+            em.clear();
+
+            assertThat(em.find(Transaction.class, tx1.getId()).getSubmittedAt())
+                    .isEqualTo(corrected);
+        }
+
+        @Test
+        @DisplayName("a changed submittedAt survives a fresh repository refetch after save()")
+        void submittedAtChangeSurvivesRepositorySave() {
+            LocalDateTime corrected = LocalDateTime.of(2023, 3, 10, 0, 0);
+
+            Transaction managed = repo.findById(tx2.getId()).orElseThrow();
+            managed.setSubmittedAt(corrected);
+            repo.save(managed);
+            em.flush();
+            em.clear();
+
+            assertThat(repo.findById(tx2.getId()).orElseThrow().getSubmittedAt())
+                    .isEqualTo(corrected);
+        }
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private User buildUser(String username, String email) {

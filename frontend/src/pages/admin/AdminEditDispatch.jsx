@@ -3,6 +3,38 @@ import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import { medicineStockTypeLabel } from '../../constants';
 import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
+import ScreenshotUpload from '../../components/ScreenshotUpload';
+import useScreenshot from '../../hooks/useScreenshot';
+
+// One instance per edit row — a raw <input type="file" multiple> relied on the browser's own
+// multi-select gesture (easy to miss, and offered no preview/remove), so admins effectively
+// replaced with just one image at a time. This mirrors Submit Medicine Dispatch's own
+// add/preview/remove flow, up to the same cap. idPrefix keeps each row's hidden <input> id
+// unique in case more than one row is being edited at once.
+function EditScreenshotsField({ txId, onFilesChange }) {
+    const screenshot = useScreenshot();
+
+    useEffect(() => {
+        onFilesChange(screenshot.screenshots.filter((s) => s.file != null).map((s) => s.file));
+    }, [screenshot.screenshots]);
+
+    return (
+        <div>
+            <ScreenshotUpload
+                screenshots={screenshot.screenshots}
+                canAddMore={screenshot.canAddMore}
+                fileInputRef={screenshot.fileInputRef}
+                onAdd={screenshot.addScreenshot}
+                onRemove={screenshot.removeScreenshot}
+                idPrefix={`edit-screenshot-${txId}`}
+                ariaLabel="Replace screenshots"
+            />
+            <p style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                Leave empty to keep existing screenshot(s).
+            </p>
+        </div>
+    );
+}
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const weekAgoStr = () => {
@@ -386,18 +418,10 @@ export default function AdminEditDispatch() {
                                                 </td>
                                                 <td>
                                                     {edit.active ? (
-                                                        <div>
-                                                            <input
-                                                                aria-label="Replace screenshots"
-                                                                type="file"
-                                                                accept="image/*"
-                                                                multiple
-                                                                onChange={e => handleFieldChange(tx.id, 'screenshotFiles', Array.from(e.target.files))}
-                                                            />
-                                                            <p style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
-                                                                Leave empty to keep existing screenshot(s).
-                                                            </p>
-                                                        </div>
+                                                        <EditScreenshotsField
+                                                            txId={tx.id}
+                                                            onFilesChange={files => handleFieldChange(tx.id, 'screenshotFiles', files)}
+                                                        />
                                                     ) : (
                                                         <PaymentScreenshotViewer
                                                             screenshots={tx.screenshots}
