@@ -15,6 +15,9 @@ export default function ApproveTransactions() {
   const [errorMessage, setErrorMessage] = useState('');
   const [actionLoading, setActionLoading] = useState(null);
   const [priceOverrides, setPriceOverrides] = useState({});
+  const [selectedIds, setSelectedIds]   = useState(new Set());
+  const [bulkLoading, setBulkLoading]   = useState(false);
+  const [bulkMessage, setBulkMessage]   = useState('');
 
   const sentinelRef  = useRef(null);
   const pageRef      = useRef(0);       // last successfully loaded page number
@@ -28,12 +31,17 @@ export default function ApproveTransactions() {
       setLoading(true);
       setTransactions([]);
       setHasMore(false);
+      // A fresh page-0 load (filter change, or a reload after an approve/reject action)
+      // replaces the loaded set entirely, so any prior bulk selection no longer corresponds
+      // to what's on screen.
+      setSelectedIds(new Set());
     } else {
       setLoadingMore(true);
     }
     setErrorMessage('');
+    setBulkMessage('');
 
-    api.getAllTransactions(pg, PAGE_SIZE, status)
+    return api.getAllTransactions(pg, PAGE_SIZE, status)
       .then((r) => {
         const { content = [], last = true } = r.data ?? {};
         setTransactions((prev) => pg === 0 ? content : [...prev, ...content]);
@@ -94,6 +102,65 @@ export default function ApproveTransactions() {
     }
   };
 
+  // ── Bulk approve ──────────────────────────────────────────────────────
+  // Scoped to currently-loaded PENDING cards only — same "loaded, not everything that could
+  // ever match" scope as every other infinite-scroll list in this app (see scrollUntilVisible
+  // usage in e2e-browser tests); there is no existing "select across all pages" precedent here.
+  const pendingLoaded = transactions.filter((tx) => tx.status === 'PENDING');
+  const allPendingSelected = pendingLoaded.length > 0 && pendingLoaded.every((tx) => selectedIds.has(tx.id));
+
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allPendingSelected ? new Set() : new Set(pendingLoaded.map((tx) => tx.id)));
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkLoading(true);
+    setErrorMessage('');
+    setBulkMessage('');
+    try {
+      const items = Array.from(selectedIds).map((id) => {
+        const item = { id };
+        const priceStr = priceOverrides[id];
+        if (priceStr !== undefined && priceStr !== '') {
+          item.newPrice = parseInt(priceStr, 10);
+        }
+        return item;
+      });
+      const res = await api.approveTransactionsBulk(items);
+      const results = res.data ?? [];
+      const failed = results.filter((r) => !r.approved);
+      const succeededCount = results.length - failed.length;
+
+      // Reload from page 0 BEFORE setting the summary message — loadPage clears both
+      // message states as soon as it starts (same as every other reload), so setting the
+      // message first would just get wiped out the instant the reload kicks off.
+      pageRef.current = 0;
+      await loadPage(0, filterRef.current);
+
+      if (failed.length === 0) {
+        setBulkMessage(`${succeededCount} dispatch${succeededCount !== 1 ? 'es' : ''} approved.`);
+      } else {
+        setErrorMessage(
+          `${succeededCount} approved, ${failed.length} failed: ` +
+          failed.map((f) => `#${f.id} (${f.error || 'error'})`).join('; ')
+        );
+      }
+    } catch {
+      setErrorMessage('Failed to approve selected transactions');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   if (loading) return <div className="loading">Loading transactions…</div>;
 
   return (
@@ -106,6 +173,9 @@ export default function ApproveTransactions() {
       {errorMessage && (
         <div role="alert" className="alert alert-error">{errorMessage}</div>
       )}
+      {bulkMessage && (
+        <div role="status" className="alert alert-success">{bulkMessage}</div>
+      )}
 
       <div className="filter-tabs" role="group" aria-label="Filter transactions by status">
         {TRANSACTION_STATUSES.map((s) => (
@@ -117,6 +187,37 @@ export default function ApproveTransactions() {
         ))}
       </div>
 
+      {pendingLoaded.length > 0 && (
+        <div className="bulk-select-row">
+          <label className="bulk-select-all">
+            <input
+              type="checkbox"
+              checked={allPendingSelected}
+              onChange={toggleSelectAll}
+              disabled={bulkLoading}
+              aria-label="Select all loaded pending transactions"
+            />
+            Select all loaded pending ({pendingLoaded.length})
+          </label>
+
+          {selectedIds.size > 0 && (
+            <div className="bulk-action-bar">
+              <span className="bulk-selected-count">{selectedIds.size} selected</span>
+              <button type="button" className="btn btn-approve btn-sm"
+                disabled={bulkLoading}
+                onClick={handleBulkApprove}>
+                {bulkLoading ? 'Approving…' : `✓ Approve Selected (${selectedIds.size})`}
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm"
+                disabled={bulkLoading}
+                onClick={() => setSelectedIds(new Set())}>
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {transactions.length === 0 && !hasMore ? (
         <p className="empty-message">
           No {filter === 'ALL' ? '' : filter.toLowerCase()} transactions found.
@@ -126,7 +227,19 @@ export default function ApproveTransactions() {
           {transactions.map((tx) => (
             <div key={tx.id} className={`transaction-card status-${tx.status.toLowerCase()}`}>
               <div className="tx-header">
-                <span className="tx-id">#{tx.id}</span>
+                <div className="tx-header-left">
+                  {tx.status === 'PENDING' && (
+                    <input
+                      type="checkbox"
+                      className="tx-select-checkbox"
+                      checked={selectedIds.has(tx.id)}
+                      onChange={() => toggleSelected(tx.id)}
+                      disabled={bulkLoading}
+                      aria-label={`Select transaction #${tx.id} for bulk approval`}
+                    />
+                  )}
+                  <span className="tx-id">#{tx.id}</span>
+                </div>
                 <span className={`tx-status badge-${tx.status.toLowerCase()}`}>{tx.status}</span>
               </div>
 
@@ -176,12 +289,12 @@ export default function ApproveTransactions() {
               {tx.status === 'PENDING' && (
                 <div className="tx-actions">
                   <button type="button" className="btn btn-approve"
-                    disabled={actionLoading === tx.id}
+                    disabled={actionLoading === tx.id || bulkLoading}
                     onClick={() => handleDecision(tx.id, true)}>
                     {actionLoading === tx.id ? '…' : '✓ Approve'}
                   </button>
                   <button type="button" className="btn btn-reject"
-                    disabled={actionLoading === tx.id}
+                    disabled={actionLoading === tx.id || bulkLoading}
                     onClick={() => handleDecision(tx.id, false)}>
                     {actionLoading === tx.id ? '…' : '✕ Reject'}
                   </button>

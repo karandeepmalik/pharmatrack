@@ -467,6 +467,198 @@ describe('ApproveTransactions — price override', () => {
   });
 });
 
+// ── Bulk approve ────────────────────────────────────────────────────────
+
+describe('ApproveTransactions — bulk approve', () => {
+  const pendingTx1 = makeTx({ id: 1, status: 'PENDING', notes: 'First dispatch note here' });
+  const pendingTx2 = makeTx({ id: 2, status: 'PENDING', notes: 'Second dispatch note here' });
+  const approvedTx = makeTx({
+    id: 3, status: 'APPROVED', notes: 'Already approved note here',
+    approvedByUsername: 'admin', approvedAt: '2026-04-01T12:00:00',
+  });
+
+  test('does not show select-all or checkboxes when there are no PENDING transactions', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([]));
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/no pending transactions found/i)).toBeInTheDocument());
+    expect(screen.queryByLabelText(/select all loaded pending/i)).not.toBeInTheDocument();
+  });
+
+  test('shows a checkbox for each PENDING transaction but not for APPROVED ones', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, approvedTx]));
+    renderPage();
+    await waitFor(() => screen.getByRole('button', { name: /^all$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^all$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/select transaction #1 for bulk approval/i)).toBeInTheDocument()
+    );
+    expect(screen.queryByLabelText(/select transaction #3 for bulk approval/i)).not.toBeInTheDocument();
+  });
+
+  test('does not show the bulk action bar until at least one transaction is selected', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1]));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    expect(screen.queryByRole('button', { name: /approve selected/i })).not.toBeInTheDocument();
+  });
+
+  test('selecting a transaction shows the bulk action bar with a count of 1', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select transaction #1 for bulk approval/i));
+    await userEvent.click(screen.getByLabelText(/select transaction #1 for bulk approval/i));
+
+    expect(screen.getByText(/^1 selected$/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /approve selected \(1\)/i })).toBeInTheDocument();
+  });
+
+  test('"Select all loaded pending" selects every PENDING transaction', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+
+    expect(screen.getByRole('button', { name: /approve selected \(2\)/i })).toBeInTheDocument();
+  });
+
+  test('clicking "Select all loaded pending" again deselects everything', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+
+    expect(screen.queryByRole('button', { name: /approve selected/i })).not.toBeInTheDocument();
+  });
+
+  test('Clear button empties the selection', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1]));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select transaction #1 for bulk approval/i));
+    await userEvent.click(screen.getByLabelText(/select transaction #1 for bulk approval/i));
+    await userEvent.click(screen.getByRole('button', { name: /^clear$/i }));
+
+    expect(screen.queryByRole('button', { name: /approve selected/i })).not.toBeInTheDocument();
+  });
+
+  test('clicking Approve Selected calls approveTransactionsBulk with the selected ids', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    api.approveTransactionsBulk.mockResolvedValue({
+      data: [{ id: 1, approved: true }, { id: 2, approved: true }],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByRole('button', { name: /approve selected \(2\)/i }));
+
+    await waitFor(() =>
+      expect(api.approveTransactionsBulk).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }])
+    );
+  });
+
+  test('includes a per-row price override only for rows where it was explicitly edited', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    api.approveTransactionsBulk.mockResolvedValue({
+      data: [{ id: 1, approved: true }, { id: 2, approved: true }],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getAllByLabelText(/price \(rs\)/i));
+    const priceInputs = screen.getAllByLabelText(/price \(rs\)/i);
+    await userEvent.clear(priceInputs[0]);
+    await userEvent.type(priceInputs[0], '7777');
+
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByRole('button', { name: /approve selected \(2\)/i }));
+
+    await waitFor(() =>
+      expect(api.approveTransactionsBulk).toHaveBeenCalledWith([
+        { id: 1, newPrice: 7777 },
+        { id: 2 },
+      ])
+    );
+  });
+
+  test('shows a success message and reloads after a fully successful bulk approve', async () => {
+    api.getAllTransactions
+      .mockResolvedValueOnce(mkPage([pendingTx1, pendingTx2]))
+      .mockResolvedValueOnce(mkPage([]));
+    api.approveTransactionsBulk.mockResolvedValue({
+      data: [{ id: 1, approved: true }, { id: 2, approved: true }],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByRole('button', { name: /approve selected \(2\)/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(/2 dispatches approved/i)
+    );
+    expect(api.getAllTransactions).toHaveBeenCalledTimes(2);
+  });
+
+  test('shows a partial-failure summary when one item in the batch fails', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    api.approveTransactionsBulk.mockResolvedValue({
+      data: [
+        { id: 1, approved: true },
+        { id: 2, approved: false, error: 'Cannot approve transaction with status APPROVED' },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByRole('button', { name: /approve selected \(2\)/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/1 approved, 1 failed/i)
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/#2/);
+  });
+
+  test('shows a generic error message when the bulk request itself fails', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1]));
+    api.approveTransactionsBulk.mockRejectedValue(new Error('Network error'));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select transaction #1 for bulk approval/i));
+    await userEvent.click(screen.getByLabelText(/select transaction #1 for bulk approval/i));
+    await userEvent.click(screen.getByRole('button', { name: /approve selected \(1\)/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/failed to approve selected transactions/i)
+    );
+  });
+
+  test('switching filter tabs clears the current selection', async () => {
+    api.getAllTransactions.mockImplementation((page, size, status) => {
+      const all = [pendingTx1, pendingTx2, approvedTx];
+      const content = status === 'ALL' ? all : all.filter((t) => t.status === status);
+      return Promise.resolve(mkPage(content));
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    expect(screen.getByRole('button', { name: /approve selected \(2\)/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^all$/i }));
+    await waitFor(() => screen.getByText(/already approved note here/i));
+
+    expect(screen.queryByRole('button', { name: /approve selected/i })).not.toBeInTheDocument();
+  });
+});
+
 // ── Multiple transactions with mixed screenshot states ────────────────────
 
 describe('ApproveTransactions — multiple transactions', () => {

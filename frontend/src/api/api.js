@@ -78,6 +78,16 @@ export const getAllTransactions  = (page = 0, size = 20, status = 'ALL') => api.
 export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/approve`, data);
 
 /**
+ * Approves several PENDING dispatch records in one call (Review Adjustments' "Approve
+ * Selected"). `items` is `[{ id, newPrice? }, ...]` — per-item price override mirrors the
+ * same optional field the single-approve flow already sends. Always resolves 200; check each
+ * result's `approved`/`error` field rather than relying on the HTTP status for per-item outcome,
+ * since one bad item (e.g. already acted on by another admin) must not fail the whole batch.
+ */
+export const approveTransactionsBulk = (items) =>
+  api.post('/transactions/approve-bulk', { items });
+
+/**
  * Fetch a page of transaction history for a date range. Filters are applied server-side
  * (against the full matching set, not just whatever page happens to be loaded), so passing
  * username/medicineId/notes here is safe to combine with pagination.

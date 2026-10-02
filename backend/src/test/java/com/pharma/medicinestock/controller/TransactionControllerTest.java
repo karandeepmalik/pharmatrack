@@ -1,6 +1,7 @@
 package com.pharma.medicinestock.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pharma.medicinestock.dto.BulkApproveResult;
 import com.pharma.medicinestock.dto.PagedResponse;
 import com.pharma.medicinestock.dto.ScreenshotDto;
 import com.pharma.medicinestock.dto.TransactionResponse;
@@ -411,6 +412,55 @@ class TransactionControllerTest {
                     .andExpect(jsonPath("$.status").value("APPROVED"))
                     .andExpect(jsonPath("$.screenshots[0].data").value(b64))
                     .andExpect(jsonPath("$.screenshots[0].mimeType").value("image/png"));
+        }
+    }
+
+    // ── POST /api/transactions/approve-bulk ────────────────────────────
+
+    @Nested
+    @DisplayName("POST /api/transactions/approve-bulk")
+    class ApproveBulk {
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("returns 200 with a per-item result list, including a partial failure")
+        void approveBulk_mixedResults_returns200WithPerItemOutcomes() throws Exception {
+            when(transactionService.approveBulk(any(), eq("admin"))).thenReturn(List.of(
+                    BulkApproveResult.success(1L),
+                    BulkApproveResult.failure(2L, "Cannot approve transaction with status APPROVED")));
+
+            mockMvc.perform(post("/api/transactions/approve-bulk")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"items\":[{\"id\":1},{\"id\":2,\"newPrice\":5000}]}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].id").value(1))
+                    .andExpect(jsonPath("$[0].approved").value(true))
+                    .andExpect(jsonPath("$[1].id").value(2))
+                    .andExpect(jsonPath("$[1].approved").value(false))
+                    .andExpect(jsonPath("$[1].error").value("Cannot approve transaction with status APPROVED"));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("an empty items list is rejected with 400")
+        void approveBulk_emptyItems_400() throws Exception {
+            mockMvc.perform(post("/api/transactions/approve-bulk")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"items\":[]}"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("USER role cannot call the bulk approve endpoint")
+        void approveBulk_nonAdmin_403() throws Exception {
+            mockMvc.perform(post("/api/transactions/approve-bulk")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"items\":[{\"id\":1}]}"))
+                    .andExpect(status().isForbidden());
         }
     }
 
