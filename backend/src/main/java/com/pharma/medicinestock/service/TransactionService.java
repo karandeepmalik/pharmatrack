@@ -1,6 +1,8 @@
 package com.pharma.medicinestock.service;
 
 import com.pharma.medicinestock.dto.ApprovalRequest;
+import com.pharma.medicinestock.dto.BulkApproveRequest;
+import com.pharma.medicinestock.dto.BulkApproveResult;
 import com.pharma.medicinestock.dto.TransactionRequest;
 import com.pharma.medicinestock.dto.TransactionResponse;
 import com.pharma.medicinestock.entity.MedicineStock;
@@ -30,6 +32,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -239,6 +242,33 @@ public class TransactionService {
         tx.setApprovedBy(admin);
         tx.setApprovedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
         return transactionMapper.toResponse(transactionRepository.save(tx));
+    }
+
+    /**
+     * Approves several PENDING records in one call (Review Adjustments' "Approve Selected").
+     * Each item is processed independently via {@link #approve} — a status-transition race
+     * (another admin already acted on one of them) or a stale/deleted id fails only that item,
+     * never the whole batch, since an admin selecting 10 records would not expect 9 good ones
+     * to be thrown away because the 10th had already been rejected elsewhere. The whole method
+     * still runs as one transaction: everything committed by individually-caught business
+     * exceptions here is a clean pre-mutation throw (checked before any entity write — see
+     * {@link #approve}), so there is nothing partial left to roll back.
+     */
+    @Transactional
+    public List<BulkApproveResult> approveBulk(BulkApproveRequest request, String adminUsername) {
+        List<BulkApproveResult> results = new ArrayList<>();
+        for (BulkApproveRequest.Item item : request.getItems()) {
+            try {
+                ApprovalRequest req = new ApprovalRequest();
+                req.setApproved(true);
+                req.setNewPrice(item.getNewPrice());
+                approve(item.getId(), req, adminUsername);
+                results.add(BulkApproveResult.success(item.getId()));
+            } catch (ResourceNotFoundException | InvalidStateTransitionException e) {
+                results.add(BulkApproveResult.failure(item.getId(), e.getMessage()));
+            }
+        }
+        return results;
     }
 
     @Transactional

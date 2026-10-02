@@ -1,6 +1,8 @@
 package com.pharma.medicinestock.controller;
 
 import com.pharma.medicinestock.dto.ApprovalRequest;
+import com.pharma.medicinestock.dto.BulkApproveRequest;
+import com.pharma.medicinestock.dto.BulkApproveResult;
 import com.pharma.medicinestock.dto.PagedResponse;
 import com.pharma.medicinestock.dto.TransactionRequest;
 import com.pharma.medicinestock.dto.TransactionResponse;
@@ -122,6 +124,21 @@ public class TransactionController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(
                 transactionService.approve(id, req, userDetails.getUsername()));
+    }
+
+    /**
+     * Approves several PENDING records in one call — Review Adjustments' "Approve Selected"
+     * bulk action. Each item's outcome is reported independently (see
+     * {@link TransactionService#approveBulk}); this is intentionally not all-or-nothing, so
+     * the response is always 200 with a per-item result list, even if some items failed.
+     */
+    @PostMapping("/approve-bulk")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<BulkApproveResult>> approveBulk(
+            @Valid @RequestBody BulkApproveRequest req,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(
+                transactionService.approveBulk(req, userDetails.getUsername()));
     }
 
     @DeleteMapping("/{id}")

@@ -2068,6 +2068,110 @@ async function run() {
     assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
   });
 
+  console.log('\n-- Bulk Approve (Review Adjustments "Approve Selected")');
+
+  let bulkRegularBefore;
+  await test('[SETUP] Record john.doe REGULAR_MEDICINE_STOCK level before bulk-approve tests', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    bulkRegularBefore = inv ? inv.quantity : 0;
+  });
+
+  await test('[SETUP] Allocate 3 REGULAR_MEDICINE_STOCK units for bulk-approve tests', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 3,
+      note: 'E2E setup — allocating stock for bulk-approve test',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  let bulkTx1, bulkTx2, bulkTx3;
+  await test('User submits three PENDING dispatches for the bulk-approve test', async () => {
+    const submitOne = async (label) => {
+      const r = await apiPostForm(`${API}/transactions`, {
+        medicineId: String(adjustMedicineId),
+        quantity: '1',
+        notes: `E2E bulk-approve test dispatch ${label}`,
+        medicineStockType: 'REGULAR_MEDICINE_STOCK',
+        screenshots: [makeFakePng(label)],
+      }, userToken);
+      assert(r.status === 201, `Submit ${label} failed: ${r.status} ${JSON.stringify(r.data)}`);
+      return r.data.id;
+    };
+    bulkTx1 = await submitOne('Bulk1');
+    bulkTx2 = await submitOne('Bulk2');
+    bulkTx3 = await submitOne('Bulk3');
+  });
+
+  await test('Admin rejects the third dispatch ahead of time, to exercise a partial-failure bulk approve', async () => {
+    const r = await apiPost(`${API}/transactions/${bulkTx3}/approve`, { approved: false }, adminToken);
+    assert(r.status === 200, `Reject failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.status === 'REJECTED', `Expected REJECTED, got ${r.data.status}`);
+  });
+
+  await test('POST /transactions/approve-bulk approves the valid items and reports the already-REJECTED one as a per-item failure', async () => {
+    const r = await apiPost(`${API}/transactions/approve-bulk`, {
+      items: [{ id: bulkTx1 }, { id: bulkTx2 }, { id: bulkTx3 }],
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    const byId = Object.fromEntries(r.data.map(x => [x.id, x]));
+    assert(byId[bulkTx1]?.approved === true, `Expected tx1 approved, got ${JSON.stringify(byId[bulkTx1])}`);
+    assert(byId[bulkTx2]?.approved === true, `Expected tx2 approved, got ${JSON.stringify(byId[bulkTx2])}`);
+    assert(byId[bulkTx3]?.approved === false, `Expected tx3 to fail (already REJECTED), got ${JSON.stringify(byId[bulkTx3])}`);
+    assert(typeof byId[bulkTx3]?.error === 'string' && byId[bulkTx3].error.length > 0,
+      `Expected an error message for tx3, got ${JSON.stringify(byId[bulkTx3])}`);
+  });
+
+  await test('Both successfully bulk-approved dispatches show status APPROVED, and the already-REJECTED one stays REJECTED', async () => {
+    const r = await apiGet(`${API}/transactions?status=ALL&size=200`, adminToken);
+    const tx1 = r.data.content.find(t => t.id === bulkTx1);
+    const tx2 = r.data.content.find(t => t.id === bulkTx2);
+    const tx3 = r.data.content.find(t => t.id === bulkTx3);
+    assert(tx1 && tx1.status === 'APPROVED', `tx1 not found or not APPROVED: ${JSON.stringify(tx1)}`);
+    assert(tx2 && tx2.status === 'APPROVED', `tx2 not found or not APPROVED: ${JSON.stringify(tx2)}`);
+    assert(tx3 && tx3.status === 'REJECTED', `tx3 not found or not REJECTED: ${JSON.stringify(tx3)}`);
+  });
+
+  await test('An empty items list is rejected with 400', async () => {
+    const r = await apiPost(`${API}/transactions/approve-bulk`, { items: [] }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}`);
+  });
+
+  await test('USER role cannot call the bulk approve endpoint (401/403)', async () => {
+    const r = await apiPost(`${API}/transactions/approve-bulk`, { items: [{ id: bulkTx1 }] }, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  await test('[TEARDOWN] Admin deletes the three bulk-approve test dispatch records', async () => {
+    for (const id of [bulkTx1, bulkTx2, bulkTx3]) {
+      const r = await apiDelete(`${API}/transactions/${id}`, adminToken);
+      assert(r.status === 204, `Delete ${id} failed: ${r.status}`);
+    }
+  });
+
+  await test('[TEARDOWN] Removes the leftover REGULAR_MEDICINE_STOCK allocation from bulk-approve setup', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 3,
+      note: 'E2E teardown — removing REGULAR bucket allocation for bulk-approve test',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[VERIFY TEARDOWN] john.doe REGULAR_MEDICINE_STOCK restored to original level after bulk-approve tests', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const current = inv ? inv.quantity : 0;
+    assert(Math.abs(current - bulkRegularBefore) < 0.001, `Expected ${bulkRegularBefore}, got ${current}`);
+  });
+
   // ── Summary ───────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);

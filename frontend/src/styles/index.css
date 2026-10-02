@@ -90,7 +90,16 @@ small{color:#6b7280;font-size:.75rem}
 .transaction-card.status-approved{border-left-color:#059669}
 .transaction-card.status-rejected{border-left-color:#dc2626}
 .tx-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;gap:.5rem;flex-wrap:wrap}
+.tx-header-left{display:flex;align-items:center;gap:.5rem}
+.tx-select-checkbox{width:1.1rem;height:1.1rem;cursor:pointer}
 .tx-id{font-weight:600;color:#374151}
+
+/* ── Bulk select / approve (Review Adjustments) ──────────────────────── */
+.bulk-select-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem}
+.bulk-select-all{display:flex;align-items:center;gap:.5rem;font-size:.875rem;color:#374151;cursor:pointer}
+.bulk-select-all input{width:1.1rem;height:1.1rem;cursor:pointer}
+.bulk-action-bar{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.bulk-selected-count{font-size:.875rem;font-weight:600;color:#1f2937}
 .tx-status{font-size:.8rem;font-weight:700;text-transform:uppercase}
 .tx-body{display:flex;gap:1.5rem;align-items:flex-start}
 .tx-fields{flex:1;min-width:0}
@@ -203,6 +212,10 @@ small{color:#6b7280;font-size:.75rem}
   .tx-actions .btn{flex:1}
   /* Lightbox nav stacks */
   .lightbox-footer{flex-direction:column}
+  /* Bulk select row: stack, and the action bar's button row goes full-width */
+  .bulk-select-row{flex-direction:column;align-items:stretch}
+  .bulk-action-bar{justify-content:space-between}
+  .bulk-action-bar .btn{flex:1}
 }
 
 /* ── Responsive: ≤ 400px (small phones) ─────────────────────────────── */

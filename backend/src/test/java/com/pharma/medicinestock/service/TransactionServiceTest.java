@@ -1,6 +1,8 @@
 package com.pharma.medicinestock.service;
 
 import com.pharma.medicinestock.dto.ApprovalRequest;
+import com.pharma.medicinestock.dto.BulkApproveRequest;
+import com.pharma.medicinestock.dto.BulkApproveResult;
 import com.pharma.medicinestock.dto.ScreenshotDto;
 import com.pharma.medicinestock.dto.TransactionRequest;
 import com.pharma.medicinestock.dto.TransactionResponse;
@@ -834,6 +836,125 @@ class TransactionServiceTest {
 
             assertThat(res.getScreenshots()).hasSize(1);
             assertThat(res.getScreenshots().get(0).getData()).isEqualTo(b64);
+        }
+    }
+
+    // ── approveBulk() ──────────────────────────────────────────────────
+
+    @Nested @DisplayName("approveBulk()")
+    class ApproveBulk {
+
+        private Transaction pendingTx1;
+        private Transaction pendingTx2;
+
+        @BeforeEach
+        void setup() {
+            pendingTx1 = Transaction.builder()
+                    .id(1L).submittedBy(regularUser).medicine(medicine)
+                    .quantity(BigDecimal.TEN).status(TransactionStatus.PENDING)
+                    .notes("First dispatch").build();
+            pendingTx1.setSubmittedAt(LocalDateTime.now());
+
+            pendingTx2 = Transaction.builder()
+                    .id(2L).submittedBy(regularUser).medicine(medicine)
+                    .quantity(BigDecimal.valueOf(5)).status(TransactionStatus.PENDING)
+                    .notes("Second dispatch").build();
+            pendingTx2.setSubmittedAt(LocalDateTime.now());
+
+            lenient().when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
+            lenient().when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+            lenient().when(transactionMapper.toResponse(any())).thenAnswer(inv -> {
+                Transaction t = inv.getArgument(0);
+                TransactionResponse r = new TransactionResponse();
+                r.setId(t.getId()); r.setStatus(t.getStatus().name());
+                return r;
+            });
+        }
+
+        private BulkApproveRequest.Item item(Long id) {
+            BulkApproveRequest.Item i = new BulkApproveRequest.Item();
+            i.setId(id);
+            return i;
+        }
+
+        private BulkApproveRequest.Item item(Long id, Integer newPrice) {
+            BulkApproveRequest.Item i = item(id);
+            i.setNewPrice(newPrice);
+            return i;
+        }
+
+        @Test @DisplayName("approves every item and returns a success result for each")
+        void approvesEveryPendingItem() {
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx1));
+            when(transactionRepository.findById(2L)).thenReturn(Optional.of(pendingTx2));
+
+            BulkApproveRequest req = new BulkApproveRequest();
+            req.setItems(List.of(item(1L), item(2L)));
+
+            List<BulkApproveResult> results = transactionService.approveBulk(req, "admin");
+
+            assertThat(results).hasSize(2);
+            assertThat(results).allMatch(BulkApproveResult::isApproved);
+            assertThat(pendingTx1.getStatus()).isEqualTo(TransactionStatus.APPROVED);
+            assertThat(pendingTx2.getStatus()).isEqualTo(TransactionStatus.APPROVED);
+        }
+
+        @Test @DisplayName("an already-APPROVED item fails without blocking the other items in the batch")
+        void oneInvalidTransitionDoesNotBlockOthers() {
+            pendingTx2.setStatus(TransactionStatus.APPROVED);
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx1));
+            when(transactionRepository.findById(2L)).thenReturn(Optional.of(pendingTx2));
+
+            BulkApproveRequest req = new BulkApproveRequest();
+            req.setItems(List.of(item(1L), item(2L)));
+
+            List<BulkApproveResult> results = transactionService.approveBulk(req, "admin");
+
+            BulkApproveResult result1 = results.stream().filter(r -> r.getId().equals(1L)).findFirst().orElseThrow();
+            BulkApproveResult result2 = results.stream().filter(r -> r.getId().equals(2L)).findFirst().orElseThrow();
+            assertThat(result1.isApproved()).isTrue();
+            assertThat(result2.isApproved()).isFalse();
+            assertThat(result2.getError()).contains("APPROVED");
+            // The valid item's own state change must still have gone through.
+            assertThat(pendingTx1.getStatus()).isEqualTo(TransactionStatus.APPROVED);
+        }
+
+        @Test @DisplayName("a non-existent transaction id fails only that item")
+        void missingTransactionFailsOnlyThatItem() {
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx1));
+            when(transactionRepository.findById(99L)).thenReturn(Optional.empty());
+
+            BulkApproveRequest req = new BulkApproveRequest();
+            req.setItems(List.of(item(1L), item(99L)));
+
+            List<BulkApproveResult> results = transactionService.approveBulk(req, "admin");
+
+            BulkApproveResult result1 = results.stream().filter(r -> r.getId().equals(1L)).findFirst().orElseThrow();
+            BulkApproveResult result99 = results.stream().filter(r -> r.getId().equals(99L)).findFirst().orElseThrow();
+            assertThat(result1.isApproved()).isTrue();
+            assertThat(result99.isApproved()).isFalse();
+            assertThat(result99.getError()).contains("99");
+        }
+
+        @Test @DisplayName("applies each item's own newPrice override independently")
+        void appliesPerItemPriceOverride() {
+            Medicine medicine2 = new Medicine();
+            medicine2.setId(2L); medicine2.setName("Other Medicine");
+            medicine2.setType(Medicine.MedicineType.TABLET); medicine2.setSpecification(500.0);
+            medicine2.setPharmaCompany(pharma);
+            pendingTx2.setMedicine(medicine2);
+
+            when(transactionRepository.findById(1L)).thenReturn(Optional.of(pendingTx1));
+            when(transactionRepository.findById(2L)).thenReturn(Optional.of(pendingTx2));
+            when(medicineRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            BulkApproveRequest req = new BulkApproveRequest();
+            req.setItems(List.of(item(1L, 9999), item(2L)));
+
+            transactionService.approveBulk(req, "admin");
+
+            assertThat(medicine.getPrice()).isEqualTo(9999);
+            verify(medicineRepository, times(1)).save(any());
         }
     }
 

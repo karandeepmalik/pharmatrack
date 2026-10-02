@@ -92,6 +92,57 @@ test.describe('Review Adjustments (admin approval queue)', () => {
     await expect(page.locator('.transaction-card', { hasText: note })).toBeVisible({ timeout: 10000 });
   });
 
+  test('selecting two dispatches and clicking Approve Selected approves both', async ({ page }) => {
+    test.setTimeout(60000);
+    const note1 = `Bulk-approve note A ${Date.now()}`;
+    const note2 = `Bulk-approve note B ${Date.now()}`;
+    await submitDispatch(page, note1);
+    await submitDispatch(page, note2);
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/transactions');
+    await page.getByRole('button', { name: /^pending$/i }).click();
+
+    const card1 = page.locator('.transaction-card', { hasText: note1 });
+    const card2 = page.locator('.transaction-card', { hasText: note2 });
+    await scrollUntilVisible(page, card1, { maxScrolls: 60 });
+    await scrollUntilVisible(page, card2, { maxScrolls: 60 });
+
+    await card1.getByRole('checkbox', { name: /select transaction/i }).check();
+    await card2.getByRole('checkbox', { name: /select transaction/i }).check();
+
+    await expect(page.getByText(/^2 selected$/i)).toBeVisible();
+    await page.getByRole('button', { name: /approve selected \(2\)/i }).click();
+
+    await expect(page.getByRole('status')).toContainText(/2 dispatches approved/i, { timeout: 10000 });
+    await expect(page.locator('.transaction-card', { hasText: note1 })).not.toBeVisible();
+    await expect(page.locator('.transaction-card', { hasText: note2 })).not.toBeVisible();
+
+    await page.getByRole('button', { name: /^approved$/i }).click();
+    await expect(page.locator('.transaction-card', { hasText: note1 })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.transaction-card', { hasText: note2 })).toBeVisible({ timeout: 10000 });
+  });
+
+  test('"Select all loaded pending" selects every pending card, and Clear empties the selection', async ({ page }) => {
+    test.setTimeout(60000);
+    const note = `Select-all note ${Date.now()}`;
+    await submitDispatch(page, note);
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/transactions');
+    await page.getByRole('button', { name: /^pending$/i }).click();
+
+    const card = page.locator('.transaction-card', { hasText: note });
+    await scrollUntilVisible(page, card, { maxScrolls: 60 });
+
+    await page.getByLabel(/select all loaded pending/i).check();
+    await expect(card.getByRole('checkbox', { name: /select transaction/i })).toBeChecked();
+
+    await page.getByRole('button', { name: /^clear$/i }).click();
+    await expect(page.getByRole('button', { name: /approve selected/i })).not.toBeVisible();
+    await expect(card.getByRole('checkbox', { name: /select transaction/i })).not.toBeChecked();
+  });
+
   test('ALL tab lists the most recently submitted dispatch first', async ({ page }) => {
     test.setTimeout(60000);
     // Use two distinct, clearly-ordered past dispatch dates rather than relying on wall-clock
