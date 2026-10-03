@@ -1,7 +1,7 @@
 package com.pharma.medicinestock.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.pharma.medicinestock.dto.BulkApproveResult;
+import com.pharma.medicinestock.dto.BulkApprovalResult;
 import com.pharma.medicinestock.dto.PagedResponse;
 import com.pharma.medicinestock.dto.ScreenshotDto;
 import com.pharma.medicinestock.dto.TransactionResponse;
@@ -423,22 +423,49 @@ class TransactionControllerTest {
 
         @Test
         @WithMockUser(username = "admin", roles = "ADMIN")
-        @DisplayName("returns 200 with a per-item result list, including a partial failure")
+        @DisplayName("approved:true returns 200 with a per-item result list, including a partial failure")
         void approveBulk_mixedResults_returns200WithPerItemOutcomes() throws Exception {
             when(transactionService.approveBulk(any(), eq("admin"))).thenReturn(List.of(
-                    BulkApproveResult.success(1L),
-                    BulkApproveResult.failure(2L, "Cannot approve transaction with status APPROVED")));
+                    BulkApprovalResult.success(1L),
+                    BulkApprovalResult.failure(2L, "Cannot approve transaction with status APPROVED")));
 
             mockMvc.perform(post("/api/transactions/approve-bulk")
                     .with(csrf())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"items\":[{\"id\":1},{\"id\":2,\"newPrice\":5000}]}"))
+                    .content("{\"approved\":true,\"items\":[{\"id\":1},{\"id\":2,\"newPrice\":5000}]}"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$[0].id").value(1))
-                    .andExpect(jsonPath("$[0].approved").value(true))
+                    .andExpect(jsonPath("$[0].success").value(true))
                     .andExpect(jsonPath("$[1].id").value(2))
-                    .andExpect(jsonPath("$[1].approved").value(false))
+                    .andExpect(jsonPath("$[1].success").value(false))
                     .andExpect(jsonPath("$[1].error").value("Cannot approve transaction with status APPROVED"));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("approved:false (bulk reject) is passed through to the service")
+        void approveBulk_approvedFalse_passedThroughAsReject() throws Exception {
+            when(transactionService.approveBulk(
+                    argThat(r -> r.getApproved() == Boolean.FALSE), eq("admin")))
+                    .thenReturn(List.of(BulkApprovalResult.success(1L)));
+
+            mockMvc.perform(post("/api/transactions/approve-bulk")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"approved\":false,\"items\":[{\"id\":1}]}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].success").value(true));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("a missing approved field is rejected with 400")
+        void approveBulk_missingApproved_400() throws Exception {
+            mockMvc.perform(post("/api/transactions/approve-bulk")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"items\":[{\"id\":1}]}"))
+                    .andExpect(status().isBadRequest());
         }
 
         @Test
@@ -448,7 +475,7 @@ class TransactionControllerTest {
             mockMvc.perform(post("/api/transactions/approve-bulk")
                     .with(csrf())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"items\":[]}"))
+                    .content("{\"approved\":true,\"items\":[]}"))
                     .andExpect(status().isBadRequest());
         }
 
@@ -459,7 +486,7 @@ class TransactionControllerTest {
             mockMvc.perform(post("/api/transactions/approve-bulk")
                     .with(csrf())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"items\":[{\"id\":1}]}"))
+                    .content("{\"approved\":true,\"items\":[{\"id\":1}]}"))
                     .andExpect(status().isForbidden());
         }
     }

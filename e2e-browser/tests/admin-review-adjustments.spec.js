@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible } = require('./helpers');
+const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible, approveCard, rejectCard } = require('./helpers');
 
 async function submitDispatch(page, note, dispatchDate) {
   await loginAsUser(page, 'john');
@@ -37,7 +37,7 @@ test.describe('Review Adjustments (admin approval queue)', () => {
     // so a specific item isn't guaranteed to land on page 0 (scroll like a real user would).
     const card = page.locator('.transaction-card', { hasText: note });
     await scrollUntilVisible(page, card, { maxScrolls: 60 });
-    await card.getByRole('button', { name: /approve/i }).click();
+    await approveCard(page, card);
 
     // After approval the queue reloads from page 0 of the PENDING tab, so the now-APPROVED
     // record should disappear from PENDING.
@@ -66,7 +66,7 @@ test.describe('Review Adjustments (admin approval queue)', () => {
     const medicineName = medicineLine.replace(/^Medicine:\s*/, '').split(' — ')[0].trim();
 
     await card.getByLabel(/price \(rs\)/i).fill('54321');
-    await card.getByRole('button', { name: /approve/i }).click();
+    await approveCard(page, card);
     await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
 
     await page.goto('/admin/medicines');
@@ -85,7 +85,7 @@ test.describe('Review Adjustments (admin approval queue)', () => {
 
     const card = page.locator('.transaction-card', { hasText: note });
     await scrollUntilVisible(page, card, { maxScrolls: 60 });
-    await card.getByRole('button', { name: /reject/i }).click();
+    await rejectCard(page, card);
 
     await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /^rejected$/i }).click();
@@ -121,6 +121,52 @@ test.describe('Review Adjustments (admin approval queue)', () => {
     await page.getByRole('button', { name: /^approved$/i }).click();
     await expect(page.locator('.transaction-card', { hasText: note1 })).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.transaction-card', { hasText: note2 })).toBeVisible({ timeout: 10000 });
+  });
+
+  test('selecting two dispatches and clicking Reject Selected rejects both', async ({ page }) => {
+    test.setTimeout(60000);
+    const note1 = `Bulk-reject note A ${Date.now()}`;
+    const note2 = `Bulk-reject note B ${Date.now()}`;
+    await submitDispatch(page, note1);
+    await submitDispatch(page, note2);
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/transactions');
+    await page.getByRole('button', { name: /^pending$/i }).click();
+
+    const card1 = page.locator('.transaction-card', { hasText: note1 });
+    const card2 = page.locator('.transaction-card', { hasText: note2 });
+    await scrollUntilVisible(page, card1, { maxScrolls: 60 });
+    await scrollUntilVisible(page, card2, { maxScrolls: 60 });
+
+    await card1.getByRole('checkbox', { name: /select transaction/i }).check();
+    await card2.getByRole('checkbox', { name: /select transaction/i }).check();
+
+    await expect(page.getByText(/^2 selected$/i)).toBeVisible();
+    await page.getByRole('button', { name: /reject selected \(2\)/i }).click();
+
+    await expect(page.getByRole('status')).toContainText(/2 dispatches rejected/i, { timeout: 10000 });
+    await expect(page.locator('.transaction-card', { hasText: note1 })).not.toBeVisible();
+    await expect(page.locator('.transaction-card', { hasText: note2 })).not.toBeVisible();
+
+    await page.getByRole('button', { name: /^rejected$/i }).click();
+    await expect(page.locator('.transaction-card', { hasText: note1 })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.transaction-card', { hasText: note2 })).toBeVisible({ timeout: 10000 });
+  });
+
+  test('no individual per-card Approve/Reject buttons exist — only the bulk action bar', async ({ page }) => {
+    const note = `No-individual-buttons note ${Date.now()}`;
+    await submitDispatch(page, note);
+
+    await loginAsAdmin(page);
+    await page.goto('/admin/transactions');
+    await page.getByRole('button', { name: /^pending$/i }).click();
+
+    const card = page.locator('.transaction-card', { hasText: note });
+    await scrollUntilVisible(page, card, { maxScrolls: 60 });
+    await expect(card.getByRole('button', { name: /^✓ approve$/i })).not.toBeVisible();
+    await expect(card.getByRole('button', { name: /^✕ reject$/i })).not.toBeVisible();
+    await expect(card.getByRole('checkbox', { name: /select transaction/i })).toBeVisible();
   });
 
   test('"Select all loaded pending" selects every pending card, and Clear empties the selection', async ({ page }) => {

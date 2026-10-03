@@ -1,8 +1,8 @@
 package com.pharma.medicinestock.controller;
 
 import com.pharma.medicinestock.dto.ApprovalRequest;
-import com.pharma.medicinestock.dto.BulkApproveRequest;
-import com.pharma.medicinestock.dto.BulkApproveResult;
+import com.pharma.medicinestock.dto.BulkApprovalRequest;
+import com.pharma.medicinestock.dto.BulkApprovalResult;
 import com.pharma.medicinestock.dto.PagedResponse;
 import com.pharma.medicinestock.dto.TransactionRequest;
 import com.pharma.medicinestock.dto.TransactionResponse;
@@ -127,15 +127,18 @@ public class TransactionController {
     }
 
     /**
-     * Approves several PENDING records in one call — Review Adjustments' "Approve Selected"
-     * bulk action. Each item's outcome is reported independently (see
-     * {@link TransactionService#approveBulk}); this is intentionally not all-or-nothing, so
-     * the response is always 200 with a per-item result list, even if some items failed.
+     * Approves or rejects several PENDING records in one call — Review Adjustments'
+     * "Approve Selected" / "Reject Selected" bulk actions, and (since the per-card decision
+     * buttons were removed) the only way to act on a dispatch now, even a single one.
+     * {@code approved} applies to the whole batch. Each item's outcome is reported
+     * independently (see {@link TransactionService#approveBulk}); this is intentionally not
+     * all-or-nothing, so the response is always 200 with a per-item result list, even if some
+     * items failed.
      */
     @PostMapping("/approve-bulk")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<BulkApproveResult>> approveBulk(
-            @Valid @RequestBody BulkApproveRequest req,
+    public ResponseEntity<List<BulkApprovalResult>> approveBulk(
+            @Valid @RequestBody BulkApprovalRequest req,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(
                 transactionService.approveBulk(req, userDetails.getUsername()));

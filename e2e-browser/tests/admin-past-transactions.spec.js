@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible } = require('./helpers');
+const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible, approveCard } = require('./helpers');
 
 // Submits a dispatch only — does NOT approve it. /admin/past-transactions' ALL status filter
 // includes every status (its "ALL" branch has no status predicate server-side), so a PENDING
@@ -63,7 +63,7 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     await page.getByRole('button', { name: /^pending$/i }).click();
     const card = page.locator('.transaction-card', { hasText: note });
     await scrollUntilVisible(page, card, { maxScrolls: 60 });
-    await card.getByRole('button', { name: /approve/i }).click();
+    await approveCard(page, card);
     await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
 
     await page.goto('/admin/past-transactions');

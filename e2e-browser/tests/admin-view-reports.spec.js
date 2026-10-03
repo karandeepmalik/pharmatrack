@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible } = require('./helpers');
+const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible, approveCard } = require('./helpers');
 
 async function submitAndApprove(page, who, note) {
   await loginAsUser(page, who);
@@ -18,7 +18,7 @@ async function submitAndApprove(page, who, note) {
   await page.getByRole('button', { name: /^pending$/i }).click();
   const card = page.locator('.transaction-card', { hasText: note });
   await scrollUntilVisible(page, card, { maxScrolls: 60 });
-  await card.getByRole('button', { name: /approve/i }).click();
+  await approveCard(page, card);
   await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
 }
 
@@ -179,7 +179,7 @@ test.describe('View Reports', () => {
       await page.getByRole('button', { name: /^pending$/i }).click();
       const card = page.locator('.transaction-card', { hasText: note });
       await scrollUntilVisible(page, card, { maxScrolls: 60 });
-      await card.getByRole('button', { name: /approve/i }).click();
+      await approveCard(page, card);
       await expect(page.locator('.transaction-card', { hasText: note })).not.toBeVisible({ timeout: 10000 });
     }
 

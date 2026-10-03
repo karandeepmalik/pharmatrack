@@ -2068,7 +2068,7 @@ async function run() {
     assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
   });
 
-  console.log('\n-- Bulk Approve (Review Adjustments "Approve Selected")');
+  console.log('\n-- Bulk Approve / Reject (Review Adjustments "Approve Selected" / "Reject Selected")');
 
   let bulkRegularBefore;
   await test('[SETUP] Record john.doe REGULAR_MEDICINE_STOCK level before bulk-approve tests', async () => {
@@ -2113,15 +2113,16 @@ async function run() {
     assert(r.data.status === 'REJECTED', `Expected REJECTED, got ${r.data.status}`);
   });
 
-  await test('POST /transactions/approve-bulk approves the valid items and reports the already-REJECTED one as a per-item failure', async () => {
+  await test('POST /transactions/approve-bulk (approved:true) approves the valid items and reports the already-REJECTED one as a per-item failure', async () => {
     const r = await apiPost(`${API}/transactions/approve-bulk`, {
+      approved: true,
       items: [{ id: bulkTx1 }, { id: bulkTx2 }, { id: bulkTx3 }],
     }, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
     const byId = Object.fromEntries(r.data.map(x => [x.id, x]));
-    assert(byId[bulkTx1]?.approved === true, `Expected tx1 approved, got ${JSON.stringify(byId[bulkTx1])}`);
-    assert(byId[bulkTx2]?.approved === true, `Expected tx2 approved, got ${JSON.stringify(byId[bulkTx2])}`);
-    assert(byId[bulkTx3]?.approved === false, `Expected tx3 to fail (already REJECTED), got ${JSON.stringify(byId[bulkTx3])}`);
+    assert(byId[bulkTx1]?.success === true, `Expected tx1 success, got ${JSON.stringify(byId[bulkTx1])}`);
+    assert(byId[bulkTx2]?.success === true, `Expected tx2 success, got ${JSON.stringify(byId[bulkTx2])}`);
+    assert(byId[bulkTx3]?.success === false, `Expected tx3 to fail (already REJECTED), got ${JSON.stringify(byId[bulkTx3])}`);
     assert(typeof byId[bulkTx3]?.error === 'string' && byId[bulkTx3].error.length > 0,
       `Expected an error message for tx3, got ${JSON.stringify(byId[bulkTx3])}`);
   });
@@ -2137,12 +2138,18 @@ async function run() {
   });
 
   await test('An empty items list is rejected with 400', async () => {
-    const r = await apiPost(`${API}/transactions/approve-bulk`, { items: [] }, adminToken);
+    const r = await apiPost(`${API}/transactions/approve-bulk`, { approved: true, items: [] }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}`);
+  });
+
+  await test('A missing approved field is rejected with 400', async () => {
+    const r = await apiPost(`${API}/transactions/approve-bulk`, { items: [{ id: bulkTx1 }] }, adminToken);
     assert(r.status === 400, `Expected 400, got ${r.status}`);
   });
 
   await test('USER role cannot call the bulk approve endpoint (401/403)', async () => {
-    const r = await apiPost(`${API}/transactions/approve-bulk`, { items: [{ id: bulkTx1 }] }, userToken);
+    const r = await apiPost(`${API}/transactions/approve-bulk`,
+      { approved: true, items: [{ id: bulkTx1 }] }, userToken);
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
@@ -2170,6 +2177,97 @@ async function run() {
       && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
     const current = inv ? inv.quantity : 0;
     assert(Math.abs(current - bulkRegularBefore) < 0.001, `Expected ${bulkRegularBefore}, got ${current}`);
+  });
+
+  let bulkRejectRegularBefore;
+  await test('[SETUP] Record john.doe REGULAR_MEDICINE_STOCK level before bulk-reject tests', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    bulkRejectRegularBefore = inv ? inv.quantity : 0;
+  });
+
+  await test('[SETUP] Allocate 2 REGULAR_MEDICINE_STOCK units for bulk-reject tests', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 2,
+      note: 'E2E setup — allocating stock for bulk-reject test',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  let bulkRejectTx1, bulkRejectTx2;
+  await test('User submits two PENDING dispatches for the bulk-reject test', async () => {
+    const submitOne = async (label) => {
+      const r = await apiPostForm(`${API}/transactions`, {
+        medicineId: String(adjustMedicineId),
+        quantity: '1',
+        notes: `E2E bulk-reject test dispatch ${label}`,
+        medicineStockType: 'REGULAR_MEDICINE_STOCK',
+        screenshots: [makeFakePng(label)],
+      }, userToken);
+      assert(r.status === 201, `Submit ${label} failed: ${r.status} ${JSON.stringify(r.data)}`);
+      return r.data.id;
+    };
+    bulkRejectTx1 = await submitOne('Reject1');
+    bulkRejectTx2 = await submitOne('Reject2');
+  });
+
+  await test('POST /transactions/approve-bulk (approved:false) rejects both items', async () => {
+    const r = await apiPost(`${API}/transactions/approve-bulk`, {
+      approved: false,
+      items: [{ id: bulkRejectTx1 }, { id: bulkRejectTx2 }],
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    const byId = Object.fromEntries(r.data.map(x => [x.id, x]));
+    assert(byId[bulkRejectTx1]?.success === true, `Expected tx1 success, got ${JSON.stringify(byId[bulkRejectTx1])}`);
+    assert(byId[bulkRejectTx2]?.success === true, `Expected tx2 success, got ${JSON.stringify(byId[bulkRejectTx2])}`);
+  });
+
+  await test('Both bulk-rejected dispatches show status REJECTED', async () => {
+    const r = await apiGet(`${API}/transactions?status=REJECTED&size=200`, adminToken);
+    const tx1 = r.data.content.find(t => t.id === bulkRejectTx1);
+    const tx2 = r.data.content.find(t => t.id === bulkRejectTx2);
+    assert(tx1 && tx1.status === 'REJECTED', `tx1 not found or not REJECTED: ${JSON.stringify(tx1)}`);
+    assert(tx2 && tx2.status === 'REJECTED', `tx2 not found or not REJECTED: ${JSON.stringify(tx2)}`);
+  });
+
+  await test('Bulk reject already restored the medicineStock for both items', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const current = inv ? inv.quantity : 0;
+    // bulkRejectRegularBefore + 2 (setup ADD) - 2 (two submits) + 2 (both credited back by reject)
+    const expected = bulkRejectRegularBefore + 2;
+    assert(Math.abs(current - expected) < 0.001, `Expected ${expected}, got ${current}`);
+  });
+
+  await test('[TEARDOWN] Admin deletes the two bulk-reject test dispatch records', async () => {
+    for (const id of [bulkRejectTx1, bulkRejectTx2]) {
+      const r = await apiDelete(`${API}/transactions/${id}`, adminToken);
+      assert(r.status === 204, `Delete ${id} failed: ${r.status}`);
+    }
+  });
+
+  await test('[TEARDOWN] Removes the leftover REGULAR_MEDICINE_STOCK allocation from bulk-reject setup', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 2,
+      note: 'E2E teardown — removing REGULAR bucket allocation for bulk-reject test',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[VERIFY TEARDOWN] john.doe REGULAR_MEDICINE_STOCK restored to original level after bulk-reject tests', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const current = inv ? inv.quantity : 0;
+    assert(Math.abs(current - bulkRejectRegularBefore) < 0.001, `Expected ${bulkRejectRegularBefore}, got ${current}`);
   });
 
   // ── Summary ───────────────────────────────────────────────────────────

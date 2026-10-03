@@ -13,10 +13,11 @@ export default function ApproveTransactions() {
   const [loading, setLoading]           = useState(true);
   const [loadingMore, setLoadingMore]   = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [actionLoading, setActionLoading] = useState(null);
   const [priceOverrides, setPriceOverrides] = useState({});
   const [selectedIds, setSelectedIds]   = useState(new Set());
-  const [bulkLoading, setBulkLoading]   = useState(false);
+  // null when idle, otherwise which bulk action is currently in flight — distinguishing the
+  // two matters only for button labels/disabling, both buttons share the same busy state.
+  const [bulkActionType, setBulkActionType] = useState(null);
   const [bulkMessage, setBulkMessage]   = useState('');
 
   const sentinelRef  = useRef(null);
@@ -31,7 +32,7 @@ export default function ApproveTransactions() {
       setLoading(true);
       setTransactions([]);
       setHasMore(false);
-      // A fresh page-0 load (filter change, or a reload after an approve/reject action)
+      // A fresh page-0 load (filter change, or a reload after a bulk approve/reject action)
       // replaces the loaded set entirely, so any prior bulk selection no longer corresponds
       // to what's on screen.
       setSelectedIds(new Set());
@@ -80,34 +81,15 @@ export default function ApproveTransactions() {
     return () => obs.disconnect();
   }, [hasMore, loadPage]);
 
-  const handleDecision = async (id, approved) => {
-    setActionLoading(id);
-    setErrorMessage('');
-    try {
-      const payload = { approved };
-      if (approved) {
-        const priceStr = priceOverrides[id];
-        if (priceStr !== undefined && priceStr !== '') {
-          payload.newPrice = parseInt(priceStr, 10);
-        }
-      }
-      await api.approveTransaction(id, payload);
-      // Reset and reload from page 0
-      pageRef.current = 0;
-      loadPage(0, filterRef.current);
-    } catch {
-      setErrorMessage(`Failed to ${approved ? 'approve' : 'reject'} transaction`);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // ── Bulk approve ──────────────────────────────────────────────────────
-  // Scoped to currently-loaded PENDING cards only — same "loaded, not everything that could
+  // ── Bulk approve / reject ────────────────────────────────────────────
+  // Individual per-card Approve/Reject buttons were removed — selecting one record and
+  // bulk-acting on it is now the only way to decide a dispatch, even a single one. Selection
+  // is scoped to currently-loaded PENDING cards only — same "loaded, not everything that could
   // ever match" scope as every other infinite-scroll list in this app (see scrollUntilVisible
   // usage in e2e-browser tests); there is no existing "select across all pages" precedent here.
   const pendingLoaded = transactions.filter((tx) => tx.status === 'PENDING');
   const allPendingSelected = pendingLoaded.length > 0 && pendingLoaded.every((tx) => selectedIds.has(tx.id));
+  const bulkBusy = bulkActionType !== null;
 
   const toggleSelected = (id) => {
     setSelectedIds((prev) => {
@@ -121,23 +103,29 @@ export default function ApproveTransactions() {
     setSelectedIds(allPendingSelected ? new Set() : new Set(pendingLoaded.map((tx) => tx.id)));
   };
 
-  const handleBulkApprove = async () => {
+  const handleBulkDecision = async (approved) => {
     if (selectedIds.size === 0) return;
-    setBulkLoading(true);
+    setBulkActionType(approved ? 'approve' : 'reject');
     setErrorMessage('');
     setBulkMessage('');
+    const verb = approved ? 'approved' : 'rejected';
     try {
       const items = Array.from(selectedIds).map((id) => {
         const item = { id };
-        const priceStr = priceOverrides[id];
-        if (priceStr !== undefined && priceStr !== '') {
-          item.newPrice = parseInt(priceStr, 10);
+        // A price override only ever makes sense when approving — the single-item endpoint
+        // already ignores it on reject, so sending it either way is harmless, but omitting it
+        // here keeps the request intent clear.
+        if (approved) {
+          const priceStr = priceOverrides[id];
+          if (priceStr !== undefined && priceStr !== '') {
+            item.newPrice = parseInt(priceStr, 10);
+          }
         }
         return item;
       });
-      const res = await api.approveTransactionsBulk(items);
+      const res = await api.approveTransactionsBulk(items, approved);
       const results = res.data ?? [];
-      const failed = results.filter((r) => !r.approved);
+      const failed = results.filter((r) => !r.success);
       const succeededCount = results.length - failed.length;
 
       // Reload from page 0 BEFORE setting the summary message — loadPage clears both
@@ -147,17 +135,17 @@ export default function ApproveTransactions() {
       await loadPage(0, filterRef.current);
 
       if (failed.length === 0) {
-        setBulkMessage(`${succeededCount} dispatch${succeededCount !== 1 ? 'es' : ''} approved.`);
+        setBulkMessage(`${succeededCount} dispatch${succeededCount !== 1 ? 'es' : ''} ${verb}.`);
       } else {
         setErrorMessage(
-          `${succeededCount} approved, ${failed.length} failed: ` +
+          `${succeededCount} ${verb}, ${failed.length} failed: ` +
           failed.map((f) => `#${f.id} (${f.error || 'error'})`).join('; ')
         );
       }
     } catch {
-      setErrorMessage('Failed to approve selected transactions');
+      setErrorMessage(`Failed to ${approved ? 'approve' : 'reject'} selected transactions`);
     } finally {
-      setBulkLoading(false);
+      setBulkActionType(null);
     }
   };
 
@@ -194,7 +182,7 @@ export default function ApproveTransactions() {
               type="checkbox"
               checked={allPendingSelected}
               onChange={toggleSelectAll}
-              disabled={bulkLoading}
+              disabled={bulkBusy}
               aria-label="Select all loaded pending transactions"
             />
             Select all loaded pending ({pendingLoaded.length})
@@ -204,12 +192,17 @@ export default function ApproveTransactions() {
             <div className="bulk-action-bar">
               <span className="bulk-selected-count">{selectedIds.size} selected</span>
               <button type="button" className="btn btn-approve btn-sm"
-                disabled={bulkLoading}
-                onClick={handleBulkApprove}>
-                {bulkLoading ? 'Approving…' : `✓ Approve Selected (${selectedIds.size})`}
+                disabled={bulkBusy}
+                onClick={() => handleBulkDecision(true)}>
+                {bulkActionType === 'approve' ? 'Approving…' : `✓ Approve Selected (${selectedIds.size})`}
+              </button>
+              <button type="button" className="btn btn-reject btn-sm"
+                disabled={bulkBusy}
+                onClick={() => handleBulkDecision(false)}>
+                {bulkActionType === 'reject' ? 'Rejecting…' : `✕ Reject Selected (${selectedIds.size})`}
               </button>
               <button type="button" className="btn btn-secondary btn-sm"
-                disabled={bulkLoading}
+                disabled={bulkBusy}
                 onClick={() => setSelectedIds(new Set())}>
                 Clear
               </button>
@@ -234,7 +227,7 @@ export default function ApproveTransactions() {
                       className="tx-select-checkbox"
                       checked={selectedIds.has(tx.id)}
                       onChange={() => toggleSelected(tx.id)}
-                      disabled={bulkLoading}
+                      disabled={bulkBusy}
                       aria-label={`Select transaction #${tx.id} for bulk approval`}
                     />
                   )}
@@ -285,21 +278,6 @@ export default function ApproveTransactions() {
                   />
                 </div>
               </div>
-
-              {tx.status === 'PENDING' && (
-                <div className="tx-actions">
-                  <button type="button" className="btn btn-approve"
-                    disabled={actionLoading === tx.id || bulkLoading}
-                    onClick={() => handleDecision(tx.id, true)}>
-                    {actionLoading === tx.id ? '…' : '✓ Approve'}
-                  </button>
-                  <button type="button" className="btn btn-reject"
-                    disabled={actionLoading === tx.id || bulkLoading}
-                    onClick={() => handleDecision(tx.id, false)}>
-                    {actionLoading === tx.id ? '…' : '✕ Reject'}
-                  </button>
-                </div>
-              )}
             </div>
           ))}
         </div>

@@ -110,28 +110,9 @@ describe('ApproveTransactions — transaction card', () => {
     expect(screen.getByText(/fip shield vial/i)).toBeInTheDocument();
   });
 
-  test('shows Approve and Reject buttons for PENDING transactions', async () => {
-    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
-    renderPage();
-
-    await waitFor(() => screen.getByRole('button', { name: /✓ approve/i }));
-    expect(screen.getByRole('button', { name: /✕ reject/i })).toBeInTheDocument();
-  });
-
-  test('does not show action buttons for APPROVED transactions', async () => {
-    api.getAllTransactions.mockResolvedValue(
-      mkPage([makeTx({ id: 2, status: 'APPROVED', approvedByUsername: 'admin', approvedAt: '2026-04-01T11:00:00' })])
-    );
-    renderPage();
-
-    // Switch to ALL filter to see approved tx
-    await waitFor(() => screen.getByRole('button', { name: /^all$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^all$/i }));
-
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /✓ approve/i })).not.toBeInTheDocument()
-    );
-  });
+  // Per-card decision checkboxes/buttons are covered in "bulk approve / reject" below —
+  // individual Approve/Reject buttons no longer exist at all (see
+  // "does not render individual per-card Approve/Reject buttons").
 });
 
 // ── Payment screenshot — no screenshot ──────────────────────────────────
@@ -358,49 +339,6 @@ describe('ApproveTransactions — filter tabs', () => {
   });
 });
 
-// ── Approve / Reject actions ──────────────────────────────────────────────
-
-describe('ApproveTransactions — approve and reject actions', () => {
-  test('clicking Approve calls approveTransaction with approved: true', async () => {
-    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
-    api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'APPROVED' } });
-
-    renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /✓ approve/i }));
-    await userEvent.click(screen.getByRole('button', { name: /✓ approve/i }));
-
-    await waitFor(() =>
-      expect(api.approveTransaction).toHaveBeenCalledWith(1, { approved: true })
-    );
-  });
-
-  test('clicking Reject calls approveTransaction with approved: false', async () => {
-    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
-    api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'REJECTED' } });
-
-    renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /✕ reject/i }));
-    await userEvent.click(screen.getByRole('button', { name: /✕ reject/i }));
-
-    await waitFor(() =>
-      expect(api.approveTransaction).toHaveBeenCalledWith(1, { approved: false })
-    );
-  });
-
-  test('refetches transactions after approve', async () => {
-    api.getAllTransactions
-      .mockResolvedValueOnce(mkPage([makeTx()]))
-      .mockResolvedValueOnce(mkPage([]));
-    api.approveTransaction.mockResolvedValue({});
-
-    renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /✓ approve/i }));
-    await userEvent.click(screen.getByRole('button', { name: /✓ approve/i }));
-
-    await waitFor(() => expect(api.getAllTransactions).toHaveBeenCalledTimes(2));
-  });
-});
-
 // ── Price override on approval ────────────────────────────────────────────
 
 describe('ApproveTransactions — price override', () => {
@@ -427,34 +365,9 @@ describe('ApproveTransactions — price override', () => {
     expect(screen.queryByLabelText(/price \(rs\)/i)).not.toBeInTheDocument();
   });
 
-  test('approve with changed price passes newPrice in payload', async () => {
-    api.getAllTransactions.mockResolvedValue(mkPage([makeTx()]));
-    api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'APPROVED' } });
-
-    renderPage();
-    await waitFor(() => screen.getByLabelText(/price \(rs\)/i));
-
-    await userEvent.clear(screen.getByLabelText(/price \(rs\)/i));
-    await userEvent.type(screen.getByLabelText(/price \(rs\)/i), '5000');
-    await userEvent.click(screen.getByRole('button', { name: /✓ approve/i }));
-
-    await waitFor(() =>
-      expect(api.approveTransaction).toHaveBeenCalledWith(1, { approved: true, newPrice: 5000 })
-    );
-  });
-
-  test('approve without price change does not pass newPrice', async () => {
-    api.getAllTransactions.mockResolvedValue(mkPage([makeTx({ price: undefined })]));
-    api.approveTransaction.mockResolvedValue({ data: { id: 1, status: 'APPROVED' } });
-
-    renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /✓ approve/i }));
-    await userEvent.click(screen.getByRole('button', { name: /✓ approve/i }));
-
-    await waitFor(() =>
-      expect(api.approveTransaction).toHaveBeenCalledWith(1, { approved: true })
-    );
-  });
+  // Price override is actually applied via the bulk approve flow now (see "bulk approve /
+  // reject" below — "includes a per-row price override only for rows where it was explicitly
+  // edited" covers both the with- and without-override cases end to end).
 
   test('price input is pre-filled with pricePerUnit when set', async () => {
     api.getAllTransactions.mockResolvedValue(mkPage([makeTx({ pricePerUnit: 3500 })]));
@@ -469,12 +382,21 @@ describe('ApproveTransactions — price override', () => {
 
 // ── Bulk approve ────────────────────────────────────────────────────────
 
-describe('ApproveTransactions — bulk approve', () => {
+describe('ApproveTransactions — bulk approve / reject', () => {
   const pendingTx1 = makeTx({ id: 1, status: 'PENDING', notes: 'First dispatch note here' });
   const pendingTx2 = makeTx({ id: 2, status: 'PENDING', notes: 'Second dispatch note here' });
   const approvedTx = makeTx({
     id: 3, status: 'APPROVED', notes: 'Already approved note here',
     approvedByUsername: 'admin', approvedAt: '2026-04-01T12:00:00',
+  });
+
+  test('does not render individual per-card Approve/Reject buttons', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1]));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select transaction #1 for bulk approval/i));
+    expect(screen.queryByRole('button', { name: /^✓ approve$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^✕ reject$/i })).not.toBeInTheDocument();
   });
 
   test('does not show select-all or checkboxes when there are no PENDING transactions', async () => {
@@ -503,9 +425,10 @@ describe('ApproveTransactions — bulk approve', () => {
 
     await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
     expect(screen.queryByRole('button', { name: /approve selected/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reject selected/i })).not.toBeInTheDocument();
   });
 
-  test('selecting a transaction shows the bulk action bar with a count of 1', async () => {
+  test('selecting a transaction shows both Approve Selected and Reject Selected with a count of 1', async () => {
     api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
     renderPage();
 
@@ -514,6 +437,7 @@ describe('ApproveTransactions — bulk approve', () => {
 
     expect(screen.getByText(/^1 selected$/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /approve selected \(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reject selected \(1\)/i })).toBeInTheDocument();
   });
 
   test('"Select all loaded pending" selects every PENDING transaction', async () => {
@@ -524,6 +448,7 @@ describe('ApproveTransactions — bulk approve', () => {
     await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
 
     expect(screen.getByRole('button', { name: /approve selected \(2\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reject selected \(2\)/i })).toBeInTheDocument();
   });
 
   test('clicking "Select all loaded pending" again deselects everything', async () => {
@@ -535,6 +460,7 @@ describe('ApproveTransactions — bulk approve', () => {
     await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
 
     expect(screen.queryByRole('button', { name: /approve selected/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reject selected/i })).not.toBeInTheDocument();
   });
 
   test('Clear button empties the selection', async () => {
@@ -546,12 +472,13 @@ describe('ApproveTransactions — bulk approve', () => {
     await userEvent.click(screen.getByRole('button', { name: /^clear$/i }));
 
     expect(screen.queryByRole('button', { name: /approve selected/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reject selected/i })).not.toBeInTheDocument();
   });
 
-  test('clicking Approve Selected calls approveTransactionsBulk with the selected ids', async () => {
+  test('clicking Approve Selected calls approveTransactionsBulk with the selected ids and approved:true', async () => {
     api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
     api.approveTransactionsBulk.mockResolvedValue({
-      data: [{ id: 1, approved: true }, { id: 2, approved: true }],
+      data: [{ id: 1, success: true }, { id: 2, success: true }],
     });
     renderPage();
 
@@ -560,14 +487,30 @@ describe('ApproveTransactions — bulk approve', () => {
     await userEvent.click(screen.getByRole('button', { name: /approve selected \(2\)/i }));
 
     await waitFor(() =>
-      expect(api.approveTransactionsBulk).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }])
+      expect(api.approveTransactionsBulk).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }], true)
     );
   });
 
-  test('includes a per-row price override only for rows where it was explicitly edited', async () => {
+  test('clicking Reject Selected calls approveTransactionsBulk with the selected ids and approved:false', async () => {
     api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
     api.approveTransactionsBulk.mockResolvedValue({
-      data: [{ id: 1, approved: true }, { id: 2, approved: true }],
+      data: [{ id: 1, success: true }, { id: 2, success: true }],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByRole('button', { name: /reject selected \(2\)/i }));
+
+    await waitFor(() =>
+      expect(api.approveTransactionsBulk).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }], false)
+    );
+  });
+
+  test('includes a per-row price override only for rows where it was explicitly edited, when approving', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    api.approveTransactionsBulk.mockResolvedValue({
+      data: [{ id: 1, success: true }, { id: 2, success: true }],
     });
     renderPage();
 
@@ -583,7 +526,27 @@ describe('ApproveTransactions — bulk approve', () => {
       expect(api.approveTransactionsBulk).toHaveBeenCalledWith([
         { id: 1, newPrice: 7777 },
         { id: 2 },
-      ])
+      ], true)
+    );
+  });
+
+  test('omits any price override when rejecting, even if a row has one set', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    api.approveTransactionsBulk.mockResolvedValue({
+      data: [{ id: 1, success: true }, { id: 2, success: true }],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getAllByLabelText(/price \(rs\)/i));
+    const priceInputs = screen.getAllByLabelText(/price \(rs\)/i);
+    await userEvent.clear(priceInputs[0]);
+    await userEvent.type(priceInputs[0], '7777');
+
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByRole('button', { name: /reject selected \(2\)/i }));
+
+    await waitFor(() =>
+      expect(api.approveTransactionsBulk).toHaveBeenCalledWith([{ id: 1 }, { id: 2 }], false)
     );
   });
 
@@ -592,7 +555,7 @@ describe('ApproveTransactions — bulk approve', () => {
       .mockResolvedValueOnce(mkPage([pendingTx1, pendingTx2]))
       .mockResolvedValueOnce(mkPage([]));
     api.approveTransactionsBulk.mockResolvedValue({
-      data: [{ id: 1, approved: true }, { id: 2, approved: true }],
+      data: [{ id: 1, success: true }, { id: 2, success: true }],
     });
     renderPage();
 
@@ -606,12 +569,31 @@ describe('ApproveTransactions — bulk approve', () => {
     expect(api.getAllTransactions).toHaveBeenCalledTimes(2);
   });
 
-  test('shows a partial-failure summary when one item in the batch fails', async () => {
+  test('shows a success message after a fully successful bulk reject', async () => {
+    api.getAllTransactions
+      .mockResolvedValueOnce(mkPage([pendingTx1, pendingTx2]))
+      .mockResolvedValueOnce(mkPage([]));
+    api.approveTransactionsBulk.mockResolvedValue({
+      data: [{ id: 1, success: true }, { id: 2, success: true }],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByRole('button', { name: /reject selected \(2\)/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(/2 dispatches rejected/i)
+    );
+    expect(api.getAllTransactions).toHaveBeenCalledTimes(2);
+  });
+
+  test('shows a partial-failure summary when one item in an approve batch fails', async () => {
     api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
     api.approveTransactionsBulk.mockResolvedValue({
       data: [
-        { id: 1, approved: true },
-        { id: 2, approved: false, error: 'Cannot approve transaction with status APPROVED' },
+        { id: 1, success: true },
+        { id: 2, success: false, error: 'Cannot approve transaction with status APPROVED' },
       ],
     });
     renderPage();
@@ -626,7 +608,27 @@ describe('ApproveTransactions — bulk approve', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/#2/);
   });
 
-  test('shows a generic error message when the bulk request itself fails', async () => {
+  test('shows a partial-failure summary when one item in a reject batch fails', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1, pendingTx2]));
+    api.approveTransactionsBulk.mockResolvedValue({
+      data: [
+        { id: 1, success: true },
+        { id: 2, success: false, error: 'Cannot reject transaction with status REJECTED' },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByLabelText(/select all loaded pending/i));
+    await userEvent.click(screen.getByRole('button', { name: /reject selected \(2\)/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/1 rejected, 1 failed/i)
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/#2/);
+  });
+
+  test('shows a generic error message when the bulk approve request itself fails', async () => {
     api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1]));
     api.approveTransactionsBulk.mockRejectedValue(new Error('Network error'));
     renderPage();
@@ -637,6 +639,20 @@ describe('ApproveTransactions — bulk approve', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/failed to approve selected transactions/i)
+    );
+  });
+
+  test('shows a generic error message when the bulk reject request itself fails', async () => {
+    api.getAllTransactions.mockResolvedValue(mkPage([pendingTx1]));
+    api.approveTransactionsBulk.mockRejectedValue(new Error('Network error'));
+    renderPage();
+
+    await waitFor(() => screen.getByLabelText(/select transaction #1 for bulk approval/i));
+    await userEvent.click(screen.getByLabelText(/select transaction #1 for bulk approval/i));
+    await userEvent.click(screen.getByRole('button', { name: /reject selected \(1\)/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/failed to reject selected transactions/i)
     );
   });
 
