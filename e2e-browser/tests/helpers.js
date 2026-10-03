@@ -42,4 +42,26 @@ async function scrollUntilVisible(page, locator, { maxScrolls = 15 } = {}) {
   await locator.waitFor({ state: 'visible', timeout: 5000 });
 }
 
-module.exports = { CREDENTIALS, PAYMENT_SCREENSHOT, login, loginAsAdmin, loginAsUser, scrollUntilVisible };
+/**
+ * Approves or rejects a single dispatch card on the Review Adjustments page
+ * (/admin/transactions). Individual per-card decision buttons were removed in favor of
+ * select-then-bulk-act, so even a single-item decision now goes through the bulk flow — this
+ * is that flow's one-liner. Assumes `card` (a `.transaction-card` locator) is already visible.
+ */
+async function decideCard(page, card, approved) {
+  await card.getByRole('checkbox', { name: /select transaction/i }).check();
+  await page.getByRole('button', { name: approved ? /approve selected/i : /reject selected/i }).click();
+}
+
+async function approveCard(page, card) {
+  await decideCard(page, card, true);
+}
+
+async function rejectCard(page, card) {
+  await decideCard(page, card, false);
+}
+
+module.exports = {
+  CREDENTIALS, PAYMENT_SCREENSHOT, login, loginAsAdmin, loginAsUser, scrollUntilVisible,
+  approveCard, rejectCard,
+};

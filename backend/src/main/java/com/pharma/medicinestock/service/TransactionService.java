@@ -1,8 +1,8 @@
 package com.pharma.medicinestock.service;
 
 import com.pharma.medicinestock.dto.ApprovalRequest;
-import com.pharma.medicinestock.dto.BulkApproveRequest;
-import com.pharma.medicinestock.dto.BulkApproveResult;
+import com.pharma.medicinestock.dto.BulkApprovalRequest;
+import com.pharma.medicinestock.dto.BulkApprovalResult;
 import com.pharma.medicinestock.dto.TransactionRequest;
 import com.pharma.medicinestock.dto.TransactionResponse;
 import com.pharma.medicinestock.entity.MedicineStock;
@@ -245,27 +245,29 @@ public class TransactionService {
     }
 
     /**
-     * Approves several PENDING records in one call (Review Adjustments' "Approve Selected").
-     * Each item is processed independently via {@link #approve} — a status-transition race
-     * (another admin already acted on one of them) or a stale/deleted id fails only that item,
-     * never the whole batch, since an admin selecting 10 records would not expect 9 good ones
-     * to be thrown away because the 10th had already been rejected elsewhere. The whole method
-     * still runs as one transaction: everything committed by individually-caught business
-     * exceptions here is a clean pre-mutation throw (checked before any entity write — see
-     * {@link #approve}), so there is nothing partial left to roll back.
+     * Approves or rejects several PENDING records in one call (Review Adjustments'
+     * "Approve Selected" / "Reject Selected" — the only way to act on a dispatch now that the
+     * per-card decision buttons are gone, even for a single record). {@code request.approved}
+     * applies to the whole batch; each item is still processed independently via {@link #approve}
+     * — a status-transition race (another admin already acted on one of them) or a stale/deleted
+     * id fails only that item, never the whole batch, since an admin selecting 10 records would
+     * not expect 9 good ones to be thrown away because the 10th had already been acted on
+     * elsewhere. The whole method still runs as one transaction: everything committed by
+     * individually-caught business exceptions here is a clean pre-mutation throw (checked before
+     * any entity write — see {@link #approve}), so there is nothing partial left to roll back.
      */
     @Transactional
-    public List<BulkApproveResult> approveBulk(BulkApproveRequest request, String adminUsername) {
-        List<BulkApproveResult> results = new ArrayList<>();
-        for (BulkApproveRequest.Item item : request.getItems()) {
+    public List<BulkApprovalResult> approveBulk(BulkApprovalRequest request, String adminUsername) {
+        List<BulkApprovalResult> results = new ArrayList<>();
+        for (BulkApprovalRequest.Item item : request.getItems()) {
             try {
                 ApprovalRequest req = new ApprovalRequest();
-                req.setApproved(true);
+                req.setApproved(request.getApproved());
                 req.setNewPrice(item.getNewPrice());
                 approve(item.getId(), req, adminUsername);
-                results.add(BulkApproveResult.success(item.getId()));
+                results.add(BulkApprovalResult.success(item.getId()));
             } catch (ResourceNotFoundException | InvalidStateTransitionException e) {
-                results.add(BulkApproveResult.failure(item.getId(), e.getMessage()));
+                results.add(BulkApprovalResult.failure(item.getId(), e.getMessage()));
             }
         }
         return results;
