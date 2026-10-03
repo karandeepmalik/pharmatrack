@@ -323,6 +323,21 @@ describe('AdminEditDispatch — screenshot column', () => {
   });
 });
 
+// ── Status column (removed) ────────────────────────────────────────────────
+
+describe('AdminEditDispatch — status column', () => {
+  test('does not render a Status column', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ status: 'APPROVED' })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => screen.getByRole('table'));
+    expect(screen.queryByRole('columnheader', { name: /^status$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('APPROVED')).not.toBeInTheDocument();
+  });
+});
+
 // ── Edit dispatch record ──────────────────────────────────────────────────
 
 describe('AdminEditDispatch — edit', () => {
