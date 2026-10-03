@@ -167,9 +167,9 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 });
 
     const firstRow = page.getByRole('row').nth(1);
-    // Column order: Date, User, Medicine, Qty, Stock Type, Price/Unit, Status, Notes, Screenshot,
-    // Actions — Notes is index 7, since Stock Type and Price/Unit both come before it.
-    const originalNote = await firstRow.locator('td').nth(7).innerText();
+    // Column order: Date, User, Medicine, Qty, Stock Type, Price/Unit, Notes, Screenshot,
+    // Actions — Notes is index 6, since Stock Type and Price/Unit both come before it.
+    const originalNote = await firstRow.locator('td').nth(6).innerText();
     await firstRow.getByRole('button', { name: /^edit$/i }).click();
     await firstRow.getByRole('textbox', { name: /edit notes/i }).fill('This should not be saved');
     await firstRow.getByRole('button', { name: /^cancel$/i }).click();

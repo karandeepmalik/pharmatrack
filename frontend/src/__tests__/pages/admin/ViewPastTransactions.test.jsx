@@ -198,26 +198,27 @@ describe('ViewPastTransactions — search', () => {
     );
   });
 
-  test('shows APPROVED status badge for approved transactions', async () => {
+  test('does not render a Status column', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ status: 'APPROVED' })]));
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
-    await waitFor(() =>
-      expect(screen.getByText('APPROVED')).toBeInTheDocument()
-    );
+    await waitFor(() => screen.getByRole('table'));
+    expect(screen.queryByRole('columnheader', { name: /^status$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('APPROVED')).not.toBeInTheDocument();
   });
 
-  test('shows REJECTED status badge for rejected transactions', async () => {
-    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ status: 'REJECTED' })]));
+  test('does not render an Approved By column', async () => {
+    api.getTransactionHistory.mockResolvedValue(
+      mkPage([makeTx({ approvedByUsername: 'admin' })])
+    );
     renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
-    await waitFor(() =>
-      expect(screen.getByText('REJECTED')).toBeInTheDocument()
-    );
+    await waitFor(() => screen.getByRole('table'));
+    expect(screen.queryByRole('columnheader', { name: /approved by/i })).not.toBeInTheDocument();
   });
 
   test('shows empty state message when no transactions found', async () => {
