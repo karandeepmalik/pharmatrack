@@ -181,13 +181,6 @@ export default function AdminEditDispatch() {
         }
     };
 
-    const statusBadge = (s) => {
-        const cls = s === 'APPROVED' ? 'badge-approved'
-                  : s === 'REJECTED' ? 'badge-rejected'
-                  : 'badge-pending';
-        return <span className={`status-badge ${cls}`}>{s}</span>;
-    };
-
     return (
         <div className="page">
             <div className="page-header">
@@ -302,7 +295,6 @@ export default function AdminEditDispatch() {
                                         <th>Qty</th>
                                         <th>Stock Type</th>
                                         <th>Price/Unit</th>
-                                        <th>Status</th>
                                         <th>Notes</th>
                                         <th>Screenshot</th>
                                         <th>Actions</th>
@@ -381,7 +373,6 @@ export default function AdminEditDispatch() {
                                                                 : '—'
                                                     )}
                                                 </td>
-                                                <td>{statusBadge(tx.status)}</td>
                                                 <td>
                                                     {edit.active ? (
                                                         <div>

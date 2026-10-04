@@ -129,13 +129,6 @@ export default function ViewPastTransactions() {
         return () => obs.disconnect();
     }, [hasMore, loadPage]);
 
-    const statusBadge = (s) => {
-        const cls = s === 'APPROVED' ? 'badge-approved'
-                  : s === 'REJECTED' ? 'badge-rejected'
-                  : 'badge-pending';
-        return <span className={`status-badge ${cls}`}>{s}</span>;
-    };
-
     // Any filter change invalidates the currently-displayed (already-searched) results — the
     // admin must press Search again for it to take effect, consistent with From/To/Status.
     // All filters run server-side against the full matching set (see api.getTransactionHistory),
@@ -266,10 +259,8 @@ export default function ViewPastTransactions() {
                                         <th>Qty</th>
                                         <th>Stock Type</th>
                                         <th>Price/Unit</th>
-                                        <th>Status</th>
                                         <th>Notes</th>
                                         <th>Screenshot</th>
-                                        <th>Approved By</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -292,7 +283,6 @@ export default function ViewPastTransactions() {
                                                 : tx.price != null
                                                     ? `Rs ${tx.price.toLocaleString('en-IN')}`
                                                     : '—'}</td>
-                                            <td>{statusBadge(tx.status)}</td>
                                             <td>{tx.notes || '—'}</td>
                                             <td>
                                                 <PaymentScreenshotViewer
@@ -300,7 +290,6 @@ export default function ViewPastTransactions() {
                                                     transactionId={tx.id}
                                                 />
                                             </td>
-                                            <td>{tx.approvedByUsername || '—'}</td>
                                         </tr>
                                     ))}
                                 </tbody>
