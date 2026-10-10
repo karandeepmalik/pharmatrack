@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import org.mockito.ArgumentCaptor;
@@ -894,6 +895,8 @@ class ReportServiceTest {
     @Nested @DisplayName("todaySales")
     class TodaySales {
 
+        private final String todayLabel = LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+
         @Test
         void reportShowsSalesGroupedByUser() {
             Transaction tx = makeTx(1L, john, vial, 3,
@@ -912,6 +915,25 @@ class ReportServiceTest {
         }
 
         @Test
+        void multiDayReportShowsEachEntrysOwnDispatchDate() {
+            LocalDateTime day1 = LocalDate.now().minusDays(2).atTime(10, 0);
+            LocalDateTime day2 = LocalDate.now().minusDays(1).atTime(11, 0);
+            Transaction tx1 = makeTx(1L, john, vial, 2,
+                    Transaction.TransactionStatus.APPROVED, "first delivery", day1);
+            Transaction tx2 = makeTx(2L, john, tablet, 1,
+                    Transaction.TransactionStatus.APPROVED, "second delivery", day2);
+            when(transactionRepository.findApprovedBetween(any(Transaction.TransactionStatus.class), any(LocalDateTime.class), any(LocalDateTime.class)))
+                    .thenReturn(List.of(tx1, tx2));
+
+            ReportResponse r = reportService.todaySales(day1.toLocalDate(), day2.toLocalDate(), null, null);
+
+            String day1Label = day1.toLocalDate().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+            String day2Label = day2.toLocalDate().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+            assertThat(r.getContent()).contains(day1Label + "  john.doe  2 x 10 ml  first delivery");
+            assertThat(r.getContent()).contains(day2Label + "  john.doe  1 x 25 mg  second delivery");
+        }
+
+        @Test
         void reportShowsUsernameInTransactionLine() {
             Transaction tx = makeTx(1L, john, vial, 3,
                     Transaction.TransactionStatus.APPROVED, "sent to Vandana");
@@ -920,7 +942,7 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.todaySales();
 
-            assertThat(r.getContent()).contains("john.doe  3 x 10 ml  sent to Vandana");
+            assertThat(r.getContent()).contains(todayLabel + "  john.doe  3 x 10 ml  sent to Vandana");
         }
 
         @Test
@@ -932,7 +954,7 @@ class ReportServiceTest {
 
             ReportResponse r = reportService.todaySales();
 
-            assertThat(r.getContent()).contains("john.doe  2 x 25 mg  for clinic");
+            assertThat(r.getContent()).contains(todayLabel + "  john.doe  2 x 25 mg  for clinic");
         }
 
         @Test
