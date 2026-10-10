@@ -366,7 +366,8 @@ public class ReportService {
                 String notes = (tx.getNotes() != null && !tx.getNotes().isBlank())
                         ? tx.getNotes() : "";
 
-                sb.append("  ").append(txUsername).append("  ").append(tx.getQuantity().toPlainString()).append(" x ").append(specLabel);
+                sb.append("  ").append(tx.getSubmittedAt().toLocalDate().format(DATE_FMT)).append("  ")
+                  .append(txUsername).append("  ").append(tx.getQuantity().toPlainString()).append(" x ").append(specLabel);
                 if (!notes.isBlank()) {
                     sb.append("  ").append(notes);
                 }
