@@ -622,13 +622,22 @@ public class ReportService {
     /** How many past weeks of history feed the regression and appear on the chart alongside the forecast. */
     private static final int PROJECTION_HISTORY_WEEKS = 26;
 
+    /** Tablet strips are 10 tablets each — see {@link #projectionMgEquivalent}. */
+    private static final int TABLETS_PER_STRIP = 10;
+
+    /** Fallback vial concentration when a medicine record has none set, matching {@link ReportTextRenderer#vialConc}. */
+    private static final double DEFAULT_VIAL_CONCENTRATION_MG_PER_ML = 20.0;
+
     /**
-     * Linear-regression projection of future weekly stock demand (and the revenue that implies
-     * at historical average price — never called "profit": this app has no cost/purchase-price
-     * data, see {@link InventoryProjectionResponse}). Fits one regression per "line" — tablet
-     * strengths are combined per pharma company since they're interchangeable for orders, vials
-     * stay split per spec — against the last {@link #PROJECTION_HISTORY_WEEKS} weeks of approved,
-     * non-admin-stock sales.
+     * Linear-regression projection of future weekly demand (and the revenue that implies at
+     * historical average price — never called "profit": this app has no cost/purchase-price
+     * data, see {@link InventoryProjectionResponse}). Fits one regression per "line" — every
+     * vial spec combines into one Injection Vial line per pharma company, every tablet strength
+     * into one Oral Tablet line — against the last {@link #PROJECTION_HISTORY_WEEKS} weeks of
+     * approved, non-admin-stock sales. Each line is fit twice: once on its native count unit
+     * (vials or strips) and once on its mg-equivalent, since a merged line mixes specs with
+     * different native-unit-to-mg ratios — the frontend toggles between the two without a
+     * second round trip.
      *
      * @param weeksAhead how many future weeks to project, clamped to [1, 26]
      * @param cities     optional city filter, matched case-insensitively against the submitting
@@ -661,21 +670,29 @@ public class ReportService {
         List<String> weekKeys = new ArrayList<>();
         for (int i = 0; i < PROJECTION_HISTORY_WEEKS; i++) weekKeys.add(firstWeekMonday.plusWeeks(i).toString());
 
-        // lineKey -> weekKey -> quantity; lineKey -> {totalQty, totalRevenue} for the line's avg unit price
+        // lineKey -> weekKey -> quantity, in native units and in mg; lineKey -> {totalQty,
+        // totalRevenue} (native units) for the line's avg unit price; lineKey -> display unit.
         Map<String, Map<String, BigDecimal>> byLineWeek = new TreeMap<>();
+        Map<String, Map<String, BigDecimal>> byLineWeekMg = new TreeMap<>();
         Map<String, BigDecimal> lineTotalQty = new TreeMap<>();
         Map<String, Long> lineTotalRevenue = new TreeMap<>();
+        Map<String, String> lineUnit = new TreeMap<>();
 
         for (Transaction tx : txList) {
-            String line = projectionLineKey(tx.getMedicine());
+            Medicine medicine = tx.getMedicine();
+            String line = projectionLineKey(medicine);
             String weekKey = tx.getSubmittedAt().toLocalDate().with(DayOfWeek.MONDAY).toString();
-            int price = tx.getPricePerUnit() != null ? tx.getPricePerUnit() : tx.getMedicine().getPrice();
+            int price = tx.getPricePerUnit() != null ? tx.getPricePerUnit() : medicine.getPrice();
             long lineAmount = amount(price, tx.getQuantity());
+            BigDecimal mgQty = projectionMgEquivalent(medicine, tx.getQuantity());
 
             byLineWeek.computeIfAbsent(line, k -> new HashMap<>())
                     .merge(weekKey, tx.getQuantity(), BigDecimal::add);
+            byLineWeekMg.computeIfAbsent(line, k -> new HashMap<>())
+                    .merge(weekKey, mgQty, BigDecimal::add);
             lineTotalQty.merge(line, tx.getQuantity(), BigDecimal::add);
             lineTotalRevenue.merge(line, lineAmount, Long::sum);
+            lineUnit.putIfAbsent(line, projectionUnit(medicine.getType()));
         }
 
         List<String> forecastLabels = new ArrayList<>();
@@ -687,17 +704,22 @@ public class ReportService {
                 .toList();
 
         List<InventoryProjectionResponse.LineProjection> lines = new ArrayList<>();
-        BigDecimal totalForecastQuantity = BigDecimal.ZERO;
         long totalForecastRevenue = 0;
 
         for (String line : byLineWeek.keySet()) {
             Map<String, BigDecimal> weekly = byLineWeek.get(line);
+            Map<String, BigDecimal> weeklyMg = byLineWeekMg.get(line);
             List<BigDecimal> historicalQuantity = weekKeys.stream()
                     .map(k -> weekly.getOrDefault(k, BigDecimal.ZERO))
+                    .toList();
+            List<BigDecimal> historicalQuantityMg = weekKeys.stream()
+                    .map(k -> weeklyMg.getOrDefault(k, BigDecimal.ZERO))
                     .toList();
 
             double[] coeffs = linearRegression(historicalQuantity);
             double slope = coeffs[0], intercept = coeffs[1];
+            double[] coeffsMg = linearRegression(historicalQuantityMg);
+            double slopeMg = coeffsMg[0], interceptMg = coeffsMg[1];
 
             BigDecimal totalQty = lineTotalQty.getOrDefault(line, BigDecimal.ZERO);
             long totalRevenue = lineTotalRevenue.getOrDefault(line, 0L);
@@ -706,38 +728,72 @@ public class ReportService {
                     : BigDecimal.ZERO;
 
             List<BigDecimal> forecastQuantity = new ArrayList<>();
+            List<BigDecimal> forecastQuantityMg = new ArrayList<>();
             List<Long> forecastRevenue = new ArrayList<>();
+            long lineForecastRevenue = 0;
             for (int i = 0; i < horizon; i++) {
                 int x = PROJECTION_HISTORY_WEEKS + i;
-                double predicted = Math.max(intercept + slope * x, 0);
-                BigDecimal qty = QuantityUtil.round(BigDecimal.valueOf(predicted));
+                BigDecimal qty = QuantityUtil.round(BigDecimal.valueOf(Math.max(intercept + slope * x, 0)));
+                BigDecimal qtyMg = QuantityUtil.round(BigDecimal.valueOf(Math.max(interceptMg + slopeMg * x, 0)));
                 long revenue = avgUnitPrice.multiply(qty).setScale(0, RoundingMode.HALF_UP).longValue();
                 forecastQuantity.add(qty);
+                forecastQuantityMg.add(qtyMg);
                 forecastRevenue.add(revenue);
-                totalForecastQuantity = totalForecastQuantity.add(qty);
-                totalForecastRevenue += revenue;
+                lineForecastRevenue += revenue;
             }
+            totalForecastRevenue += lineForecastRevenue;
 
             lines.add(new InventoryProjectionResponse.LineProjection(
-                    line, historicalQuantity, forecastQuantity, forecastRevenue));
+                    line, lineUnit.get(line), historicalQuantity, forecastQuantity,
+                    historicalQuantityMg, forecastQuantityMg, forecastRevenue, lineForecastRevenue));
         }
 
-        return new InventoryProjectionResponse(
-                historicalLabels, forecastLabels, lines, totalForecastQuantity, totalForecastRevenue);
+        return new InventoryProjectionResponse(historicalLabels, forecastLabels, lines, totalForecastRevenue);
     }
 
     /**
-     * Groups medicines into forecast "lines": tablet strengths (12/20/30/50 mg etc.) are combined
-     * per pharma company since they're interchangeable for orders and forecasting each strength
-     * separately would create false shortage signals a substitution would actually cover. Vials
-     * (and any other type) stay split per spec, matching the existing sales-graph breakdown.
+     * Groups medicines into forecast "lines" at the dosage-form level — every vial spec combines
+     * into one Injection Vial line per pharma company, every tablet strength into one Oral
+     * Tablet line — since that's the operationally meaningful substitution boundary (tablet
+     * strengths are interchangeable for orders; injections and tablets are not).
      */
     private String projectionLineKey(Medicine m) {
         String pharma = m.getPharmaCompany().getName();
-        if (m.getType() == Medicine.MedicineType.TABLET) {
-            return pharma + " Tablet (all strengths)";
+        return switch (m.getType()) {
+            case TABLET -> pharma + " Oral Tablet";
+            case VIAL -> pharma + " Injection Vial";
+            default -> pharma + " " + specDisplayName(m);
+        };
+    }
+
+    /** The native count unit a line's quantity is dispatched in. */
+    private String projectionUnit(Medicine.MedicineType type) {
+        return switch (type) {
+            case TABLET -> "strips";
+            case VIAL -> "vials";
+            default -> "units";
+        };
+    }
+
+    /**
+     * Converts a native-unit quantity to its mg-equivalent. A vial's mg content is its volume
+     * (the medicine's {@code specification}, in ml) times its concentration (defaulting to
+     * {@value #DEFAULT_VIAL_CONCENTRATION_MG_PER_ML} mg/ml when unset, matching {@link ReportTextRenderer#vialConc}).
+     * A tablet strip is {@value #TABLETS_PER_STRIP} tablets, so its mg content is the per-tablet
+     * strength (the medicine's {@code specification}, in mg) times {@value #TABLETS_PER_STRIP}.
+     */
+    private BigDecimal projectionMgEquivalent(Medicine m, BigDecimal nativeQty) {
+        if (m.getType() == Medicine.MedicineType.VIAL) {
+            double concentration = m.getConcentrationMgPerMl() != null
+                    ? m.getConcentrationMgPerMl() : DEFAULT_VIAL_CONCENTRATION_MG_PER_ML;
+            double mgPerVial = m.getSpecification() * concentration;
+            return nativeQty.multiply(BigDecimal.valueOf(mgPerVial));
         }
-        return pharma + " " + specDisplayName(m);
+        if (m.getType() == Medicine.MedicineType.TABLET) {
+            double mgPerStrip = m.getSpecification() * TABLETS_PER_STRIP;
+            return nativeQty.multiply(BigDecimal.valueOf(mgPerStrip));
+        }
+        return nativeQty.multiply(BigDecimal.valueOf(m.getSpecification()));
     }
 
     /** Least-squares fit of y = intercept + slope*x over x = 0..n-1. Returns {slope, intercept}. */
