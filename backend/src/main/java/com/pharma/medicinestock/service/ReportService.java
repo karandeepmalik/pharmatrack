@@ -634,10 +634,13 @@ public class ReportService {
      * data, see {@link InventoryProjectionResponse}). Fits one regression per "line" — every
      * vial spec combines into one Injection Vial line per pharma company, every tablet strength
      * into one Oral Tablet line — against the last {@link #PROJECTION_HISTORY_WEEKS} weeks of
-     * approved, non-admin-stock sales. Each line is fit twice: once on its native count unit
-     * (vials or strips) and once on its mg-equivalent, since a merged line mixes specs with
-     * different native-unit-to-mg ratios — the frontend toggles between the two without a
-     * second round trip.
+     * approved, non-admin-stock sales. The regression is fit on mg only, never on a raw native
+     * count: a merged line mixes specs with different native-unit-to-mg ratios (a 10ml and a
+     * 5ml vial are both "1 vial" but not the same mg), so there's no single meaningful "count"
+     * for the regression to fit against. The frontend derives an equivalent strip/vial count
+     * for display by dividing the mg series by whichever reference spec (e.g. "30mg strips" or
+     * "8ml vials") the admin has chosen — a simple scalar transform of the one real series,
+     * not a second independently-fit one.
      *
      * @param weeksAhead how many future weeks to project, clamped to [1, 26]
      * @param cities     optional city filter, matched case-insensitively against the submitting
@@ -670,13 +673,13 @@ public class ReportService {
         List<String> weekKeys = new ArrayList<>();
         for (int i = 0; i < PROJECTION_HISTORY_WEEKS; i++) weekKeys.add(firstWeekMonday.plusWeeks(i).toString());
 
-        // lineKey -> weekKey -> quantity, in native units and in mg; lineKey -> {totalQty,
-        // totalRevenue} (native units) for the line's avg unit price; lineKey -> display unit.
-        Map<String, Map<String, BigDecimal>> byLineWeek = new TreeMap<>();
+        // lineKey -> weekKey -> mg quantity; lineKey -> {totalMg, totalRevenue} for the line's
+        // avg price per mg; lineKey -> dosage form, so the frontend knows which reference-spec
+        // options apply (tablet strengths vs vial volumes).
         Map<String, Map<String, BigDecimal>> byLineWeekMg = new TreeMap<>();
-        Map<String, BigDecimal> lineTotalQty = new TreeMap<>();
+        Map<String, BigDecimal> lineTotalMg = new TreeMap<>();
         Map<String, Long> lineTotalRevenue = new TreeMap<>();
-        Map<String, String> lineUnit = new TreeMap<>();
+        Map<String, String> lineDosageForm = new TreeMap<>();
 
         for (Transaction tx : txList) {
             Medicine medicine = tx.getMedicine();
@@ -686,13 +689,11 @@ public class ReportService {
             long lineAmount = amount(price, tx.getQuantity());
             BigDecimal mgQty = projectionMgEquivalent(medicine, tx.getQuantity());
 
-            byLineWeek.computeIfAbsent(line, k -> new HashMap<>())
-                    .merge(weekKey, tx.getQuantity(), BigDecimal::add);
             byLineWeekMg.computeIfAbsent(line, k -> new HashMap<>())
                     .merge(weekKey, mgQty, BigDecimal::add);
-            lineTotalQty.merge(line, tx.getQuantity(), BigDecimal::add);
+            lineTotalMg.merge(line, mgQty, BigDecimal::add);
             lineTotalRevenue.merge(line, lineAmount, Long::sum);
-            lineUnit.putIfAbsent(line, projectionUnit(medicine.getType()));
+            lineDosageForm.putIfAbsent(line, medicine.getType().name());
         }
 
         List<String> forecastLabels = new ArrayList<>();
@@ -706,37 +707,28 @@ public class ReportService {
         List<InventoryProjectionResponse.LineProjection> lines = new ArrayList<>();
         long totalForecastRevenue = 0;
 
-        for (String line : byLineWeek.keySet()) {
-            Map<String, BigDecimal> weekly = byLineWeek.get(line);
+        for (String line : byLineWeekMg.keySet()) {
             Map<String, BigDecimal> weeklyMg = byLineWeekMg.get(line);
-            List<BigDecimal> historicalQuantity = weekKeys.stream()
-                    .map(k -> weekly.getOrDefault(k, BigDecimal.ZERO))
-                    .toList();
             List<BigDecimal> historicalQuantityMg = weekKeys.stream()
                     .map(k -> weeklyMg.getOrDefault(k, BigDecimal.ZERO))
                     .toList();
 
-            double[] coeffs = linearRegression(historicalQuantity);
-            double slope = coeffs[0], intercept = coeffs[1];
             double[] coeffsMg = linearRegression(historicalQuantityMg);
             double slopeMg = coeffsMg[0], interceptMg = coeffsMg[1];
 
-            BigDecimal totalQty = lineTotalQty.getOrDefault(line, BigDecimal.ZERO);
+            BigDecimal totalMg = lineTotalMg.getOrDefault(line, BigDecimal.ZERO);
             long totalRevenue = lineTotalRevenue.getOrDefault(line, 0L);
-            BigDecimal avgUnitPrice = totalQty.compareTo(BigDecimal.ZERO) > 0
-                    ? BigDecimal.valueOf(totalRevenue).divide(totalQty, 4, RoundingMode.HALF_UP)
+            BigDecimal avgPricePerMg = totalMg.compareTo(BigDecimal.ZERO) > 0
+                    ? BigDecimal.valueOf(totalRevenue).divide(totalMg, 6, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
 
-            List<BigDecimal> forecastQuantity = new ArrayList<>();
             List<BigDecimal> forecastQuantityMg = new ArrayList<>();
             List<Long> forecastRevenue = new ArrayList<>();
             long lineForecastRevenue = 0;
             for (int i = 0; i < horizon; i++) {
                 int x = PROJECTION_HISTORY_WEEKS + i;
-                BigDecimal qty = QuantityUtil.round(BigDecimal.valueOf(Math.max(intercept + slope * x, 0)));
                 BigDecimal qtyMg = QuantityUtil.round(BigDecimal.valueOf(Math.max(interceptMg + slopeMg * x, 0)));
-                long revenue = avgUnitPrice.multiply(qty).setScale(0, RoundingMode.HALF_UP).longValue();
-                forecastQuantity.add(qty);
+                long revenue = avgPricePerMg.multiply(qtyMg).setScale(0, RoundingMode.HALF_UP).longValue();
                 forecastQuantityMg.add(qtyMg);
                 forecastRevenue.add(revenue);
                 lineForecastRevenue += revenue;
@@ -744,11 +736,14 @@ public class ReportService {
             totalForecastRevenue += lineForecastRevenue;
 
             lines.add(new InventoryProjectionResponse.LineProjection(
-                    line, lineUnit.get(line), historicalQuantity, forecastQuantity,
-                    historicalQuantityMg, forecastQuantityMg, forecastRevenue, lineForecastRevenue));
+                    line, lineDosageForm.get(line), historicalQuantityMg, forecastQuantityMg,
+                    forecastRevenue, lineForecastRevenue, slopeMg, interceptMg));
         }
 
-        return new InventoryProjectionResponse(historicalLabels, forecastLabels, lines, totalForecastRevenue);
+        String forecastStartDate = thisWeekMonday.plusWeeks(1).toString();
+        return new InventoryProjectionResponse(
+                historicalLabels, forecastLabels, forecastStartDate, PROJECTION_HISTORY_WEEKS,
+                lines, totalForecastRevenue);
     }
 
     /**
@@ -763,15 +758,6 @@ public class ReportService {
             case TABLET -> pharma + " Oral Tablet";
             case VIAL -> pharma + " Injection Vial";
             default -> pharma + " " + specDisplayName(m);
-        };
-    }
-
-    /** The native count unit a line's quantity is dispatched in. */
-    private String projectionUnit(Medicine.MedicineType type) {
-        return switch (type) {
-            case TABLET -> "strips";
-            case VIAL -> "vials";
-            default -> "units";
         };
     }
 

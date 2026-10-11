@@ -13,22 +13,52 @@ const USERS = [
     { id: 3, username: 'noloc', fullName: 'No Location', location: '' },
 ];
 
+// Vial line: flat 140mg/week = 20mg/day. forecastQuantityMg totals 3200mg across 2 weeks, which
+// divides cleanly at both reference volumes: 3200/160 (8ml) = 20.0 vials, 3200/200 (10ml) = 16.0.
 const SAMPLE_DATA = {
     historicalLabels: ['1 Jan', '8 Jan'],
     forecastLabels: ['15 Jan', '22 Jan'],
+    forecastStartDate: '2026-01-05',
+    historyWeeks: 26,
     lines: [
         {
             name: 'Shield FX Injection Vial',
-            unit: 'vials',
-            historicalQuantity: [5, 7],
-            forecastQuantity: [8, 9],
+            dosageForm: 'VIAL',
             historicalQuantityMg: [1000, 1400],
-            forecastQuantityMg: [1600, 1800],
+            forecastQuantityMg: [1600, 1600],
             forecastRevenue: [32000, 36000],
             totalForecastRevenue: 68000,
+            regressionSlopeMg: 0, regressionInterceptMg: 140,
         },
     ],
     totalForecastRevenue: 68000,
+};
+
+// Demand already at/below zero by the forecast start and declining — never depletes any stock.
+const SAMPLE_DATA_NEVER_DEPLETES = {
+    ...SAMPLE_DATA,
+    lines: [{ ...SAMPLE_DATA.lines[0], regressionSlopeMg: -1, regressionInterceptMg: 0 }],
+};
+
+// Tablet line: forecastQuantityMg totals 6000mg, which divides cleanly at all three reference
+// strengths: 6000/200 (20mg) = 30.0, 6000/300 (30mg) = 20.0, 6000/500 (50mg) = 12.0 strips.
+const SAMPLE_DATA_TABLET = {
+    historicalLabels: ['1 Jan', '8 Jan'],
+    forecastLabels: ['15 Jan', '22 Jan'],
+    forecastStartDate: '2026-01-05',
+    historyWeeks: 26,
+    lines: [
+        {
+            name: 'Shield FX Oral Tablet',
+            dosageForm: 'TABLET',
+            historicalQuantityMg: [500, 500],
+            forecastQuantityMg: [3000, 3000],
+            forecastRevenue: [10000, 10000],
+            totalForecastRevenue: 20000,
+            regressionSlopeMg: 0, regressionInterceptMg: 300,
+        },
+    ],
+    totalForecastRevenue: 20000,
 };
 
 const mkResp = (data) => ({ data });
@@ -106,12 +136,13 @@ describe('InventoryProjectionReport — data fetching', () => {
 // ── Summary cards ───────────────────────────────────────────────────────────
 
 describe('InventoryProjectionReport — summary cards', () => {
-    test('shows a per-line card with the line name and total projected quantity', async () => {
+    test('shows a per-line card with the line name and the default-reference equivalent quantity', async () => {
         api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
         renderPage();
         await waitFor(() => {
             const cardLabel = screen.getByText(/shield fx injection vial — next/i);
-            expect(cardLabel.parentElement).toHaveTextContent('17.0 vials');
+            // 3200mg total / 160mg-per-vial (default 8ml reference) = 20.0 vials.
+            expect(cardLabel.parentElement).toHaveTextContent('20.0 vials (8ml)');
         });
     });
 
@@ -131,7 +162,7 @@ describe('InventoryProjectionReport — summary cards', () => {
         });
     });
 
-    test('renders the totals from the response', async () => {
+    test('renders the revenue total from the response', async () => {
         api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
         renderPage();
         await waitFor(() => {
@@ -144,17 +175,17 @@ describe('InventoryProjectionReport — summary cards', () => {
 // ── Unit toggle ─────────────────────────────────────────────────────────────
 
 describe('InventoryProjectionReport — unit toggle', () => {
-    test('defaults to Vials / Strips and shows native quantities', async () => {
+    test('defaults to Vials / Strips and shows the equivalent-vial quantity', async () => {
         api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
         renderPage();
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /vials \/ strips/i })).toHaveClass('btn-primary');
             const cardLabel = screen.getByText(/shield fx injection vial — next/i);
-            expect(cardLabel.parentElement).toHaveTextContent('17.0 vials');
+            expect(cardLabel.parentElement).toHaveTextContent('20.0 vials (8ml)');
         });
     });
 
-    test('switching to mg shows the mg-equivalent total without refetching', async () => {
+    test('switching to mg shows the raw mg total without refetching', async () => {
         api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
         renderPage();
         await waitFor(() => expect(api.getReportInventoryProjection).toHaveBeenCalledTimes(1));
@@ -163,10 +194,76 @@ describe('InventoryProjectionReport — unit toggle', () => {
 
         expect(screen.getByRole('button', { name: /^mg$/i })).toHaveClass('btn-primary');
         const cardLabel = screen.getByText(/shield fx injection vial — next/i);
-        expect(cardLabel.parentElement).toHaveTextContent('3400.0 mg');
-        // Toggling units is a pure display transform — the already-fetched response has both
-        // unit series, so no second API call should happen.
+        expect(cardLabel.parentElement).toHaveTextContent('3200.0 mg');
+        // Toggling units is a pure display transform — the already-fetched mg series covers both
+        // modes, so no second API call should happen.
         expect(api.getReportInventoryProjection).toHaveBeenCalledTimes(1);
+    });
+
+    test('the reference-spec selectors are hidden in mg mode', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => expect(screen.getByLabelText(/injection vial reference volume/i)).toBeInTheDocument());
+
+        await userEvent.click(screen.getByRole('button', { name: /^mg$/i }));
+
+        expect(screen.queryByLabelText(/injection vial reference volume/i)).not.toBeInTheDocument();
+    });
+});
+
+// ── Reference-spec selectors (vial) ──────────────────────────────────────────
+
+describe('InventoryProjectionReport — injection vial reference', () => {
+    test('defaults to 8ml and does not show the oral reference selector', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '8ml' })).toHaveClass('btn-primary');
+        });
+        expect(screen.queryByLabelText(/oral tablet reference strength/i)).not.toBeInTheDocument();
+    });
+
+    test('switching to 10ml recomputes the equivalent vial count', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => expect(screen.getByRole('button', { name: '10ml' })).toBeInTheDocument());
+
+        await userEvent.click(screen.getByRole('button', { name: '10ml' }));
+
+        expect(screen.getByRole('button', { name: '10ml' })).toHaveClass('btn-primary');
+        const cardLabel = screen.getByText(/shield fx injection vial — next/i);
+        // 3200mg total / 200mg-per-vial (10ml reference) = 16.0 vials.
+        expect(cardLabel.parentElement).toHaveTextContent('16.0 vials (10ml)');
+    });
+});
+
+// ── Reference-spec selectors (tablet) ────────────────────────────────────────
+
+describe('InventoryProjectionReport — oral tablet reference', () => {
+    test('defaults to 30mg and does not show the vial reference selector', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA_TABLET));
+        renderPage();
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '30mg' })).toHaveClass('btn-primary');
+        });
+        expect(screen.queryByLabelText(/injection vial reference volume/i)).not.toBeInTheDocument();
+
+        const cardLabel = screen.getByText(/shield fx oral tablet — next/i);
+        // 6000mg total / 300mg-per-strip (default 30mg reference) = 20.0 strips.
+        expect(cardLabel.parentElement).toHaveTextContent('20.0 strips (30mg)');
+    });
+
+    test('switching to 20mg recomputes the equivalent strip count', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA_TABLET));
+        renderPage();
+        await waitFor(() => expect(screen.getByRole('button', { name: '20mg' })).toBeInTheDocument());
+
+        await userEvent.click(screen.getByRole('button', { name: '20mg' }));
+
+        expect(screen.getByRole('button', { name: '20mg' })).toHaveClass('btn-primary');
+        const cardLabel = screen.getByText(/shield fx oral tablet — next/i);
+        // 6000mg total / 200mg-per-strip (20mg reference) = 30.0 strips.
+        expect(cardLabel.parentElement).toHaveTextContent('30.0 strips (20mg)');
     });
 });
 
@@ -250,5 +347,87 @@ describe('InventoryProjectionReport — city filtering', () => {
             expect(api.getReportInventoryProjection).toHaveBeenLastCalledWith(8, undefined);
         });
         expect(screen.queryByText(/city attribution is based on/i)).not.toBeInTheDocument();
+    });
+});
+
+// ── Stock-out date projection ────────────────────────────────────────────────
+
+describe('InventoryProjectionReport — stock-out date projection', () => {
+    test('shows no stock-out message until a stock value is entered', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
+
+        expect(screen.queryByText(/projected to run out/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/not projected to run out/i)).not.toBeInTheDocument();
+    });
+
+    test('entering a stock value (in the default 8ml-equivalent vials) computes the stock-out date', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
+
+        // 8 vials x 160mg/vial (8ml ref) = 1280mg, at a flat 20mg/day (140mg/week) rate:
+        // ceil(1280/20) = 64 days from the 5 Jan 2026 anchor -> index 63 -> 9 Mar 2026.
+        await userEvent.type(screen.getByLabelText(/current stock/i), '8');
+
+        await waitFor(() => {
+            expect(screen.getByText(/projected to run out around 9 mar 2026/i)).toBeInTheDocument();
+        });
+    });
+
+    test('a declining-to-zero trend reports it will never run out', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA_NEVER_DEPLETES));
+        renderPage();
+        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
+
+        await userEvent.type(screen.getByLabelText(/current stock/i), '8');
+
+        await waitFor(() => {
+            expect(screen.getByText(/not projected to run out within the next 10 years/i)).toBeInTheDocument();
+        });
+    });
+
+    test('entering zero or a negative value shows no stock-out message', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
+
+        await userEvent.type(screen.getByLabelText(/current stock/i), '0');
+
+        expect(screen.queryByText(/projected to run out/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/not projected to run out/i)).not.toBeInTheDocument();
+    });
+
+    test('switching the unit toggle clears any entered stock value', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
+
+        await userEvent.type(screen.getByLabelText(/current stock/i), '8');
+        await waitFor(() => {
+            expect(screen.getByText(/projected to run out around/i)).toBeInTheDocument();
+        });
+
+        await userEvent.click(screen.getByRole('button', { name: /^mg$/i }));
+
+        expect(screen.getByLabelText(/current stock/i)).toHaveValue(null);
+        expect(screen.queryByText(/projected to run out/i)).not.toBeInTheDocument();
+    });
+
+    test('switching the reference spec clears any entered stock value', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
+
+        await userEvent.type(screen.getByLabelText(/current stock/i), '8');
+        await waitFor(() => {
+            expect(screen.getByText(/projected to run out around/i)).toBeInTheDocument();
+        });
+
+        await userEvent.click(screen.getByRole('button', { name: '10ml' }));
+
+        expect(screen.getByLabelText(/current stock/i)).toHaveValue(null);
+        expect(screen.queryByText(/projected to run out/i)).not.toBeInTheDocument();
     });
 });

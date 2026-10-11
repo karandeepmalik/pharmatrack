@@ -373,5 +373,35 @@ test.describe('View Reports', () => {
       await expect(page.getByText(/city attribution is based on/i)).toBeVisible();
       await expect(page.getByRole('button', { name: 'Overall' })).not.toHaveClass(/btn-primary/);
     });
+
+    test('shows a reference-spec selector matching the dosage form of the submitted dispatch', async ({ page }) => {
+      await expect(page.getByText(/total projected revenue/i)).toBeVisible({ timeout: 10000 });
+
+      // Other tests in this run may have already produced history for both dosage forms, so
+      // either or both selectors may be present — this only asserts at least one is.
+      const oralRef = page.getByLabel('Oral tablet reference strength');
+      const vialRef = page.getByLabel('Injection vial reference volume');
+      await expect(oralRef.or(vialRef).first()).toBeVisible();
+
+      // Hidden again in mg mode, since the reference spec only affects the equivalent-unit view.
+      await page.getByRole('button', { name: /^mg$/i }).click();
+      await expect(oralRef).not.toBeVisible();
+      await expect(vialRef).not.toBeVisible();
+    });
+
+    test('entering a current-stock value shows a projected stock-out message', async ({ page }) => {
+      await expect(page.getByText(/total projected revenue/i)).toBeVisible({ timeout: 10000 });
+
+      // Other tests in this run may have already produced history for both dosage forms, so
+      // more than one "Current stock" input may be present — only the first is exercised here.
+      const stockInput = page.getByLabel(/current stock/i).first();
+      await stockInput.fill('1000');
+
+      await expect(
+        page.getByText(/projected to run out around/i)
+          .or(page.getByText(/not projected to run out within the next 10 years/i))
+          .first()
+      ).toBeVisible();
+    });
   });
 });
