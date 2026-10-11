@@ -1,5 +1,6 @@
 package com.pharma.medicinestock.service;
 
+import com.pharma.medicinestock.dto.InventoryProjectionResponse;
 import com.pharma.medicinestock.dto.ReportResponse;
 import com.pharma.medicinestock.dto.SalesGraphResponse;
 import com.pharma.medicinestock.entity.*;
@@ -16,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -1117,6 +1119,143 @@ class ReportServiceTest {
             ReportResponse r = reportService.todaySales(null, null, "jane.smith", null);
 
             assertThat(r.getContent()).contains("No sales recorded today");
+        }
+    }
+
+    @Nested @DisplayName("inventoryProjection")
+    class InventoryProjection {
+
+        private final LocalDate thisMonday = LocalDate.now().with(DayOfWeek.MONDAY);
+
+        @Test
+        void noHistoryProducesNoLines() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+
+            assertThat(r.getLines()).isEmpty();
+            assertThat(r.getHistoricalLabels()).hasSize(26);
+            assertThat(r.getForecastLabels()).hasSize(8);
+        }
+
+        @Test
+        void weeksAheadDefaultsTo8AndIsClampedTo1Through26() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            assertThat(reportService.inventoryProjection(null, null).getForecastLabels()).hasSize(8);
+            assertThat(reportService.inventoryProjection(100, null).getForecastLabels()).hasSize(26);
+            assertThat(reportService.inventoryProjection(0, null).getForecastLabels()).hasSize(1);
+        }
+
+        @Test
+        void tabletStrengthsFromTheSamePharmaAreCombinedIntoOneLine() {
+            Transaction tabletTx1 = makeTx(1L, john, tablet, 3,
+                    Transaction.TransactionStatus.APPROVED, "25mg", thisMonday.atTime(9, 0));
+            Medicine tablet50 = Medicine.builder()
+                    .id(10L).name("Shield FX Tablet 50 mg (10 Tablets)")
+                    .type(Medicine.MedicineType.TABLET).specification(50.0)
+                    .price(8000).pharmaCompany(pharma).build();
+            Transaction tabletTx2 = makeTx(2L, john, tablet50, 2,
+                    Transaction.TransactionStatus.APPROVED, "50mg", thisMonday.atTime(10, 0));
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(tabletTx1, tabletTx2));
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+
+            assertThat(r.getLines()).hasSize(1);
+            InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
+            assertThat(line.getName()).isEqualTo("Shield FX Tablet (all strengths)");
+            assertThat(line.getHistoricalQuantity().get(25)).isEqualByComparingTo("5.0");
+        }
+
+        @Test
+        void vialSpecsFromTheSamePharmaStaySeparateLines() {
+            Transaction vial10Tx = makeTx(1L, john, vial, 4,
+                    Transaction.TransactionStatus.APPROVED, "10ml", thisMonday.atTime(9, 0));
+            Transaction vial5Tx = makeTx(2L, john, vial5, 2,
+                    Transaction.TransactionStatus.APPROVED, "5ml", thisMonday.atTime(10, 0));
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(vial10Tx, vial5Tx));
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+
+            assertThat(r.getLines()).extracting(InventoryProjectionResponse.LineProjection::getName)
+                    .containsExactlyInAnyOrder("Shield FX Vial 10 ml", "Shield FX Vial 5 ml");
+        }
+
+        @Test
+        void adminMedicineStockDispatchesAreExcluded() {
+            Transaction adminTx = Transaction.builder()
+                    .id(1L).submittedBy(john).medicine(vial).quantity(BigDecimal.valueOf(9))
+                    .status(Transaction.TransactionStatus.APPROVED).notes("admin only")
+                    .medicineStockType(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK)
+                    .submittedAt(thisMonday.atTime(9, 0)).build();
+            adminTx.setApprovedAt(LocalDateTime.now());
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of(adminTx));
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+
+            assertThat(r.getLines()).isEmpty();
+        }
+
+        @Test
+        void cityFilterIncludesOnlyMatchingUsersLocationAndIsCaseInsensitive() {
+            john.setLocation("Mumbai");
+            jane.setLocation("  delhi  ");
+            Transaction johnVialTx = makeTx(1L, john, vial, 3,
+                    Transaction.TransactionStatus.APPROVED, "from john", thisMonday.atTime(9, 0));
+            Transaction janeTabletTx = makeTx(2L, jane, tablet, 2,
+                    Transaction.TransactionStatus.APPROVED, "from jane", thisMonday.atTime(10, 0));
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(johnVialTx, janeTabletTx));
+
+            InventoryProjectionResponse mumbaiOnly = reportService.inventoryProjection(8, List.of("mumbai"));
+            InventoryProjectionResponse delhiOnly = reportService.inventoryProjection(8, List.of("Delhi"));
+            InventoryProjectionResponse overall = reportService.inventoryProjection(8, null);
+
+            assertThat(mumbaiOnly.getLines()).extracting(InventoryProjectionResponse.LineProjection::getName)
+                    .containsExactly("Shield FX Vial 10 ml");
+            assertThat(delhiOnly.getLines()).extracting(InventoryProjectionResponse.LineProjection::getName)
+                    .containsExactly("Shield FX Tablet (all strengths)");
+            assertThat(overall.getLines()).hasSize(2);
+        }
+
+        @Test
+        void linearRegressionProjectsAPerfectTrendExactly() {
+            List<Transaction> txs = new java.util.ArrayList<>();
+            for (int i = 0; i < 26; i++) {
+                LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
+                txs.add(makeTx((long) i, john, vial, i + 1,
+                        Transaction.TransactionStatus.APPROVED, "wk" + i, weekAt));
+            }
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(txs);
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+
+            assertThat(r.getLines()).hasSize(1);
+            InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
+            // y = x + 1 for x = 0..25 is a perfect line: least squares recovers slope=1, intercept=1 exactly.
+            assertThat(line.getHistoricalQuantity().get(0)).isEqualByComparingTo("1.0");
+            assertThat(line.getHistoricalQuantity().get(25)).isEqualByComparingTo("26.0");
+            assertThat(line.getForecastQuantity().get(0)).isEqualByComparingTo("27.0");
+            assertThat(line.getForecastQuantity().get(7)).isEqualByComparingTo("34.0");
+            // vial price is 4000 flat throughout, so avg unit price is exactly 4000.
+            assertThat(line.getForecastRevenue().get(0)).isEqualTo(27L * 4000);
+            assertThat(r.getTotalForecastRevenue()).isEqualTo(line.getForecastRevenue().stream().mapToLong(Long::longValue).sum());
+        }
+
+        @Test
+        void revenueIsNeverLabelledProfitInTheResponseShape() {
+            // Documents the deliberate decision: no cost/purchase-price data exists, so the DTO
+            // only ever exposes "forecastRevenue" / "totalForecastRevenue" fields, never "profit".
+            Transaction tx = makeTx(1L, john, vial, 2,
+                    Transaction.TransactionStatus.APPROVED, "note", thisMonday.atTime(9, 0));
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of(tx));
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+
+            assertThat(r.getTotalForecastRevenue()).isGreaterThanOrEqualTo(0);
+            assertThat(r.getLines().get(0).getForecastRevenue()).isNotEmpty();
         }
     }
 

@@ -161,6 +161,9 @@ export const getReportDaily = (date) =>
 export const getReportSalesGraph = (period, from, to, medicineStockType) =>
   api.get('/reports/sales-graph', { params: { period, from, to, medicineStockType } });
 
+export const getReportInventoryProjection = (weeksAhead, cities) =>
+  api.get('/reports/inventory-projection', { params: { weeksAhead, cities } });
+
 // ── Telemetry ──────────────────────────────────────────────────────────
 export const postTelemetryEvent = (eventName, page, properties = {}) =>
   api.post('/telemetry', { eventName, page, properties });

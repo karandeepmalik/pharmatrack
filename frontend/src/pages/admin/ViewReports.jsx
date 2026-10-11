@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import SalesGraphReport from './SalesGraphReport';
+import InventoryProjectionReport from './InventoryProjectionReport';
 
 const medOptionLabel = (m) =>
     m.type === 'VIAL'
@@ -15,6 +16,7 @@ const REPORTS = [
     { value: 'today-sales', label: 'Sales Report' },
     { value: 'daily', label: 'Daily Report' },
     { value: 'sales-graph', label: 'Sales Trend Graph' },
+    { value: 'inventory-projection', label: 'Future Inventory Projections' },
 ];
 
 // Default date = today in YYYY-MM-DD
@@ -78,6 +80,8 @@ export default function ViewReports() {
 
     const salesDateValid = salesFrom && salesTo && salesFrom <= salesTo;
     const isSalesGraph = selected === 'sales-graph';
+    const isInventoryProjection = selected === 'inventory-projection';
+    const isSelfRenderedReport = isSalesGraph || isInventoryProjection;
 
     return (
         <div className="page">
@@ -86,7 +90,7 @@ export default function ViewReports() {
                 <Link to="/admin/dashboard" className="btn btn-secondary">← Back</Link>
             </div>
 
-            {error && !isSalesGraph && <div role="alert" className="alert alert-error">{error}</div>}
+            {error && !isSelfRenderedReport && <div role="alert" className="alert alert-error">{error}</div>}
 
             <div className="form-card">
                 <div className="form-group">
@@ -104,8 +108,11 @@ export default function ViewReports() {
                 {/* Sales Trend Graph — renders its own controls inline */}
                 {isSalesGraph && <SalesGraphReport />}
 
+                {/* Future Inventory Projections — renders its own controls inline */}
+                {isInventoryProjection && <InventoryProjectionReport users={users} />}
+
                 {/* Standard text-report controls */}
-                {!isSalesGraph && (
+                {!isSelfRenderedReport && (
                     <>
                         {selected === 'today-sales' && (
                             <div className="form-row">
@@ -204,7 +211,7 @@ export default function ViewReports() {
                 )}
             </div>
 
-            {content && !isSalesGraph && (
+            {content && !isSelfRenderedReport && (
                 <div className="report-section">
                     <div className="report-header">
                         <h2>{REPORTS.find(r => r.value === selected)?.label}</h2>
