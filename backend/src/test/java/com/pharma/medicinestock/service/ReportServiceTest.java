@@ -27,6 +27,7 @@ import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -1165,9 +1166,7 @@ class ReportServiceTest {
             assertThat(r.getLines()).hasSize(1);
             InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
             assertThat(line.getName()).isEqualTo("Shield FX Oral Tablet");
-            assertThat(line.getUnit()).isEqualTo("strips");
-            // native: 3 strips (25mg) + 2 strips (50mg) = 5 strips.
-            assertThat(line.getHistoricalQuantity().get(25)).isEqualByComparingTo("5.0");
+            assertThat(line.getDosageForm()).isEqualTo("TABLET");
             // mg: (3 strips x 10 tablets/strip x 25mg) + (2 strips x 10 tablets/strip x 50mg) = 750 + 1000 = 1750mg.
             assertThat(line.getHistoricalQuantityMg().get(25)).isEqualByComparingTo("1750.0");
         }
@@ -1186,12 +1185,10 @@ class ReportServiceTest {
             assertThat(r.getLines()).hasSize(1);
             InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
             assertThat(line.getName()).isEqualTo("Shield FX Injection Vial");
-            assertThat(line.getUnit()).isEqualTo("vials");
-            // native: a 10ml vial and a 5ml vial both count as "1 vial" — 4 + 2 = 6 vials.
-            assertThat(line.getHistoricalQuantity().get(25)).isEqualByComparingTo("6.0");
-            // mg: (4 vials x 10ml x 20mg/ml) + (2 vials x 5ml x 20mg/ml) = 800 + 200 = 1000mg — this is
-            // exactly why the two series can't be derived from one another via a single factor: the
-            // native count treats both vial sizes as equivalent, the mg total does not.
+            assertThat(line.getDosageForm()).isEqualTo("VIAL");
+            // mg: (4 vials x 10ml x 20mg/ml) + (2 vials x 5ml x 20mg/ml) = 800 + 200 = 1000mg — a 10ml
+            // and a 5ml vial are both "1 vial" but not the same mg, which is exactly why the regression
+            // is fit on this real mg total rather than on a raw, ambiguous native vial count.
             assertThat(line.getHistoricalQuantityMg().get(25)).isEqualByComparingTo("1000.0");
         }
 
@@ -1246,21 +1243,32 @@ class ReportServiceTest {
 
             assertThat(r.getLines()).hasSize(1);
             InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
-            // y = x + 1 for x = 0..25 is a perfect line: least squares recovers slope=1, intercept=1 exactly.
-            assertThat(line.getHistoricalQuantity().get(0)).isEqualByComparingTo("1.0");
-            assertThat(line.getHistoricalQuantity().get(25)).isEqualByComparingTo("26.0");
-            assertThat(line.getForecastQuantity().get(0)).isEqualByComparingTo("27.0");
-            assertThat(line.getForecastQuantity().get(7)).isEqualByComparingTo("34.0");
-            // vial price is 4000 flat throughout, so avg unit price is exactly 4000.
-            assertThat(line.getForecastRevenue().get(0)).isEqualTo(27L * 4000);
-            assertThat(r.getTotalForecastRevenue()).isEqualTo(line.getForecastRevenue().stream().mapToLong(Long::longValue).sum());
-
-            // mg series is an exact 200x (10ml x 20mg/ml) scaling of the native series — also a
-            // perfect line, so least squares recovers it exactly too.
+            // native quantity is x+1 vials for week x; mg = (x+1)*200 (10ml x 20mg/ml) is an exact
+            // scaling, so it's also a perfect line: least squares recovers slope=200, intercept=200.
             assertThat(line.getHistoricalQuantityMg().get(0)).isEqualByComparingTo("200.0");
             assertThat(line.getHistoricalQuantityMg().get(25)).isEqualByComparingTo("5200.0");
             assertThat(line.getForecastQuantityMg().get(0)).isEqualByComparingTo("5400.0");
             assertThat(line.getForecastQuantityMg().get(7)).isEqualByComparingTo("6800.0");
+
+            // Exposed regression coefficients let the frontend compute a stock-out date itself.
+            assertThat(line.getRegressionSlopeMg()).isEqualTo(200.0, within(0.01));
+            assertThat(line.getRegressionInterceptMg()).isEqualTo(200.0, within(0.01));
+
+            // vial price is 4000/vial flat throughout = 4000/200mg = 20 Rs/mg, so forecast revenue at
+            // mg=5400 is 5400*20 = 108000 — same answer as the old native-count basis (27 vials*4000)
+            // would have given, since this scenario only has one spec.
+            assertThat(line.getForecastRevenue().get(0)).isEqualTo(27L * 4000);
+            assertThat(r.getTotalForecastRevenue()).isEqualTo(line.getForecastRevenue().stream().mapToLong(Long::longValue).sum());
+        }
+
+        @Test
+        void forecastStartDateIsTheMondayAfterTheCurrentWeekAndHistoryWeeksIs26() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+
+            assertThat(r.getForecastStartDate()).isEqualTo(thisMonday.plusWeeks(1).toString());
+            assertThat(r.getHistoryWeeks()).isEqualTo(26);
         }
 
         @Test
