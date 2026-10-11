@@ -631,10 +631,12 @@ public class ReportService {
     /**
      * Linear-regression projection of future weekly demand (and the revenue that implies at
      * historical average price — never called "profit": this app has no cost/purchase-price
-     * data, see {@link InventoryProjectionResponse}). Fits one regression per "line" — every
-     * vial spec combines into one Injection Vial line per pharma company, every tablet strength
-     * into one Oral Tablet line — against the last {@link #PROJECTION_HISTORY_WEEKS} weeks of
-     * approved, non-admin-stock sales. The regression is fit on mg only, never on a raw native
+     * data, see {@link InventoryProjectionResponse}). Fits exactly two regressions — "Total
+     * Oral" (every tablet, across every strength and every pharma company) and "Total
+     * Injectable" (every vial, across every spec and every pharma company) — against the last
+     * {@link #PROJECTION_HISTORY_WEEKS} weeks of approved, non-admin-stock sales. Brand/pharma
+     * company is deliberately not a grouping dimension: the business question is "how much oral
+     * vs injectable product do we need," not a per-brand breakdown. The regression is fit on mg only, never on a raw native
      * count: a merged line mixes specs with different native-unit-to-mg ratios (a 10ml and a
      * 5ml vial are both "1 vial" but not the same mg), so there's no single meaningful "count"
      * for the regression to fit against. The frontend derives an equivalent strip/vial count
@@ -747,17 +749,18 @@ public class ReportService {
     }
 
     /**
-     * Groups medicines into forecast "lines" at the dosage-form level — every vial spec combines
-     * into one Injection Vial line per pharma company, every tablet strength into one Oral
-     * Tablet line — since that's the operationally meaningful substitution boundary (tablet
-     * strengths are interchangeable for orders; injections and tablets are not).
+     * Groups medicines into forecast "lines" at the dosage-form level only — every tablet
+     * strength from every pharma company combines into "Total Oral," every vial spec from
+     * every pharma company into "Total Injectable." Brand isn't a substitution boundary here
+     * (tablet strengths are interchangeable for orders; injections and tablets are not), so it
+     * isn't a grouping dimension either — the business question is total oral vs. injectable
+     * demand, not a per-brand split.
      */
     private String projectionLineKey(Medicine m) {
-        String pharma = m.getPharmaCompany().getName();
         return switch (m.getType()) {
-            case TABLET -> pharma + " Oral Tablet";
-            case VIAL -> pharma + " Injection Vial";
-            default -> pharma + " " + specDisplayName(m);
+            case TABLET -> "Total Oral";
+            case VIAL -> "Total Injectable";
+            default -> specDisplayName(m);
         };
     }
 

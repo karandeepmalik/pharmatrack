@@ -1149,13 +1149,15 @@ class ReportServiceTest {
         }
 
         @Test
-        void tabletStrengthsFromTheSamePharmaAreCombinedIntoOneOralTabletLine() {
+        void tabletsFromDifferentStrengthsAndPharmaCompaniesAllCombineIntoOneTotalOralLine() {
             Transaction tabletTx1 = makeTx(1L, john, tablet, 3,
                     Transaction.TransactionStatus.APPROVED, "25mg", thisMonday.atTime(9, 0));
+            PharmaCompany otherPharma = new PharmaCompany();
+            otherPharma.setId(2L); otherPharma.setName("Acme Labs");
             Medicine tablet50 = Medicine.builder()
-                    .id(10L).name("Shield FX Tablet 50 mg (10 Tablets)")
+                    .id(10L).name("Acme Labs Tablet 50 mg (10 Tablets)")
                     .type(Medicine.MedicineType.TABLET).specification(50.0)
-                    .price(8000).pharmaCompany(pharma).build();
+                    .price(8000).pharmaCompany(otherPharma).build();
             Transaction tabletTx2 = makeTx(2L, john, tablet50, 2,
                     Transaction.TransactionStatus.APPROVED, "50mg", thisMonday.atTime(10, 0));
             when(transactionRepository.findApprovedBetween(any(), any(), any()))
@@ -1163,28 +1165,36 @@ class ReportServiceTest {
 
             InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
 
+            // One line total — brand (Shield FX vs Acme Labs) is not a grouping dimension.
             assertThat(r.getLines()).hasSize(1);
             InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
-            assertThat(line.getName()).isEqualTo("Shield FX Oral Tablet");
+            assertThat(line.getName()).isEqualTo("Total Oral");
             assertThat(line.getDosageForm()).isEqualTo("TABLET");
             // mg: (3 strips x 10 tablets/strip x 25mg) + (2 strips x 10 tablets/strip x 50mg) = 750 + 1000 = 1750mg.
             assertThat(line.getHistoricalQuantityMg().get(25)).isEqualByComparingTo("1750.0");
         }
 
         @Test
-        void vialSpecsFromTheSamePharmaAreCombinedIntoOneInjectionVialLine() {
+        void vialsFromDifferentSpecsAndPharmaCompaniesAllCombineIntoOneTotalInjectableLine() {
             Transaction vial10Tx = makeTx(1L, john, vial, 4,
                     Transaction.TransactionStatus.APPROVED, "10ml", thisMonday.atTime(9, 0));
-            Transaction vial5Tx = makeTx(2L, john, vial5, 2,
+            PharmaCompany otherPharma = new PharmaCompany();
+            otherPharma.setId(2L); otherPharma.setName("Acme Labs");
+            Medicine otherVial5 = Medicine.builder()
+                    .id(11L).name("Acme Labs Vial 5 ml")
+                    .type(Medicine.MedicineType.VIAL).specification(5.0).concentrationMgPerMl(20.0)
+                    .price(3000).pharmaCompany(otherPharma).build();
+            Transaction vial5Tx = makeTx(2L, john, otherVial5, 2,
                     Transaction.TransactionStatus.APPROVED, "5ml", thisMonday.atTime(10, 0));
             when(transactionRepository.findApprovedBetween(any(), any(), any()))
                     .thenReturn(List.of(vial10Tx, vial5Tx));
 
             InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
 
+            // One line total — brand (Shield FX vs Acme Labs) is not a grouping dimension.
             assertThat(r.getLines()).hasSize(1);
             InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
-            assertThat(line.getName()).isEqualTo("Shield FX Injection Vial");
+            assertThat(line.getName()).isEqualTo("Total Injectable");
             assertThat(line.getDosageForm()).isEqualTo("VIAL");
             // mg: (4 vials x 10ml x 20mg/ml) + (2 vials x 5ml x 20mg/ml) = 800 + 200 = 1000mg — a 10ml
             // and a 5ml vial are both "1 vial" but not the same mg, which is exactly why the regression
@@ -1223,9 +1233,9 @@ class ReportServiceTest {
             InventoryProjectionResponse overall = reportService.inventoryProjection(8, null);
 
             assertThat(mumbaiOnly.getLines()).extracting(InventoryProjectionResponse.LineProjection::getName)
-                    .containsExactly("Shield FX Injection Vial");
+                    .containsExactly("Total Injectable");
             assertThat(delhiOnly.getLines()).extracting(InventoryProjectionResponse.LineProjection::getName)
-                    .containsExactly("Shield FX Oral Tablet");
+                    .containsExactly("Total Oral");
             assertThat(overall.getLines()).hasSize(2);
         }
 

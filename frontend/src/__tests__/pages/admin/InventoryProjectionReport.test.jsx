@@ -22,7 +22,7 @@ const SAMPLE_DATA = {
     historyWeeks: 26,
     lines: [
         {
-            name: 'Shield FX Injection Vial',
+            name: 'Total Injectable',
             dosageForm: 'VIAL',
             historicalQuantityMg: [1000, 1400],
             forecastQuantityMg: [1600, 1600],
@@ -49,7 +49,7 @@ const SAMPLE_DATA_TABLET = {
     historyWeeks: 26,
     lines: [
         {
-            name: 'Shield FX Oral Tablet',
+            name: 'Total Oral',
             dosageForm: 'TABLET',
             historicalQuantityMg: [500, 500],
             forecastQuantityMg: [3000, 3000],
@@ -140,7 +140,7 @@ describe('InventoryProjectionReport — summary cards', () => {
         api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
         renderPage();
         await waitFor(() => {
-            const cardLabel = screen.getByText(/shield fx injection vial — next/i);
+            const cardLabel = screen.getByText(/total injectable — next/i);
             // 3200mg total / 160mg-per-vial (default 8ml reference) = 20.0 vials.
             expect(cardLabel.parentElement).toHaveTextContent('20.0 vials (8ml)');
         });
@@ -180,7 +180,7 @@ describe('InventoryProjectionReport — unit toggle', () => {
         renderPage();
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /vials \/ strips/i })).toHaveClass('btn-primary');
-            const cardLabel = screen.getByText(/shield fx injection vial — next/i);
+            const cardLabel = screen.getByText(/total injectable — next/i);
             expect(cardLabel.parentElement).toHaveTextContent('20.0 vials (8ml)');
         });
     });
@@ -193,7 +193,7 @@ describe('InventoryProjectionReport — unit toggle', () => {
         await userEvent.click(screen.getByRole('button', { name: /^mg$/i }));
 
         expect(screen.getByRole('button', { name: /^mg$/i })).toHaveClass('btn-primary');
-        const cardLabel = screen.getByText(/shield fx injection vial — next/i);
+        const cardLabel = screen.getByText(/total injectable — next/i);
         expect(cardLabel.parentElement).toHaveTextContent('3200.0 mg');
         // Toggling units is a pure display transform — the already-fetched mg series covers both
         // modes, so no second API call should happen.
@@ -231,7 +231,7 @@ describe('InventoryProjectionReport — injection vial reference', () => {
         await userEvent.click(screen.getByRole('button', { name: '10ml' }));
 
         expect(screen.getByRole('button', { name: '10ml' })).toHaveClass('btn-primary');
-        const cardLabel = screen.getByText(/shield fx injection vial — next/i);
+        const cardLabel = screen.getByText(/total injectable — next/i);
         // 3200mg total / 200mg-per-vial (10ml reference) = 16.0 vials.
         expect(cardLabel.parentElement).toHaveTextContent('16.0 vials (10ml)');
     });
@@ -248,7 +248,7 @@ describe('InventoryProjectionReport — oral tablet reference', () => {
         });
         expect(screen.queryByLabelText(/injection vial reference volume/i)).not.toBeInTheDocument();
 
-        const cardLabel = screen.getByText(/shield fx oral tablet — next/i);
+        const cardLabel = screen.getByText(/total oral — next/i);
         // 6000mg total / 300mg-per-strip (default 30mg reference) = 20.0 strips.
         expect(cardLabel.parentElement).toHaveTextContent('20.0 strips (30mg)');
     });
@@ -261,7 +261,7 @@ describe('InventoryProjectionReport — oral tablet reference', () => {
         await userEvent.click(screen.getByRole('button', { name: '20mg' }));
 
         expect(screen.getByRole('button', { name: '20mg' })).toHaveClass('btn-primary');
-        const cardLabel = screen.getByText(/shield fx oral tablet — next/i);
+        const cardLabel = screen.getByText(/total oral — next/i);
         // 6000mg total / 200mg-per-strip (20mg reference) = 30.0 strips.
         expect(cardLabel.parentElement).toHaveTextContent('30.0 strips (20mg)');
     });
@@ -275,7 +275,7 @@ describe('InventoryProjectionReport — legend', () => {
         renderPage();
         await waitFor(() => {
             expect(screen.getByLabelText(/chart legend/i)).toBeInTheDocument();
-            expect(screen.getByText('Shield FX Injection Vial')).toBeInTheDocument();
+            expect(screen.getByText('Total Injectable')).toBeInTheDocument();
         });
     });
 });
