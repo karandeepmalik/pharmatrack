@@ -7,10 +7,11 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Linear-regression projection of future weekly demand, grouped at the injection-vial vs
- * oral-tablet level (every vial spec combines into one "Injection Vial" line per pharma
- * company, every tablet strength into one "Oral Tablet" line) rather than per exact spec,
- * since the two dosage forms are what's operationally interchangeable/substitutable.
+ * Linear-regression projection of future weekly demand, grouped into exactly two lines —
+ * "Total Oral" (every tablet strength, every pharma company) and "Total Injectable" (every
+ * vial spec, every pharma company) — rather than per brand or per exact spec. Brand isn't a
+ * substitution boundary (tablet strengths are interchangeable for orders; injections and
+ * tablets are not), so it isn't a grouping dimension either.
  *
  * <p>Every line's quantity is always in mg — a merged line mixes specs with different
  * native-unit-to-mg ratios (e.g. a 10ml and a 5ml vial are both "1 vial" but not the same mg),
