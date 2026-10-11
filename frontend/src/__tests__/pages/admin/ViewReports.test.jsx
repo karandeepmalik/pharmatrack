@@ -6,6 +6,7 @@ import ViewReports from '../../../pages/admin/ViewReports';
 import * as api from '../../../api/api';
 
 jest.mock('../../../api/api');
+jest.mock('../../../telemetry', () => ({ trackEvent: jest.fn() }));
 
 const renderPage = () =>
   render(
@@ -418,5 +419,29 @@ describe('ViewReports — copy to clipboard', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /copy to clipboard/i })).toBeInTheDocument()
     );
+  });
+});
+
+// ── Future Inventory Projections wiring ───────────────────────────────────
+
+describe('ViewReports — future inventory projections', () => {
+  test('selecting it renders the self-contained projection controls instead of Generate Report', async () => {
+    api.getReportInventoryProjection.mockResolvedValue({
+      data: {
+        historicalLabels: [], forecastLabels: [], lines: [],
+        totalForecastQuantity: 0, totalForecastRevenue: 0,
+      },
+    });
+    renderPage();
+
+    await userEvent.selectOptions(
+      screen.getByLabelText(/select report/i),
+      'inventory-projection'
+    );
+
+    expect(screen.queryByRole('button', { name: /generate report/i })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^overall$/i })).toBeInTheDocument();
+    });
   });
 });

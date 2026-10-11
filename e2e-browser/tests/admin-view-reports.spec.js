@@ -310,4 +310,57 @@ test.describe('View Reports', () => {
       await expect(page.getByText(/"from" date must be before or equal to "to" date/i)).toBeVisible();
     });
   });
+
+  test.describe('Future Inventory Projections', () => {
+    test.beforeEach(async ({ page }) => {
+      await submitAndApprove(page, 'john', `Playwright Projection Setup ${Date.now()}`);
+      await page.goto('/admin/reports');
+      await page.locator('#report-select').selectOption('inventory-projection');
+    });
+
+    test('shows horizon and city toggle buttons, defaulting to 8 Weeks/Overall', async ({ page }) => {
+      for (const w of ['8 Weeks', '12 Weeks']) {
+        await expect(page.getByRole('button', { name: w })).toBeVisible();
+      }
+      await expect(page.getByRole('button', { name: 'Overall' })).toBeVisible();
+      await expect(page.getByRole('button', { name: '8 Weeks' })).toHaveClass(/btn-primary/);
+      await expect(page.getByRole('button', { name: 'Overall' })).toHaveClass(/btn-primary/);
+    });
+
+    test('loads chart data without the generic report controls', async ({ page }) => {
+      // Future Inventory Projections replaces the generic Generate Report button/date-range
+      // flow entirely — it fetches on its own via its own horizon/city controls.
+      await expect(page.getByRole('button', { name: /generate report/i })).not.toBeVisible();
+      await expect(
+        page.locator('svg[aria-label="Inventory projection line chart"]')
+          .or(page.getByText(/not enough sales history/i))
+      ).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('alert')).not.toBeVisible();
+    });
+
+    test('shows the Projected Stock Needed and Projected Revenue summary cards, never calling it profit', async ({ page }) => {
+      await expect(page.getByText(/projected stock needed/i)).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/projected revenue/i)).toBeVisible();
+      await expect(page.getByText(/revenue, not profit/i)).toBeVisible();
+    });
+
+    test('switching to 12 Weeks updates the active horizon button and reloads the chart', async ({ page }) => {
+      await expect(page.getByText(/projected stock needed/i)).toBeVisible({ timeout: 10000 });
+      await page.getByRole('button', { name: '12 Weeks' }).click();
+      await expect(page.getByRole('button', { name: '12 Weeks' })).toHaveClass(/btn-primary/);
+      await expect(page.getByRole('button', { name: '8 Weeks' })).not.toHaveClass(/btn-primary/);
+    });
+
+    test('selecting a city shows the attribution caveat', async ({ page }) => {
+      await expect(page.getByText(/projected stock needed/i)).toBeVisible({ timeout: 10000 });
+      const cityGroup = page.getByLabel('City filter');
+      const cityButtons = cityGroup.getByRole('button').filter({ hasNotText: 'Overall' });
+      const count = await cityButtons.count();
+      test.skip(count === 0, 'No user locations seeded to filter by in this environment');
+
+      await cityButtons.first().click();
+      await expect(page.getByText(/city attribution is based on/i)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Overall' })).not.toHaveClass(/btn-primary/);
+    });
+  });
 });

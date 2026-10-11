@@ -1,5 +1,6 @@
 package com.pharma.medicinestock.controller;
 
+import com.pharma.medicinestock.dto.InventoryProjectionResponse;
 import com.pharma.medicinestock.dto.ReportResponse;
 import com.pharma.medicinestock.dto.SalesGraphResponse;
 import com.pharma.medicinestock.service.ReportService;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/reports")
@@ -72,5 +74,17 @@ public class ReportController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(value = "medicineStockType", required = false) String medicineStockType) {
         return ResponseEntity.ok(reportService.salesGraph(period, from, to, medicineStockType));
+    }
+
+    /**
+     * @param weeksAhead how many future weeks to project, clamped server-side to [1, 26]
+     * @param cities     optional city filter (submitting user's {@code location}); omitted/empty
+     *                   means "Overall" — every city combined
+     */
+    @GetMapping("/inventory-projection")
+    public ResponseEntity<InventoryProjectionResponse> inventoryProjection(
+            @RequestParam(value = "weeksAhead", required = false) Integer weeksAhead,
+            @RequestParam(value = "cities", required = false) List<String> cities) {
+        return ResponseEntity.ok(reportService.inventoryProjection(weeksAhead, cities));
     }
 }

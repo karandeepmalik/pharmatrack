@@ -14,8 +14,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.pharma.medicinestock.dto.InventoryProjectionResponse;
 import com.pharma.medicinestock.dto.SalesGraphResponse;
+import com.pharma.medicinestock.util.QuantityUtil;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -614,6 +617,147 @@ public class ReportService {
         }
 
         return new SalesGraphResponse(period, dataPoints);
+    }
+
+    /** How many past weeks of history feed the regression and appear on the chart alongside the forecast. */
+    private static final int PROJECTION_HISTORY_WEEKS = 26;
+
+    /**
+     * Linear-regression projection of future weekly stock demand (and the revenue that implies
+     * at historical average price — never called "profit": this app has no cost/purchase-price
+     * data, see {@link InventoryProjectionResponse}). Fits one regression per "line" — tablet
+     * strengths are combined per pharma company since they're interchangeable for orders, vials
+     * stay split per spec — against the last {@link #PROJECTION_HISTORY_WEEKS} weeks of approved,
+     * non-admin-stock sales.
+     *
+     * @param weeksAhead how many future weeks to project, clamped to [1, 26]
+     * @param cities     optional city filter, matched case-insensitively against the submitting
+     *                   user's {@code location}; null/empty means every city ("Overall"). This is
+     *                   a best-effort proxy — real routing sometimes crosses cities (e.g. Bengaluru
+     *                   covering Mumbai), which this attribution can't capture from current data.
+     */
+    @Timed(value = "pharmatrack.report.inventory_projection", description = "Time to build the inventory projection response")
+    @Transactional(readOnly = true)
+    public InventoryProjectionResponse inventoryProjection(Integer weeksAhead, List<String> cities) {
+        int horizon = weeksAhead == null ? 8 : Math.max(1, Math.min(weeksAhead, 26));
+
+        LocalDate thisWeekMonday = todayIST().with(DayOfWeek.MONDAY);
+        LocalDate firstWeekMonday = thisWeekMonday.minusWeeks(PROJECTION_HISTORY_WEEKS - 1);
+        LocalDateTime start = firstWeekMonday.atStartOfDay();
+        LocalDateTime end = todayIST().plusDays(1).atStartOfDay();
+
+        Set<String> cityFilter = (cities == null || cities.isEmpty()) ? Set.of()
+                : cities.stream().map(c -> c.trim().toLowerCase()).filter(c -> !c.isBlank())
+                        .collect(java.util.stream.Collectors.toSet());
+
+        List<Transaction> txList = transactionRepository.findApprovedBetween(
+                Transaction.TransactionStatus.APPROVED, start, end)
+                .stream()
+                .filter(tx -> tx.getMedicineStockType() != MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK)
+                .filter(tx -> cityFilter.isEmpty() || cityFilter.contains(
+                        Optional.ofNullable(tx.getSubmittedBy().getLocation()).orElse("").trim().toLowerCase()))
+                .toList();
+
+        List<String> weekKeys = new ArrayList<>();
+        for (int i = 0; i < PROJECTION_HISTORY_WEEKS; i++) weekKeys.add(firstWeekMonday.plusWeeks(i).toString());
+
+        // lineKey -> weekKey -> quantity; lineKey -> {totalQty, totalRevenue} for the line's avg unit price
+        Map<String, Map<String, BigDecimal>> byLineWeek = new TreeMap<>();
+        Map<String, BigDecimal> lineTotalQty = new TreeMap<>();
+        Map<String, Long> lineTotalRevenue = new TreeMap<>();
+
+        for (Transaction tx : txList) {
+            String line = projectionLineKey(tx.getMedicine());
+            String weekKey = tx.getSubmittedAt().toLocalDate().with(DayOfWeek.MONDAY).toString();
+            int price = tx.getPricePerUnit() != null ? tx.getPricePerUnit() : tx.getMedicine().getPrice();
+            long lineAmount = amount(price, tx.getQuantity());
+
+            byLineWeek.computeIfAbsent(line, k -> new HashMap<>())
+                    .merge(weekKey, tx.getQuantity(), BigDecimal::add);
+            lineTotalQty.merge(line, tx.getQuantity(), BigDecimal::add);
+            lineTotalRevenue.merge(line, lineAmount, Long::sum);
+        }
+
+        List<String> forecastLabels = new ArrayList<>();
+        for (int i = 1; i <= horizon; i++) {
+            forecastLabels.add(thisWeekMonday.plusWeeks(i).format(DateTimeFormatter.ofPattern("d MMM")));
+        }
+        List<String> historicalLabels = weekKeys.stream()
+                .map(k -> LocalDate.parse(k).format(DateTimeFormatter.ofPattern("d MMM")))
+                .toList();
+
+        List<InventoryProjectionResponse.LineProjection> lines = new ArrayList<>();
+        BigDecimal totalForecastQuantity = BigDecimal.ZERO;
+        long totalForecastRevenue = 0;
+
+        for (String line : byLineWeek.keySet()) {
+            Map<String, BigDecimal> weekly = byLineWeek.get(line);
+            List<BigDecimal> historicalQuantity = weekKeys.stream()
+                    .map(k -> weekly.getOrDefault(k, BigDecimal.ZERO))
+                    .toList();
+
+            double[] coeffs = linearRegression(historicalQuantity);
+            double slope = coeffs[0], intercept = coeffs[1];
+
+            BigDecimal totalQty = lineTotalQty.getOrDefault(line, BigDecimal.ZERO);
+            long totalRevenue = lineTotalRevenue.getOrDefault(line, 0L);
+            BigDecimal avgUnitPrice = totalQty.compareTo(BigDecimal.ZERO) > 0
+                    ? BigDecimal.valueOf(totalRevenue).divide(totalQty, 4, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+
+            List<BigDecimal> forecastQuantity = new ArrayList<>();
+            List<Long> forecastRevenue = new ArrayList<>();
+            for (int i = 0; i < horizon; i++) {
+                int x = PROJECTION_HISTORY_WEEKS + i;
+                double predicted = Math.max(intercept + slope * x, 0);
+                BigDecimal qty = QuantityUtil.round(BigDecimal.valueOf(predicted));
+                long revenue = avgUnitPrice.multiply(qty).setScale(0, RoundingMode.HALF_UP).longValue();
+                forecastQuantity.add(qty);
+                forecastRevenue.add(revenue);
+                totalForecastQuantity = totalForecastQuantity.add(qty);
+                totalForecastRevenue += revenue;
+            }
+
+            lines.add(new InventoryProjectionResponse.LineProjection(
+                    line, historicalQuantity, forecastQuantity, forecastRevenue));
+        }
+
+        return new InventoryProjectionResponse(
+                historicalLabels, forecastLabels, lines, totalForecastQuantity, totalForecastRevenue);
+    }
+
+    /**
+     * Groups medicines into forecast "lines": tablet strengths (12/20/30/50 mg etc.) are combined
+     * per pharma company since they're interchangeable for orders and forecasting each strength
+     * separately would create false shortage signals a substitution would actually cover. Vials
+     * (and any other type) stay split per spec, matching the existing sales-graph breakdown.
+     */
+    private String projectionLineKey(Medicine m) {
+        String pharma = m.getPharmaCompany().getName();
+        if (m.getType() == Medicine.MedicineType.TABLET) {
+            return pharma + " Tablet (all strengths)";
+        }
+        return pharma + " " + specDisplayName(m);
+    }
+
+    /** Least-squares fit of y = intercept + slope*x over x = 0..n-1. Returns {slope, intercept}. */
+    private static double[] linearRegression(List<BigDecimal> ySeries) {
+        int n = ySeries.size();
+        if (n == 0) return new double[]{0.0, 0.0};
+        if (n == 1) return new double[]{0.0, ySeries.get(0).doubleValue()};
+
+        double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+        for (int x = 0; x < n; x++) {
+            double y = ySeries.get(x).doubleValue();
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumXX += (double) x * x;
+        }
+        double denominator = n * sumXX - sumX * sumX;
+        double slope = denominator == 0 ? 0.0 : (n * sumXY - sumX * sumY) / denominator;
+        double intercept = (sumY - slope * sumX) / n;
+        return new double[]{slope, intercept};
     }
 
     /** Mutable per-(period,spec) accumulator for salesGraph() — quantity is decimal, value (money) stays whole. */
