@@ -7,6 +7,11 @@ const WEEKS_AHEAD_OPTIONS = [
     { value: 12, label: '12 Weeks' },
 ];
 
+const UNIT_OPTIONS = [
+    { value: 'native', label: 'Vials / Strips' },
+    { value: 'mg', label: 'mg' },
+];
+
 const LINE_COLORS = [
     '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
     '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#6366f1',
@@ -35,16 +40,25 @@ function fmtY(v) {
     return String(v);
 }
 
-function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColorMap }) {
+// Which field pair a line's series live in for the currently selected unit mode.
+function seriesFor(line, unit) {
+    return unit === 'mg'
+        ? { historical: line.historicalQuantityMg, forecast: line.forecastQuantityMg, label: 'mg' }
+        : { historical: line.historicalQuantity, forecast: line.forecastQuantity, label: line.unit };
+}
+
+function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColorMap, unit }) {
     const [tooltip, setTooltip] = useState(null);
 
     const labels = [...historicalLabels, ...forecastLabels];
     const n = labels.length;
     const historyLen = historicalLabels.length;
 
-    const allValues = lines.flatMap(l => [
-        ...l.historicalQuantity.map(Number),
-        ...l.forecastQuantity.map(Number),
+    const seriesByLine = lines.map(l => ({ line: l, ...seriesFor(l, unit) }));
+
+    const allValues = seriesByLine.flatMap(s => [
+        ...s.historical.map(Number),
+        ...s.forecast.map(Number),
     ]);
     const maxVal = Math.max(...allValues, 0);
     const yMax = niceMax(maxVal);
@@ -92,7 +106,7 @@ function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColo
                 fill="#6b7280"
                 transform={`rotate(-90, 14, ${PAD.top + CH / 2})`}
             >
-                Units / Week
+                {unit === 'mg' ? 'mg / Week' : 'Units / Week'}
             </text>
 
             {historyLen > 0 && historyLen < n && (
@@ -114,10 +128,10 @@ function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColo
                 );
             })}
 
-            {lines.map((line) => {
+            {seriesByLine.map(({ line, historical, forecast, label }) => {
                 const color = lineColorMap[line.name] ?? '#9ca3af';
-                const histPts = line.historicalQuantity.map((v, i) => [xAt(i), yAt(Number(v))]);
-                const futPts = line.forecastQuantity.map((v, i) => [xAt(historyLen + i), yAt(Number(v))]);
+                const histPts = historical.map((v, i) => [xAt(i), yAt(Number(v))]);
+                const futPts = forecast.map((v, i) => [xAt(historyLen + i), yAt(Number(v))]);
                 const bridge = histPts.length > 0 ? [histPts[histPts.length - 1], ...futPts] : futPts;
                 const toPoints = (pts) => pts.map(p => p.join(',')).join(' ');
 
@@ -134,7 +148,7 @@ function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColo
                             <circle
                                 key={`h${i}`} cx={x} cy={y} r={3} fill={color}
                                 onMouseEnter={() => setTooltip({
-                                    x, y, label: labels[i], value: line.historicalQuantity[i],
+                                    x, y, label: labels[i], value: historical[i], unitLabel: label,
                                     name: line.name, isForecast: false,
                                 })}
                                 onMouseLeave={() => setTooltip(null)}
@@ -145,7 +159,7 @@ function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColo
                             <circle
                                 key={`f${i}`} cx={x} cy={y} r={3} fill="white" stroke={color} strokeWidth={2}
                                 onMouseEnter={() => setTooltip({
-                                    x, y, label: labels[historyLen + i], value: line.forecastQuantity[i],
+                                    x, y, label: labels[historyLen + i], value: forecast[i], unitLabel: label,
                                     name: line.name, isForecast: true,
                                 })}
                                 onMouseLeave={() => setTooltip(null)}
@@ -167,7 +181,7 @@ function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColo
                             {tooltip.label}{tooltip.isForecast ? ' (forecast)' : ''}
                         </text>
                         <text x={tx + 9} y={ty + 34} fontSize={10} fill="#374151">
-                            {tooltip.name}: {Number(tooltip.value).toFixed(1)} units
+                            {tooltip.name}: {Number(tooltip.value).toFixed(1)} {tooltip.unitLabel}
                         </text>
                     </g>
                 );
@@ -178,6 +192,7 @@ function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColo
 
 export default function InventoryProjectionReport({ users }) {
     const [weeksAhead, setWeeksAhead] = useState(8);
+    const [unit, setUnit] = useState('native');
     const [selectedCities, setSelectedCities] = useState([]);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -216,6 +231,11 @@ export default function InventoryProjectionReport({ users }) {
         trackEvent('projection_horizon_changed', PAGE, { weeksAhead: value });
     }, []);
 
+    const handleUnitChange = useCallback((value) => {
+        setUnit(value);
+        trackEvent('projection_unit_changed', PAGE, { unit: value });
+    }, []);
+
     const toggleCity = useCallback((city) => {
         setSelectedCities(prev => {
             const next = prev.includes(city) ? prev.filter(c => c !== city) : [...prev, city];
@@ -246,6 +266,19 @@ export default function InventoryProjectionReport({ users }) {
                             onClick={() => handleWeeksAheadChange(w.value)}
                         >
                             {w.label}
+                        </button>
+                    ))}
+                </div>
+                <span style={{ fontSize: '13px', color: '#6b7280', fontWeight: 500, marginLeft: '12px' }}>Unit:</span>
+                <div className="btn-group" aria-label="Quantity unit">
+                    {UNIT_OPTIONS.map(u => (
+                        <button
+                            key={u.value}
+                            type="button"
+                            className={`btn btn-sm ${unit === u.value ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => handleUnitChange(u.value)}
+                        >
+                            {u.label}
                         </button>
                     ))}
                 </div>
@@ -293,25 +326,37 @@ export default function InventoryProjectionReport({ users }) {
 
             {data && !loading && data.lines.length > 0 && (
                 <>
-                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                        <div style={{ background: '#eff6ff', borderRadius: '8px', padding: '12px 20px', minWidth: '180px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 600, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Projected Stock Needed (next {weeksAhead}w)
-                            </div>
-                            <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e40af', marginTop: '2px' }}>
-                                {Number(data.totalForecastQuantity).toFixed(1)} units
-                            </div>
-                        </div>
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '8px' }}>
                         <div style={{ background: '#f0fdf4', borderRadius: '8px', padding: '12px 20px', minWidth: '180px' }}>
                             <div style={{ fontSize: '11px', fontWeight: 600, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Projected Revenue (next {weeksAhead}w)
+                                Total Projected Revenue (next {weeksAhead}w)
                             </div>
                             <div style={{ fontSize: '24px', fontWeight: 700, color: '#15803d', marginTop: '2px' }}>
                                 Rs {data.totalForecastRevenue.toLocaleString()}
                             </div>
                         </div>
+                        {data.lines.map(line => {
+                            const { forecast, label } = seriesFor(line, unit);
+                            const totalQty = forecast.reduce((s, v) => s + Number(v), 0);
+                            return (
+                                <div
+                                    key={line.name}
+                                    style={{
+                                        background: '#eff6ff', borderRadius: '8px', padding: '12px 20px', minWidth: '180px',
+                                        borderLeft: `4px solid ${lineColorMap[line.name]}`,
+                                    }}
+                                >
+                                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        {line.name} — Next {weeksAhead}w
+                                    </div>
+                                    <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e40af', marginTop: '2px' }}>
+                                        {totalQty.toFixed(1)} {label}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
-                    <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '-8px', marginBottom: '16px' }}>
+                    <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '0', marginBottom: '16px' }}>
                         Revenue, not profit — this app doesn't track medicine cost/purchase price, so this is
                         projected sales value (price × projected quantity) at each line's historical average price.
                     </p>
@@ -322,6 +367,7 @@ export default function InventoryProjectionReport({ users }) {
                             forecastLabels={data.forecastLabels}
                             lines={data.lines}
                             lineColorMap={lineColorMap}
+                            unit={unit}
                         />
                         <div style={{
                             display: 'flex', flexWrap: 'wrap', gap: '12px 20px', justifyContent: 'center',

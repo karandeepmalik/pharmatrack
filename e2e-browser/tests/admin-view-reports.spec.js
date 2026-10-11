@@ -338,21 +338,32 @@ test.describe('View Reports', () => {
       await expect(page.getByRole('alert')).not.toBeVisible();
     });
 
-    test('shows the Projected Stock Needed and Projected Revenue summary cards, never calling it profit', async ({ page }) => {
-      await expect(page.getByText(/projected stock needed/i)).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText(/projected revenue/i)).toBeVisible();
+    test('shows the Total Projected Revenue card and per-line quantity cards, never calling it profit', async ({ page }) => {
+      await expect(page.getByText(/total projected revenue/i)).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/— next \d+w/i).first()).toBeVisible();
       await expect(page.getByText(/revenue, not profit/i)).toBeVisible();
     });
 
+    test('switching the unit toggle to mg updates the per-line quantity without refetching', async ({ page }) => {
+      await expect(page.getByText(/total projected revenue/i)).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('button', { name: /vials \/ strips/i })).toHaveClass(/btn-primary/);
+
+      await page.getByRole('button', { name: /^mg$/i }).click();
+
+      await expect(page.getByRole('button', { name: /^mg$/i })).toHaveClass(/btn-primary/);
+      const card = page.getByText(/— next \d+w/i).first().locator('xpath=..');
+      await expect(card).toContainText('mg');
+    });
+
     test('switching to 12 Weeks updates the active horizon button and reloads the chart', async ({ page }) => {
-      await expect(page.getByText(/projected stock needed/i)).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/total projected revenue/i)).toBeVisible({ timeout: 10000 });
       await page.getByRole('button', { name: '12 Weeks' }).click();
       await expect(page.getByRole('button', { name: '12 Weeks' })).toHaveClass(/btn-primary/);
       await expect(page.getByRole('button', { name: '8 Weeks' })).not.toHaveClass(/btn-primary/);
     });
 
     test('selecting a city shows the attribution caveat', async ({ page }) => {
-      await expect(page.getByText(/projected stock needed/i)).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/total projected revenue/i)).toBeVisible({ timeout: 10000 });
       const cityGroup = page.getByLabel('City filter');
       const cityButtons = cityGroup.getByRole('button').filter({ hasNotText: 'Overall' });
       const count = await cityButtons.count();

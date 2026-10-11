@@ -429,7 +429,7 @@ describe('ViewReports — future inventory projections', () => {
     api.getReportInventoryProjection.mockResolvedValue({
       data: {
         historicalLabels: [], forecastLabels: [], lines: [],
-        totalForecastQuantity: 0, totalForecastRevenue: 0,
+        totalForecastRevenue: 0,
       },
     });
     renderPage();

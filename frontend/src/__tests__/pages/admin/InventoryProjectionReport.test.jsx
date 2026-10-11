@@ -18,13 +18,16 @@ const SAMPLE_DATA = {
     forecastLabels: ['15 Jan', '22 Jan'],
     lines: [
         {
-            name: 'Shield FX Vial 10 ml',
+            name: 'Shield FX Injection Vial',
+            unit: 'vials',
             historicalQuantity: [5, 7],
             forecastQuantity: [8, 9],
+            historicalQuantityMg: [1000, 1400],
+            forecastQuantityMg: [1600, 1800],
             forecastRevenue: [32000, 36000],
+            totalForecastRevenue: 68000,
         },
     ],
-    totalForecastQuantity: 17,
     totalForecastRevenue: 68000,
 };
 
@@ -103,16 +106,19 @@ describe('InventoryProjectionReport — data fetching', () => {
 // ── Summary cards ───────────────────────────────────────────────────────────
 
 describe('InventoryProjectionReport — summary cards', () => {
-    test('shows Projected Stock Needed card', async () => {
+    test('shows a per-line card with the line name and total projected quantity', async () => {
         api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
         renderPage();
-        await waitFor(() => expect(screen.getByText(/projected stock needed/i)).toBeInTheDocument());
+        await waitFor(() => {
+            const cardLabel = screen.getByText(/shield fx injection vial — next/i);
+            expect(cardLabel.parentElement).toHaveTextContent('17.0 vials');
+        });
     });
 
-    test('shows Projected Revenue card, never titled "Profit"', async () => {
+    test('shows Total Projected Revenue card, never titled "Profit"', async () => {
         api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
         renderPage();
-        await waitFor(() => expect(screen.getByText(/projected revenue/i)).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByText(/total projected revenue/i)).toBeInTheDocument());
         // The caveat note legitimately says "...not profit..." — only a standalone "Profit" title/label is disallowed.
         expect(screen.queryByText(/^profit$/i)).not.toBeInTheDocument();
     });
@@ -129,11 +135,38 @@ describe('InventoryProjectionReport — summary cards', () => {
         api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
         renderPage();
         await waitFor(() => {
-            const qtyLabel = screen.getByText(/projected stock needed/i);
-            expect(qtyLabel.parentElement).toHaveTextContent('17.0');
-            const revLabel = screen.getByText(/projected revenue/i);
+            const revLabel = screen.getByText(/total projected revenue/i);
             expect(revLabel.parentElement).toHaveTextContent('68,000');
         });
+    });
+});
+
+// ── Unit toggle ─────────────────────────────────────────────────────────────
+
+describe('InventoryProjectionReport — unit toggle', () => {
+    test('defaults to Vials / Strips and shows native quantities', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /vials \/ strips/i })).toHaveClass('btn-primary');
+            const cardLabel = screen.getByText(/shield fx injection vial — next/i);
+            expect(cardLabel.parentElement).toHaveTextContent('17.0 vials');
+        });
+    });
+
+    test('switching to mg shows the mg-equivalent total without refetching', async () => {
+        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
+        renderPage();
+        await waitFor(() => expect(api.getReportInventoryProjection).toHaveBeenCalledTimes(1));
+
+        await userEvent.click(screen.getByRole('button', { name: /^mg$/i }));
+
+        expect(screen.getByRole('button', { name: /^mg$/i })).toHaveClass('btn-primary');
+        const cardLabel = screen.getByText(/shield fx injection vial — next/i);
+        expect(cardLabel.parentElement).toHaveTextContent('3400.0 mg');
+        // Toggling units is a pure display transform — the already-fetched response has both
+        // unit series, so no second API call should happen.
+        expect(api.getReportInventoryProjection).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -145,7 +178,7 @@ describe('InventoryProjectionReport — legend', () => {
         renderPage();
         await waitFor(() => {
             expect(screen.getByLabelText(/chart legend/i)).toBeInTheDocument();
-            expect(screen.getByText('Shield FX Vial 10 ml')).toBeInTheDocument();
+            expect(screen.getByText('Shield FX Injection Vial')).toBeInTheDocument();
         });
     });
 });
