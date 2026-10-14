@@ -34,12 +34,6 @@ const SAMPLE_DATA = {
     totalForecastRevenue: 68000,
 };
 
-// Demand already at/below zero by the forecast start and declining — never depletes any stock.
-const SAMPLE_DATA_NEVER_DEPLETES = {
-    ...SAMPLE_DATA,
-    lines: [{ ...SAMPLE_DATA.lines[0], regressionSlopeMg: -1, regressionInterceptMg: 0 }],
-};
-
 // Tablet line: forecastQuantityMg totals 6000mg, which divides cleanly at all three reference
 // strengths: 6000/200 (20mg) = 30.0, 6000/300 (30mg) = 20.0, 6000/500 (50mg) = 12.0 strips.
 const SAMPLE_DATA_TABLET = {
@@ -347,87 +341,5 @@ describe('InventoryProjectionReport — city filtering', () => {
             expect(api.getReportInventoryProjection).toHaveBeenLastCalledWith(8, undefined);
         });
         expect(screen.queryByText(/city attribution is based on/i)).not.toBeInTheDocument();
-    });
-});
-
-// ── Stock-out date projection ────────────────────────────────────────────────
-
-describe('InventoryProjectionReport — stock-out date projection', () => {
-    test('shows no stock-out message until a stock value is entered', async () => {
-        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
-        renderPage();
-        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
-
-        expect(screen.queryByText(/projected to run out/i)).not.toBeInTheDocument();
-        expect(screen.queryByText(/not projected to run out/i)).not.toBeInTheDocument();
-    });
-
-    test('entering a stock value (in the default 8ml-equivalent vials) computes the stock-out date', async () => {
-        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
-        renderPage();
-        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
-
-        // 8 vials x 160mg/vial (8ml ref) = 1280mg, at a flat 20mg/day (140mg/week) rate:
-        // ceil(1280/20) = 64 days from the 5 Jan 2026 anchor -> index 63 -> 9 Mar 2026.
-        await userEvent.type(screen.getByLabelText(/current stock/i), '8');
-
-        await waitFor(() => {
-            expect(screen.getByText(/projected to run out around 9 mar 2026/i)).toBeInTheDocument();
-        });
-    });
-
-    test('a declining-to-zero trend reports it will never run out', async () => {
-        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA_NEVER_DEPLETES));
-        renderPage();
-        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
-
-        await userEvent.type(screen.getByLabelText(/current stock/i), '8');
-
-        await waitFor(() => {
-            expect(screen.getByText(/not projected to run out within the next 10 years/i)).toBeInTheDocument();
-        });
-    });
-
-    test('entering zero or a negative value shows no stock-out message', async () => {
-        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
-        renderPage();
-        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
-
-        await userEvent.type(screen.getByLabelText(/current stock/i), '0');
-
-        expect(screen.queryByText(/projected to run out/i)).not.toBeInTheDocument();
-        expect(screen.queryByText(/not projected to run out/i)).not.toBeInTheDocument();
-    });
-
-    test('switching the unit toggle clears any entered stock value', async () => {
-        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
-        renderPage();
-        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
-
-        await userEvent.type(screen.getByLabelText(/current stock/i), '8');
-        await waitFor(() => {
-            expect(screen.getByText(/projected to run out around/i)).toBeInTheDocument();
-        });
-
-        await userEvent.click(screen.getByRole('button', { name: /^mg$/i }));
-
-        expect(screen.getByLabelText(/current stock/i)).toHaveValue(null);
-        expect(screen.queryByText(/projected to run out/i)).not.toBeInTheDocument();
-    });
-
-    test('switching the reference spec clears any entered stock value', async () => {
-        api.getReportInventoryProjection.mockResolvedValue(mkResp(SAMPLE_DATA));
-        renderPage();
-        await waitFor(() => expect(screen.getByLabelText(/current stock/i)).toBeInTheDocument());
-
-        await userEvent.type(screen.getByLabelText(/current stock/i), '8');
-        await waitFor(() => {
-            expect(screen.getByText(/projected to run out around/i)).toBeInTheDocument();
-        });
-
-        await userEvent.click(screen.getByRole('button', { name: '10ml' }));
-
-        expect(screen.getByLabelText(/current stock/i)).toHaveValue(null);
-        expect(screen.queryByText(/projected to run out/i)).not.toBeInTheDocument();
     });
 });

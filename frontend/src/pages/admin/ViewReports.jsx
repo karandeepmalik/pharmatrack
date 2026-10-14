@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import SalesGraphReport from './SalesGraphReport';
 import InventoryProjectionReport from './InventoryProjectionReport';
+import StockRunwayReport from './StockRunwayReport';
 
 const medOptionLabel = (m) =>
     m.type === 'VIAL'
@@ -17,6 +18,7 @@ const REPORTS = [
     { value: 'daily', label: 'Daily Report' },
     { value: 'sales-graph', label: 'Sales Trend Graph' },
     { value: 'inventory-projection', label: 'Future Inventory Projections' },
+    { value: 'stock-runway', label: 'Stock Runway (Till When Will Current Stock Last)' },
 ];
 
 // Default date = today in YYYY-MM-DD
@@ -81,7 +83,8 @@ export default function ViewReports() {
     const salesDateValid = salesFrom && salesTo && salesFrom <= salesTo;
     const isSalesGraph = selected === 'sales-graph';
     const isInventoryProjection = selected === 'inventory-projection';
-    const isSelfRenderedReport = isSalesGraph || isInventoryProjection;
+    const isStockRunway = selected === 'stock-runway';
+    const isSelfRenderedReport = isSalesGraph || isInventoryProjection || isStockRunway;
 
     return (
         <div className="page">
@@ -110,6 +113,9 @@ export default function ViewReports() {
 
                 {/* Future Inventory Projections — renders its own controls inline */}
                 {isInventoryProjection && <InventoryProjectionReport users={users} />}
+
+                {/* Stock Runway — renders its own controls inline */}
+                {isStockRunway && <StockRunwayReport users={users} />}
 
                 {/* Standard text-report controls */}
                 {!isSelfRenderedReport && (

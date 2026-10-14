@@ -77,39 +77,6 @@ function seriesFor(line, unit, tabletRefMg, vialRefMl) {
     };
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function formatDate(date) {
-    return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
-}
-
-// How far ahead to simulate before giving up and reporting "not projected to run out".
-const STOCKOUT_CAP_DAYS = 3650; // 10 years
-
-/**
- * Walks the fitted mg regression forward day by day (the weekly rate at continuous week-index
- * `historyWeeks + daysElapsed/7`, floored at 0 same as the server-side forecast) until
- * cumulative consumption reaches `currentStockMg`, returning that calendar date — or null if
- * the model doesn't deplete it within STOCKOUT_CAP_DAYS (e.g. a declining trend that floors at
- * zero demand before the stock does, so it would never run out under this projection).
- */
-function computeStockOutDate(forecastStartDate, slopeMg, interceptMg, historyWeeks, currentStockMg) {
-    if (!(currentStockMg > 0)) return null;
-    const anchor = new Date(forecastStartDate + 'T00:00:00');
-    let cumulative = 0;
-    for (let d = 0; d < STOCKOUT_CAP_DAYS; d++) {
-        const weekIndex = historyWeeks + d / 7;
-        const weeklyRate = Math.max(interceptMg + slopeMg * weekIndex, 0);
-        cumulative += weeklyRate / 7;
-        if (cumulative >= currentStockMg) {
-            const date = new Date(anchor);
-            date.setDate(date.getDate() + d);
-            return date;
-        }
-    }
-    return null;
-}
-
 function ProjectionLineChart({ historicalLabels, forecastLabels, lines, lineColorMap, unit, tabletRefMg, vialRefMl }) {
     const [tooltip, setTooltip] = useState(null);
 
@@ -259,7 +226,6 @@ export default function InventoryProjectionReport({ users }) {
     const [tabletRefMg, setTabletRefMg] = useState(DEFAULT_TABLET_REF_MG);
     const [vialRefMl, setVialRefMl] = useState(DEFAULT_VIAL_REF_ML);
     const [selectedCities, setSelectedCities] = useState([]);
-    const [stockInputs, setStockInputs] = useState({});
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -297,29 +263,19 @@ export default function InventoryProjectionReport({ users }) {
         trackEvent('projection_horizon_changed', PAGE, { weeksAhead: value });
     }, []);
 
-    // A number typed under the old unit/reference spec doesn't mean anything under a new one
-    // (e.g. "50" could mean 50 strips of 30mg or 50 strips of 50mg) — clear rather than
-    // silently reinterpreting it.
     const handleUnitChange = useCallback((value) => {
         setUnit(value);
-        setStockInputs({});
         trackEvent('projection_unit_changed', PAGE, { unit: value });
     }, []);
 
     const handleTabletRefChange = useCallback((value) => {
         setTabletRefMg(value);
-        setStockInputs({});
         trackEvent('projection_tablet_ref_changed', PAGE, { tabletRefMg: value });
     }, []);
 
     const handleVialRefChange = useCallback((value) => {
         setVialRefMl(value);
-        setStockInputs({});
         trackEvent('projection_vial_ref_changed', PAGE, { vialRefMl: value });
-    }, []);
-
-    const handleStockInputChange = useCallback((lineName, value) => {
-        setStockInputs(prev => ({ ...prev, [lineName]: value }));
     }, []);
 
     const toggleCity = useCallback((city) => {
@@ -466,14 +422,6 @@ export default function InventoryProjectionReport({ users }) {
                         {data.lines.map(line => {
                             const { forecast, label } = seriesFor(line, unit, tabletRefMg, vialRefMl);
                             const totalQty = forecast.reduce((s, v) => s + Number(v), 0);
-                            const perUnit = mgPerUnit(line.dosageForm, tabletRefMg, vialRefMl);
-                            const rawStock = stockInputs[line.name];
-                            const stockNum = rawStock === undefined || rawStock === '' ? null : Number(rawStock);
-                            const hasValidStock = stockNum !== null && !isNaN(stockNum) && stockNum > 0;
-                            const stockMg = hasValidStock ? stockNum * (unit === 'mg' ? 1 : perUnit) : null;
-                            const stockOutDate = hasValidStock
-                                ? computeStockOutDate(data.forecastStartDate, line.regressionSlopeMg, line.regressionInterceptMg, data.historyWeeks, stockMg)
-                                : null;
                             return (
                                 <div
                                     key={line.name}
@@ -487,31 +435,6 @@ export default function InventoryProjectionReport({ users }) {
                                     </div>
                                     <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e40af', marginTop: '2px' }}>
                                         {totalQty.toFixed(1)} {label}
-                                    </div>
-                                    <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #dbeafe' }}>
-                                        <label
-                                            htmlFor={`stock-input-${line.name}`}
-                                            style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}
-                                        >
-                                            Current stock ({label})
-                                        </label>
-                                        <input
-                                            id={`stock-input-${line.name}`}
-                                            type="number"
-                                            min="0"
-                                            step="0.1"
-                                            value={rawStock ?? ''}
-                                            onChange={e => handleStockInputChange(line.name, e.target.value)}
-                                            placeholder="e.g. 50"
-                                            style={{ width: '110px', fontSize: '13px', padding: '4px 6px' }}
-                                        />
-                                        {hasValidStock && (
-                                            <p style={{ fontSize: '12px', marginTop: '6px', color: stockOutDate ? '#b45309' : '#6b7280' }}>
-                                                {stockOutDate
-                                                    ? `Projected to run out around ${formatDate(stockOutDate)}`
-                                                    : 'Not projected to run out within the next 10 years at this trend'}
-                                            </p>
-                                        )}
                                     </div>
                                 </div>
                             );

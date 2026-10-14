@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.pharma.medicinestock.dto.InventoryProjectionResponse;
 import com.pharma.medicinestock.dto.SalesGraphResponse;
+import com.pharma.medicinestock.dto.StockRunwayResponse;
 import com.pharma.medicinestock.util.QuantityUtil;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -464,7 +465,6 @@ public class ReportService {
 
         StringBuilder sb = new StringBuilder();
         sb.append("DAILY REPORT - ").append(reportDate.format(DATE_FMT)).append("\n");
-        sb.append("Generated: ").append(nowIST()).append("\n");
         sb.append("=".repeat(40)).append("\n\n");
 
         // ── REGULAR MEDICINE STOCK section ────────────────────────────
@@ -783,6 +783,127 @@ public class ReportService {
             return nativeQty.multiply(BigDecimal.valueOf(mgPerStrip));
         }
         return nativeQty.multiply(BigDecimal.valueOf(m.getSpecification()));
+    }
+
+    /** How far ahead a stock-out simulation runs before giving up and reporting "never runs out". */
+    private static final int RUNWAY_CAP_DAYS = 3650; // 10 years
+
+    /** How many days a never-depletes chart shows before being cut off, purely for a readable chart. */
+    private static final int RUNWAY_NEVER_DEPLETES_CHART_DAYS = 365;
+
+    /** Upper bound on points returned per line's chart series — downsampled evenly either way. */
+    private static final int RUNWAY_CHART_POINTS = 40;
+
+    /**
+     * "Given I currently have N left, when does it run out" — for a single city (or every city
+     * combined), against the same Total Oral / Total Injectable mg-regressions
+     * {@link #inventoryProjection} fits. A dosage form the admin left blank is simply absent
+     * from the response; one with no sales history for the selection gets
+     * {@code insufficientData=true} rather than a silently-implied zero-consumption trend.
+     *
+     * @param city       optional single-city filter (same {@code location} matching as
+     *                   {@link #inventoryProjection}); null/blank means every city combined
+     * @param oralStock  current oral stock on hand, in {@code oralUnit}; null/≤0 omits oral entirely
+     * @param oralUnit   {@code "MG"} or {@code "STRIPS"} (default STRIPS) — which unit {@code oralStock} is in
+     * @param oralRefMg  reference tablet strength in mg (20/30/50, default 30) used to convert
+     *                   strips to mg; irrelevant when {@code oralUnit} is MG
+     * @param vialStock  current vial count on hand; null/≤0 omits injectable entirely
+     * @param vialRefMl  reference vial volume in ml (8/10, default 8) used to convert the vial
+     *                   count to mg at the fixed 20mg/ml concentration
+     */
+    @Timed(value = "pharmatrack.report.stock_runway", description = "Time to build the stock runway response")
+    @Transactional(readOnly = true)
+    public StockRunwayResponse stockRunway(String city, BigDecimal oralStock, String oralUnit, Integer oralRefMg,
+                                            BigDecimal vialStock, Integer vialRefMl) {
+        List<String> cityFilter = (city == null || city.isBlank()) ? null : List.of(city);
+        InventoryProjectionResponse projection = inventoryProjection(1, cityFilter);
+
+        InventoryProjectionResponse.LineProjection oralLine = null;
+        InventoryProjectionResponse.LineProjection vialLine = null;
+        for (InventoryProjectionResponse.LineProjection line : projection.getLines()) {
+            if ("TABLET".equals(line.getDosageForm())) oralLine = line;
+            else if ("VIAL".equals(line.getDosageForm())) vialLine = line;
+        }
+
+        LocalDate forecastStart = LocalDate.parse(projection.getForecastStartDate());
+        LocalDate thisWeekMonday = forecastStart.minusWeeks(1);
+        LocalDate today = todayIST();
+        double weekIndexToday = (projection.getHistoryWeeks() - 1)
+                + java.time.temporal.ChronoUnit.DAYS.between(thisWeekMonday, today) / 7.0;
+
+        List<StockRunwayResponse.RunwayLine> lines = new ArrayList<>();
+
+        if (oralStock != null && oralStock.compareTo(BigDecimal.ZERO) > 0) {
+            int refMg = oralRefMg != null ? oralRefMg : 30;
+            boolean isMg = "MG".equalsIgnoreCase(oralUnit);
+            double mgPerUnit = isMg ? 1.0 : refMg * TABLETS_PER_STRIP;
+            String unitLabel = isMg ? "mg" : "strips (" + refMg + "mg)";
+            double slope = oralLine != null ? oralLine.getRegressionSlopeMg() : 0;
+            double intercept = oralLine != null ? oralLine.getRegressionInterceptMg() : 0;
+            lines.add(simulateRunway("Total Oral", unitLabel, oralStock, mgPerUnit,
+                    slope, intercept, today, weekIndexToday, oralLine == null));
+        }
+
+        if (vialStock != null && vialStock.compareTo(BigDecimal.ZERO) > 0) {
+            int refMl = vialRefMl != null ? vialRefMl : 8;
+            double mgPerUnit = refMl * DEFAULT_VIAL_CONCENTRATION_MG_PER_ML;
+            String unitLabel = "vials (" + refMl + "ml)";
+            double slope = vialLine != null ? vialLine.getRegressionSlopeMg() : 0;
+            double intercept = vialLine != null ? vialLine.getRegressionInterceptMg() : 0;
+            lines.add(simulateRunway("Total Injectable", unitLabel, vialStock, mgPerUnit,
+                    slope, intercept, today, weekIndexToday, vialLine == null));
+        }
+
+        return new StockRunwayResponse(lines);
+    }
+
+    /**
+     * Simulates day-by-day depletion of {@code currentStockInUnit} against the weekly mg rate
+     * {@code max(interceptMg + slopeMg * weekIndex, 0)} (the same floored linear model
+     * {@link #inventoryProjection} forecasts with), where {@code weekIndex} continues forward
+     * from {@code weekIndexToday} by {@code daysElapsed/7}. Finds the exact stock-out date (if
+     * any) within {@link #RUNWAY_CAP_DAYS}, then builds a downsampled chart series covering
+     * either the real depletion or a {@link #RUNWAY_NEVER_DEPLETES_CHART_DAYS}-day window when
+     * it doesn't deplete within the cap.
+     */
+    private StockRunwayResponse.RunwayLine simulateRunway(String name, String unitLabel, BigDecimal currentStockInUnit,
+            double mgPerUnit, double slopeMg, double interceptMg, LocalDate today, double weekIndexToday,
+            boolean insufficientData) {
+        double currentStockMg = currentStockInUnit.doubleValue() * mgPerUnit;
+
+        LocalDate stockOutDate = null;
+        double probe = currentStockMg;
+        for (int d = 1; d <= RUNWAY_CAP_DAYS; d++) {
+            double rate = Math.max(interceptMg + slopeMg * (weekIndexToday + d / 7.0), 0);
+            probe = Math.max(probe - rate / 7.0, 0);
+            if (probe <= 0) {
+                stockOutDate = today.plusDays(d);
+                break;
+            }
+        }
+
+        int chartDays = stockOutDate != null
+                ? (int) java.time.temporal.ChronoUnit.DAYS.between(today, stockOutDate)
+                : RUNWAY_NEVER_DEPLETES_CHART_DAYS;
+        int step = Math.max(1, (chartDays + 1) / RUNWAY_CHART_POINTS);
+
+        List<String> dateLabels = new ArrayList<>();
+        List<BigDecimal> remainingQuantity = new ArrayList<>();
+        double remaining = currentStockMg;
+        dateLabels.add(today.format(DateTimeFormatter.ofPattern("d MMM")));
+        remainingQuantity.add(QuantityUtil.round(BigDecimal.valueOf(remaining / mgPerUnit)));
+        for (int d = 1; d <= chartDays; d++) {
+            double rate = Math.max(interceptMg + slopeMg * (weekIndexToday + d / 7.0), 0);
+            remaining = Math.max(remaining - rate / 7.0, 0);
+            if (d % step == 0 || d == chartDays) {
+                dateLabels.add(today.plusDays(d).format(DateTimeFormatter.ofPattern("d MMM")));
+                remainingQuantity.add(QuantityUtil.round(BigDecimal.valueOf(remaining / mgPerUnit)));
+            }
+        }
+
+        return new StockRunwayResponse.RunwayLine(
+                name, unitLabel, QuantityUtil.round(currentStockInUnit), insufficientData,
+                stockOutDate != null ? stockOutDate.toString() : null, dateLabels, remainingQuantity);
     }
 
     /** Least-squares fit of y = intercept + slope*x over x = 0..n-1. Returns {slope, intercept}. */

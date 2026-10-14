@@ -1099,7 +1099,8 @@ async function run() {
     // Admin stock must appear before transactions
     assert(r.data.content.indexOf('ADMIN MEDICINE STOCK') < r.data.content.indexOf('DAILY TRANSACTION SUMMARY'),
       'Expected ADMIN MEDICINE STOCK before DAILY TRANSACTION SUMMARY');
-    assert(r.data.content.includes('IST'), 'Expected IST in timestamp');
+    assert(!r.data.content.includes('Generated:'), 'Daily report text should not show when it was generated');
+    assert(r.data.generatedAt.endsWith('IST'), 'Expected IST in the generatedAt metadata field');
     // 10ml must appear before 5ml
     assert(r.data.content.indexOf('Vial 10 ml') < r.data.content.indexOf('Vial 5 ml'),
       'Expected 10ml vial before 5ml vial');
