@@ -388,20 +388,40 @@ test.describe('View Reports', () => {
       await expect(oralRef).not.toBeVisible();
       await expect(vialRef).not.toBeVisible();
     });
+  });
 
-    test('entering a current-stock value shows a projected stock-out message', async ({ page }) => {
-      await expect(page.getByText(/total projected revenue/i)).toBeVisible({ timeout: 10000 });
+  test.describe('Stock Runway', () => {
+    test.beforeEach(async ({ page }) => {
+      await page.locator('#report-select').selectOption('stock-runway');
+    });
 
-      // Other tests in this run may have already produced history for both dosage forms, so
-      // more than one "Current stock" input may be present — only the first is exercised here.
-      const stockInput = page.getByLabel(/current stock/i).first();
-      await stockInput.fill('1000');
+    test('shows the stock inputs instead of the generic report controls', async ({ page }) => {
+      await expect(page.getByRole('button', { name: /generate report/i })).not.toBeVisible();
+      await expect(page.getByLabel(/oral stock on hand/i)).toBeVisible();
+      await expect(page.getByLabel(/injection vial stock on hand/i)).toBeVisible();
+    });
 
-      await expect(
-        page.getByText(/projected to run out around/i)
-          .or(page.getByText(/not projected to run out within the next 10 years/i))
-          .first()
-      ).toBeVisible();
+    test('Generate is disabled until a stock value is entered', async ({ page }) => {
+      await expect(page.getByRole('button', { name: /generate stock runway/i })).toBeDisabled();
+      await page.getByLabel(/oral stock on hand/i).fill('50');
+      await expect(page.getByRole('button', { name: /generate stock runway/i })).toBeEnabled();
+    });
+
+    test('generates a results table and chart for both oral and vial stock', async ({ page }) => {
+      await page.getByLabel(/oral stock on hand/i).fill('500');
+      await page.getByLabel(/injection vial stock on hand/i).fill('20');
+      await page.getByRole('button', { name: /generate stock runway/i }).click();
+
+      await expect(page.getByRole('cell', { name: 'Total Oral' })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('cell', { name: 'Total Injectable' })).toBeVisible();
+      const charts = page.locator('svg[aria-label="Receding stock chart"]');
+      await expect(charts).toHaveCount(2);
+    });
+
+    test('switching oral unit to mg hides the strip-strength selector', async ({ page }) => {
+      await expect(page.getByLabel(/strip strength/i)).toBeVisible();
+      await page.getByLabel(/oral unit/i).selectOption('MG');
+      await expect(page.getByLabel(/strip strength/i)).not.toBeVisible();
     });
   });
 });

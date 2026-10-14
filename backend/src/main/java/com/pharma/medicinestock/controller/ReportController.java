@@ -3,6 +3,7 @@ package com.pharma.medicinestock.controller;
 import com.pharma.medicinestock.dto.InventoryProjectionResponse;
 import com.pharma.medicinestock.dto.ReportResponse;
 import com.pharma.medicinestock.dto.SalesGraphResponse;
+import com.pharma.medicinestock.dto.StockRunwayResponse;
 import com.pharma.medicinestock.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -86,5 +88,25 @@ public class ReportController {
             @RequestParam(value = "weeksAhead", required = false) Integer weeksAhead,
             @RequestParam(value = "cities", required = false) List<String> cities) {
         return ResponseEntity.ok(reportService.inventoryProjection(weeksAhead, cities));
+    }
+
+    /**
+     * @param city      optional single-city filter; omitted/blank means every city combined
+     * @param oralStock current oral stock on hand, in {@code oralUnit}; omitted/≤0 skips oral
+     * @param oralUnit  {@code MG} or {@code STRIPS} (default STRIPS)
+     * @param oralRefMg reference tablet strength in mg (20/30/50, default 30); only used when
+     *                  {@code oralUnit} is STRIPS
+     * @param vialStock current vial count on hand; omitted/≤0 skips injectable
+     * @param vialRefMl reference vial volume in ml (8/10, default 8)
+     */
+    @GetMapping("/stock-runway")
+    public ResponseEntity<StockRunwayResponse> stockRunway(
+            @RequestParam(value = "city", required = false) String city,
+            @RequestParam(value = "oralStock", required = false) BigDecimal oralStock,
+            @RequestParam(value = "oralUnit", required = false, defaultValue = "STRIPS") String oralUnit,
+            @RequestParam(value = "oralRefMg", required = false) Integer oralRefMg,
+            @RequestParam(value = "vialStock", required = false) BigDecimal vialStock,
+            @RequestParam(value = "vialRefMl", required = false) Integer vialRefMl) {
+        return ResponseEntity.ok(reportService.stockRunway(city, oralStock, oralUnit, oralRefMg, vialStock, vialRefMl));
     }
 }

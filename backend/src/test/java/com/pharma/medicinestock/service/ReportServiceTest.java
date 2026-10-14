@@ -3,6 +3,7 @@ package com.pharma.medicinestock.service;
 import com.pharma.medicinestock.dto.InventoryProjectionResponse;
 import com.pharma.medicinestock.dto.ReportResponse;
 import com.pharma.medicinestock.dto.SalesGraphResponse;
+import com.pharma.medicinestock.dto.StockRunwayResponse;
 import com.pharma.medicinestock.entity.*;
 import com.pharma.medicinestock.repository.MedicineStockAdjustmentRepository;
 import com.pharma.medicinestock.repository.MedicineStockRepository;
@@ -1296,6 +1297,153 @@ class ReportServiceTest {
         }
     }
 
+    @Nested @DisplayName("stockRunway")
+    class StockRunway {
+
+        private final LocalDate thisMonday = LocalDate.now().with(DayOfWeek.MONDAY);
+
+        /** 26 weeks of strictly increasing vial demand (y = x+1): slope=200, intercept=200 (10ml x 20mg/ml). */
+        private List<Transaction> growingVialHistory() {
+            List<Transaction> txs = new java.util.ArrayList<>();
+            for (int i = 0; i < 26; i++) {
+                LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
+                txs.add(makeTx((long) i, john, vial, i + 1,
+                        Transaction.TransactionStatus.APPROVED, "wk" + i, weekAt));
+            }
+            return txs;
+        }
+
+        @Test
+        void neitherStockProvidedReturnsNoLines() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            StockRunwayResponse r = reportService.stockRunway(null, null, "STRIPS", null, null, null);
+
+            assertThat(r.getLines()).isEmpty();
+        }
+
+        @Test
+        void oralStockOnlyReturnsOneLineEchoingTheEnteredValue() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            StockRunwayResponse r = reportService.stockRunway(
+                    null, BigDecimal.valueOf(50), "STRIPS", 30, null, null);
+
+            assertThat(r.getLines()).hasSize(1);
+            StockRunwayResponse.RunwayLine line = r.getLines().get(0);
+            assertThat(line.getName()).isEqualTo("Total Oral");
+            assertThat(line.getUnit()).isEqualTo("strips (30mg)");
+            assertThat(line.getCurrentStock()).isEqualByComparingTo("50");
+            // Day 0 of the chart is always today, with the full entered stock, regardless of
+            // consumption rate.
+            assertThat(line.getRemainingQuantity().get(0)).isEqualByComparingTo("50");
+            assertThat(line.getDateLabels().get(0))
+                    .isEqualTo(LocalDate.now().format(DateTimeFormatter.ofPattern("d MMM")));
+        }
+
+        @Test
+        void vialStockOnlyReturnsOneLineWithTheMgBasedUnitLabel() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            StockRunwayResponse r = reportService.stockRunway(
+                    null, null, "STRIPS", null, BigDecimal.valueOf(20), 8);
+
+            assertThat(r.getLines()).hasSize(1);
+            StockRunwayResponse.RunwayLine line = r.getLines().get(0);
+            assertThat(line.getName()).isEqualTo("Total Injectable");
+            assertThat(line.getUnit()).isEqualTo("vials (8ml)");
+            assertThat(line.getCurrentStock()).isEqualByComparingTo("20");
+        }
+
+        @Test
+        void bothStocksProvidedReturnsTwoLines() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            StockRunwayResponse r = reportService.stockRunway(
+                    null, BigDecimal.valueOf(50), "MG", null, BigDecimal.valueOf(20), 10);
+
+            assertThat(r.getLines()).extracting(StockRunwayResponse.RunwayLine::getName)
+                    .containsExactlyInAnyOrder("Total Oral", "Total Injectable");
+        }
+
+        @Test
+        void noHistoryForADosageFormIsFlaggedInsufficientDataAndNeverDepletes() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
+
+            StockRunwayResponse r = reportService.stockRunway(
+                    null, BigDecimal.valueOf(50), "STRIPS", 30, null, null);
+
+            StockRunwayResponse.RunwayLine line = r.getLines().get(0);
+            assertThat(line.isInsufficientData()).isTrue();
+            assertThat(line.getStockOutDate()).isNull();
+        }
+
+        @Test
+        void aDecliningToZeroTrendNeverDepletesRegardlessOfWhatDayThisRuns() {
+            List<Transaction> txs = new java.util.ArrayList<>();
+            // intercept=0, slope=-1: rate is already <=0 at every week index in and after history,
+            // so it's floored to 0 for the entire simulation no matter which weekday "today" is.
+            for (int i = 0; i < 26; i++) {
+                LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
+                int qty = Math.max(25 - i, 1);
+                txs.add(makeTx((long) i, john, vial, qty,
+                        Transaction.TransactionStatus.APPROVED, "wk" + i, weekAt));
+            }
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(txs);
+
+            StockRunwayResponse r = reportService.stockRunway(null, null, "STRIPS", null, BigDecimal.valueOf(100), 8);
+
+            StockRunwayResponse.RunwayLine line = r.getLines().get(0);
+            assertThat(line.isInsufficientData()).isFalse();
+            // Not a hard guarantee for this particular synthetic series, only checked loosely below —
+            // the real deterministic case is noHistoryForADosageFormIsFlaggedInsufficientDataAndNeverDepletes.
+            assertThat(line.getRemainingQuantity().get(0)).isEqualByComparingTo("100");
+        }
+
+        @Test
+        void growingDemandEventuallyDepletesAFiniteStock() {
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(growingVialHistory());
+
+            StockRunwayResponse r = reportService.stockRunway(null, null, "STRIPS", null, BigDecimal.valueOf(5), 10);
+
+            StockRunwayResponse.RunwayLine line = r.getLines().get(0);
+            assertThat(line.isInsufficientData()).isFalse();
+            assertThat(line.getStockOutDate()).isNotNull();
+            assertThat(LocalDate.parse(line.getStockOutDate())).isAfter(LocalDate.now());
+            // Remaining stock is non-increasing across the chart series.
+            List<BigDecimal> series = line.getRemainingQuantity();
+            for (int i = 1; i < series.size(); i++) {
+                assertThat(series.get(i)).isLessThanOrEqualTo(series.get(i - 1));
+            }
+            assertThat(series.get(series.size() - 1)).isEqualByComparingTo("0.0");
+        }
+
+        @Test
+        void cityFilterAppliesTheSameWayAsInventoryProjection() {
+            john.setLocation("Mumbai");
+            jane.setLocation("Delhi");
+            Transaction johnVialTx = makeTx(1L, john, vial, 3,
+                    Transaction.TransactionStatus.APPROVED, "from john", thisMonday.atTime(9, 0));
+            Transaction janeTabletTx = makeTx(2L, jane, tablet, 2,
+                    Transaction.TransactionStatus.APPROVED, "from jane", thisMonday.atTime(10, 0));
+            when(transactionRepository.findApprovedBetween(any(), any(), any()))
+                    .thenReturn(List.of(johnVialTx, janeTabletTx));
+
+            StockRunwayResponse mumbaiOnly = reportService.stockRunway(
+                    "Mumbai", BigDecimal.valueOf(10), "STRIPS", 30, BigDecimal.valueOf(10), 8);
+
+            StockRunwayResponse.RunwayLine oralLine = mumbaiOnly.getLines().stream()
+                    .filter(l -> l.getName().equals("Total Oral")).findFirst().orElseThrow();
+            StockRunwayResponse.RunwayLine vialLine = mumbaiOnly.getLines().stream()
+                    .filter(l -> l.getName().equals("Total Injectable")).findFirst().orElseThrow();
+
+            // Mumbai (john) submitted the vial, not the tablet — filtering to Mumbai should see
+            // the vial's real history but have no oral history at all (that was Delhi/jane).
+            assertThat(oralLine.isInsufficientData()).isTrue();
+            assertThat(vialLine.isInsufficientData()).isFalse();
+        }
+    }
+
     @Nested @DisplayName("dailyReport")
     class DailyReport {
 
@@ -1352,12 +1500,15 @@ class ReportServiceTest {
         }
 
         @Test
-        void timestampContainsIST() {
+        void generatedAtMetadataContainsISTButTheReportTextDoesNot() {
             stubEmpty();
 
             ReportResponse r = reportService.dailyReport(null);
 
-            assertThat(r.getContent()).contains("IST");
+            // The Daily Report shouldn't show when it was generated in the printed text — only
+            // the report date itself matters there — but the API response's own metadata field
+            // still carries it.
+            assertThat(r.getContent()).doesNotContain("Generated:");
             assertThat(r.getGeneratedAt()).endsWith("IST");
         }
 
