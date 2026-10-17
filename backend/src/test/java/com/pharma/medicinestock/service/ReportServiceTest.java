@@ -1255,7 +1255,9 @@ class ReportServiceTest {
             assertThat(r.getLines()).hasSize(1);
             InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
             // native quantity is x+1 vials for week x; mg = (x+1)*200 (10ml x 20mg/ml) is an exact
-            // scaling, so it's also a perfect line: least squares recovers slope=200, intercept=200.
+            // scaling, so it's also a perfect line: Holt's linear trend recovers slope=200,
+            // intercept=200 exactly too — a perfectly linear series has zero residual under any
+            // smoothing parameters, so there's nothing for recency-weighting to change here.
             assertThat(line.getHistoricalQuantityMg().get(0)).isEqualByComparingTo("200.0");
             assertThat(line.getHistoricalQuantityMg().get(25)).isEqualByComparingTo("5200.0");
             assertThat(line.getForecastQuantityMg().get(0)).isEqualByComparingTo("5400.0");
@@ -1270,6 +1272,41 @@ class ReportServiceTest {
             // would have given, since this scenario only has one spec.
             assertThat(line.getForecastRevenue().get(0)).isEqualTo(27L * 4000);
             assertThat(r.getTotalForecastRevenue()).isEqualTo(line.getForecastRevenue().stream().mapToLong(Long::longValue).sum());
+        }
+
+        @Test
+        void holtsLinearTrendTracksARecentDemandShiftMoreCloselyThanPlainLeastSquaresWould() {
+            // 20 flat weeks at 2 vials/week, then a step up to 20 vials/week for the final 6 —
+            // a recent, sustained demand shift. Native qty -> mg is a flat x200 scaling (10ml vial).
+            List<Transaction> txs = new java.util.ArrayList<>();
+            for (int i = 0; i < 26; i++) {
+                LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
+                int qty = i < 20 ? 2 : 20;
+                txs.add(makeTx((long) i, john, vial, qty,
+                        Transaction.TransactionStatus.APPROVED, "wk" + i, weekAt));
+            }
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(txs);
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+            double actualForecastMg = r.getLines().get(0).getForecastQuantityMg().get(0).doubleValue();
+
+            // Independent ordinary-least-squares reference over the same mg series, as a plain
+            // OLS fit (every week weighted equally) would have produced it — not the production
+            // Holt's implementation.
+            double[] mg = new double[26];
+            for (int i = 0; i < 26; i++) mg[i] = (i < 20 ? 2 : 20) * 200.0;
+            double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+            for (int x = 0; x < 26; x++) {
+                sumX += x; sumY += mg[x]; sumXY += x * mg[x]; sumXX += (double) x * x;
+            }
+            double olsSlope = (26 * sumXY - sumX * sumY) / (26 * sumXX - sumX * sumX);
+            double olsIntercept = (sumY - olsSlope * sumX) / 26;
+            double olsForecastMg = olsIntercept + olsSlope * 26; // first forecast week, x=26
+
+            double newRegimeMg = 20 * 200.0;
+            double holtsGap = Math.abs(actualForecastMg - newRegimeMg);
+            double olsGap = Math.abs(olsForecastMg - newRegimeMg);
+            assertThat(holtsGap).isLessThan(olsGap);
         }
 
         @Test

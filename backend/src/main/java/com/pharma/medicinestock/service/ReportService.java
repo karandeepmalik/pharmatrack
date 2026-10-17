@@ -629,17 +629,18 @@ public class ReportService {
     private static final double DEFAULT_VIAL_CONCENTRATION_MG_PER_ML = 20.0;
 
     /**
-     * Linear-regression projection of future weekly demand (and the revenue that implies at
+     * Trend-based projection of future weekly demand (and the revenue that implies at
      * historical average price — never called "profit": this app has no cost/purchase-price
-     * data, see {@link InventoryProjectionResponse}). Fits exactly two regressions — "Total
+     * data, see {@link InventoryProjectionResponse}). Fits exactly two trends — "Total
      * Oral" (every tablet, across every strength and every pharma company) and "Total
      * Injectable" (every vial, across every spec and every pharma company) — against the last
-     * {@link #PROJECTION_HISTORY_WEEKS} weeks of approved, non-admin-stock sales. Brand/pharma
+     * {@link #PROJECTION_HISTORY_WEEKS} weeks of approved, non-admin-stock sales, via {@link
+     * #linearRegression} (Holt's linear trend under the hood — see its Javadoc). Brand/pharma
      * company is deliberately not a grouping dimension: the business question is "how much oral
-     * vs injectable product do we need," not a per-brand breakdown. The regression is fit on mg only, never on a raw native
+     * vs injectable product do we need," not a per-brand breakdown. The trend is fit on mg only, never on a raw native
      * count: a merged line mixes specs with different native-unit-to-mg ratios (a 10ml and a
      * 5ml vial are both "1 vial" but not the same mg), so there's no single meaningful "count"
-     * for the regression to fit against. The frontend derives an equivalent strip/vial count
+     * to fit against. The frontend derives an equivalent strip/vial count
      * for display by dividing the mg series by whichever reference spec (e.g. "30mg strips" or
      * "8ml vials") the admin has chosen — a simple scalar transform of the one real series,
      * not a second independently-fit one.
@@ -906,23 +907,60 @@ public class ReportService {
                 stockOutDate != null ? stockOutDate.toString() : null, dateLabels, remainingQuantity);
     }
 
-    /** Least-squares fit of y = intercept + slope*x over x = 0..n-1. Returns {slope, intercept}. */
+    /**
+     * Fits Holt's linear trend (double exponential smoothing) over x = 0..n-1 and returns it as
+     * an equivalent global {slope, intercept} pair for y = intercept + slope*x, so every caller
+     * (forecast loop, continuous day-stepping stock-out simulation) keeps evaluating a plain
+     * line without knowing the fit underneath changed.
+     *
+     * <p>Unlike ordinary least squares — which weighs all 26 weeks equally — Holt's method
+     * maintains a level and trend that it updates recursively as each week arrives, so recent
+     * weeks dominate the fit and a demand shift a few weeks ago is reflected quickly rather than
+     * being diluted by the full history. {@code alpha} (level smoothing) and {@code beta} (trend
+     * smoothing) are grid-searched over {0.1..0.9} to minimize one-step-ahead forecast error on
+     * the series itself, rather than fixed at arbitrary constants.
+     *
+     * <p>The level/trend state at the end of the series (index {@code n-1}) is {@code (level,
+     * trend)}; forecasting {@code h} steps ahead is {@code level + trend*h}. Reparametrizing
+     * {@code h = x - (n-1)} gives {@code intercept = level - (n-1)*trend}, {@code slope = trend}
+     * — an exact algebraic restatement, not an approximation.
+     */
     private static double[] linearRegression(List<BigDecimal> ySeries) {
         int n = ySeries.size();
         if (n == 0) return new double[]{0.0, 0.0};
         if (n == 1) return new double[]{0.0, ySeries.get(0).doubleValue()};
 
-        double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-        for (int x = 0; x < n; x++) {
-            double y = ySeries.get(x).doubleValue();
-            sumX += x;
-            sumY += y;
-            sumXY += x * y;
-            sumXX += (double) x * x;
+        double[] y = new double[n];
+        for (int i = 0; i < n; i++) y[i] = ySeries.get(i).doubleValue();
+
+        double bestSse = Double.MAX_VALUE;
+        double bestLevel = y[0], bestTrend = y[1] - y[0];
+        for (int ai = 1; ai <= 9; ai++) {
+            double alpha = ai / 10.0;
+            for (int bi = 1; bi <= 9; bi++) {
+                double beta = bi / 10.0;
+                double level = y[0];
+                double trend = y[1] - y[0];
+                double sse = 0;
+                for (int t = 1; t < n; t++) {
+                    double forecast = level + trend;
+                    double err = y[t] - forecast;
+                    sse += err * err;
+                    double newLevel = alpha * y[t] + (1 - alpha) * (level + trend);
+                    double newTrend = beta * (newLevel - level) + (1 - beta) * trend;
+                    level = newLevel;
+                    trend = newTrend;
+                }
+                if (sse < bestSse) {
+                    bestSse = sse;
+                    bestLevel = level;
+                    bestTrend = trend;
+                }
+            }
         }
-        double denominator = n * sumXX - sumX * sumX;
-        double slope = denominator == 0 ? 0.0 : (n * sumXY - sumX * sumY) / denominator;
-        double intercept = (sumY - slope * sumX) / n;
+
+        double slope = bestTrend;
+        double intercept = bestLevel - (n - 1) * bestTrend;
         return new double[]{slope, intercept};
     }
 
