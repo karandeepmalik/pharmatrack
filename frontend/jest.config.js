@@ -1,7 +1,13 @@
+const path = require('path');
+
 module.exports = {
   testEnvironment: 'jsdom',
   transform: {
-    '^.+\\.[jt]sx?$': 'babel-jest',
+    // Points at babel.jest.config.js, not the root babel.config.js — see that file's comment
+    // for why (it rewrites import.meta.env for Jest only, never for the real Vite build).
+    // babel-jest's configFile option doesn't expand Jest's own "<rootDir>" token, so this
+    // needs a real absolute path.
+    '^.+\\.[jt]sx?$': ['babel-jest', { configFile: path.resolve(__dirname, 'babel.jest.config.js') }],
   },
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': '<rootDir>/src/__mocks__/styleMock.js',
