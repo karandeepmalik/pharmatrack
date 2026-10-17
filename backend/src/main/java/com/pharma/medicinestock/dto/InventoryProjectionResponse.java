@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Linear-regression projection of future weekly demand, grouped into exactly two lines —
+ * Trend-based projection of future weekly demand, grouped into exactly two lines —
  * "Total Oral" (every tablet strength, every pharma company) and "Total Injectable" (every
  * vial spec, every pharma company) — rather than per brand or per exact spec. Brand isn't a
  * substitution boundary (tablet strengths are interchangeable for orders; injections and
