@@ -1,5 +1,6 @@
 import React from 'react';
 import { trackEvent } from '../telemetry';
+import { reloadPage } from '../navigation';
 
 // Wraps the whole app (see index.js) so an uncaught render error anywhere in the tree shows a
 // recoverable message instead of leaving the user staring at a blank white page with no way
@@ -24,7 +25,7 @@ export default class ErrorBoundary extends React.Component {
   }
 
   handleReload = () => {
-    window.location.reload();
+    reloadPage();
   };
 
   render() {

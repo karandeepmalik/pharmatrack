@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { redirectTo } from '../navigation';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -27,7 +28,7 @@ api.interceptors.response.use(
     if (status === 401 && !isLoginAttempt) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.replace('/login');
+      redirectTo('/login');
     }
     return Promise.reject(error);
   }
