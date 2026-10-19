@@ -4,6 +4,7 @@ frontend/build/
 frontend/.env.local
 frontend/.env.*.local
 frontend/test-results/
+frontend/coverage/
 
 # Backend
 backend/target/

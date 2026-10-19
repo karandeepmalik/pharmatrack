@@ -67,6 +67,13 @@ jobs:
         with:
           name: backend-test-reports
           path: backend/target/surefire-reports/
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-coverage
+          path: backend/target/site/jacoco/
           retention-days: 7
 
       - name: Build JAR (skip tests — already ran)

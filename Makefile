@@ -51,7 +51,7 @@ test: test-backend test-frontend ## Run all tests
 
 test-backend: ## Run Spring Boot tests
 	cd backend && JAVA_HOME=/Users/karandeepmalik/Library/Java/JavaVirtualMachines/jbr-17.0.14/Contents/Home mvn verify -q
-	@echo "✓  Backend tests passed"
+	@echo "✓  Backend tests passed — coverage report: backend/target/site/jacoco/index.html"
 
 test-frontend: ## Run Jest unit tests
 	cd frontend && npm run test:unit
