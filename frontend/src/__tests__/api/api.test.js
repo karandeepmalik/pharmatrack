@@ -15,6 +15,7 @@ const mockPost = jest.fn();
 const mockGet  = jest.fn();
 const mockPut  = jest.fn();
 const mockAxiosCreate = jest.fn();
+const mockRedirectTo = jest.fn();
 
 // Must be declared before any require() of the module under test
 jest.mock('axios', () => ({
@@ -32,6 +33,11 @@ jest.mock('axios', () => ({
   },
 }));
 
+// window.location.replace can't be mocked directly anymore — jsdom (matching real browsers)
+// makes Location's own methods non-writable and non-configurable — so api.js calls through a
+// thin navigation.js wrapper instead, which this mocks in the usual jest.mock way.
+jest.mock('../../navigation', () => ({ redirectTo: (...a) => mockRedirectTo(...a) }));
+
 // Require the module ONCE after the mock is in place.
 // The module runs synchronously, so capturedRequestFn etc are set by this line.
 require('../../api/api');
@@ -40,8 +46,7 @@ describe('api.js', () => {
 
   beforeEach(() => {
     localStorage.clear();
-    delete window.location;
-    window.location = { replace: jest.fn() };
+    mockRedirectTo.mockReset();
     mockPost.mockReset();
     mockGet.mockReset();
     mockPut.mockReset();
@@ -117,22 +122,22 @@ describe('api.js', () => {
 
     test('401 error redirects to /login', async () => {
       await expect(capturedResponseError({ response: { status: 401 } })).rejects.toBeDefined();
-      expect(window.location.replace).toHaveBeenCalledWith('/login');
+      expect(mockRedirectTo).toHaveBeenCalledWith('/login');
     });
 
     test('403 error does NOT redirect', async () => {
       await expect(capturedResponseError({ response: { status: 403 } })).rejects.toBeDefined();
-      expect(window.location.replace).not.toHaveBeenCalled();
+      expect(mockRedirectTo).not.toHaveBeenCalled();
     });
 
     test('500 error does NOT redirect', async () => {
       await expect(capturedResponseError({ response: { status: 500 } })).rejects.toBeDefined();
-      expect(window.location.replace).not.toHaveBeenCalled();
+      expect(mockRedirectTo).not.toHaveBeenCalled();
     });
 
     test('404 error does NOT redirect', async () => {
       await expect(capturedResponseError({ response: { status: 404 } })).rejects.toBeDefined();
-      expect(window.location.replace).not.toHaveBeenCalled();
+      expect(mockRedirectTo).not.toHaveBeenCalled();
     });
 
     test('non-401 error rejects with the original error object', async () => {
@@ -144,7 +149,7 @@ describe('api.js', () => {
       await expect(
         capturedResponseError({ response: { status: 401 }, config: { url: '/auth/login' } })
       ).rejects.toBeDefined();
-      expect(window.location.replace).not.toHaveBeenCalled();
+      expect(mockRedirectTo).not.toHaveBeenCalled();
     });
 
     test('401 from /auth/login does NOT clear an existing token/user', async () => {
@@ -161,7 +166,7 @@ describe('api.js', () => {
       await expect(
         capturedResponseError({ response: { status: 401 }, config: { url: '/transactions/my' } })
       ).rejects.toBeDefined();
-      expect(window.location.replace).toHaveBeenCalledWith('/login');
+      expect(mockRedirectTo).toHaveBeenCalledWith('/login');
     });
   });
 

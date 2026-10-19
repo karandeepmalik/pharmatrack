@@ -3,8 +3,13 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import * as api from '../../api/api';
+import * as navigation from '../../navigation';
 
 jest.mock('../../api/api');
+// window.location.reload can't be mocked directly anymore — jsdom (matching real browsers)
+// makes Location's own methods non-writable and non-configurable — so ErrorBoundary calls
+// through a thin navigation.js wrapper instead, which this mocks in the usual jest.mock way.
+jest.mock('../../navigation');
 
 function Bomb() {
   throw new Error('boom');
@@ -56,11 +61,6 @@ describe('ErrorBoundary', () => {
   });
 
   test('the Reload Page button reloads the page', async () => {
-    const reloadSpy = jest.fn();
-    const originalLocation = window.location;
-    delete window.location;
-    window.location = { ...originalLocation, reload: reloadSpy };
-
     render(
       <ErrorBoundary>
         <Bomb />
@@ -68,7 +68,6 @@ describe('ErrorBoundary', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: /reload page/i }));
 
-    expect(reloadSpy).toHaveBeenCalledTimes(1);
-    window.location = originalLocation;
+    expect(navigation.reloadPage).toHaveBeenCalledTimes(1);
   });
 });
