@@ -53,6 +53,26 @@
           <image><name>pharma-medicine-stock-backend:${project.version}</name></image>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.12</version>
+        <executions>
+          <!-- Attaches the coverage agent to the JVM surefire forks to run tests in. -->
+          <execution>
+            <id>prepare-agent</id>
+            <goals><goal>prepare-agent</goal></goals>
+          </execution>
+          <!-- Bound to verify (not test) so it runs after surefire's own test execution in the
+               same `test` phase has actually produced jacoco.exec to report on. make test-backend
+               and CI both already run `mvn verify`, so this needs no separate command. -->
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals><goal>report</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
 </project>
