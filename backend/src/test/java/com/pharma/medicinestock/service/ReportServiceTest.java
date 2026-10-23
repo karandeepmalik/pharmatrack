@@ -1266,6 +1266,10 @@ class ReportServiceTest {
             // Exposed regression coefficients let the frontend compute a stock-out date itself.
             assertThat(line.getRegressionSlopeMg()).isEqualTo(200.0, within(0.01));
             assertThat(line.getRegressionInterceptMg()).isEqualTo(200.0, within(0.01));
+            // A perfectly linear series fits exactly only at phi=1 (damping would introduce
+            // one-step-ahead error here — see linearRegression's Javadoc), so the grid search
+            // must not pick unnecessary damping just because it's available.
+            assertThat(line.getRegressionPhi()).isEqualTo(1.0);
 
             // vial price is 4000/vial flat throughout = 4000/200mg = 20 Rs/mg, so forecast revenue at
             // mg=5400 is 5400*20 = 108000 — same answer as the old native-count basis (27 vials*4000)
@@ -1478,6 +1482,61 @@ class ReportServiceTest {
             // the vial's real history but have no oral history at all (that was Delhi/jane).
             assertThat(oralLine.isInsufficientData()).isTrue();
             assertThat(vialLine.isInsufficientData()).isFalse();
+        }
+
+        @Test
+        @DisplayName("a brief demand spike that reverts gets a damped (phi<1) trend, not treated as a permanent shift")
+        void transientSpikeThatRevertsGetsDampedTrend() {
+            List<Transaction> txs = new java.util.ArrayList<>();
+            for (int i = 0; i < 26; i++) {
+                LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
+                int qty = (i >= 20 && i <= 21) ? 20 : 2; // brief spike at weeks 20-21, reverts after
+                txs.add(makeTx((long) i, john, vial, qty,
+                        Transaction.TransactionStatus.APPROVED, "wk" + i, weekAt));
+            }
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(txs);
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(1, null);
+
+            assertThat(r.getLines().get(0).getRegressionPhi()).isLessThan(1.0);
+        }
+
+        @Test
+        @DisplayName("damping stops a transient spike's trend from being extrapolated forever, so a long runway depletes later than naive linear extrapolation would predict")
+        void dampedTrendDepletesLaterThanUndampedExtrapolationWouldOverALongHorizon() {
+            List<Transaction> txs = new java.util.ArrayList<>();
+            for (int i = 0; i < 26; i++) {
+                LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
+                int qty = (i >= 20 && i <= 21) ? 20 : 2; // same transient spike as above
+                txs.add(makeTx((long) i, john, vial, qty,
+                        Transaction.TransactionStatus.APPROVED, "wk" + i, weekAt));
+            }
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(txs);
+
+            BigDecimal vials = BigDecimal.valueOf(750); // 750 vials x 10ml x 20mg/ml = 150,000 mg
+            StockRunwayResponse r = reportService.stockRunway(null, null, "STRIPS", null, vials, 10);
+            LocalDate actualDampedStockOutDate = LocalDate.parse(r.getLines().get(0).getStockOutDate());
+
+            // Reference: what the pre-fix undamped formula (intercept + slope*weekIndex, growing
+            // forever) would have predicted for the same stock and the same fitted slope/intercept.
+            InventoryProjectionResponse projection = reportService.inventoryProjection(1, null);
+            InventoryProjectionResponse.LineProjection line = projection.getLines().get(0);
+            double slope = line.getRegressionSlopeMg(), intercept = line.getRegressionInterceptMg();
+            LocalDate forecastStart = LocalDate.parse(projection.getForecastStartDate());
+            LocalDate thisWeekMondayFromProjection = forecastStart.minusWeeks(1);
+            LocalDate today = LocalDate.now();
+            double weekIndexToday = (projection.getHistoryWeeks() - 1)
+                    + java.time.temporal.ChronoUnit.DAYS.between(thisWeekMondayFromProjection, today) / 7.0;
+            double probeMg = vials.doubleValue() * 200.0; // 10ml x 20mg/ml
+            LocalDate undampedStockOutDate = null;
+            for (int d = 1; d <= 3650; d++) {
+                double rate = Math.max(intercept + slope * (weekIndexToday + d / 7.0), 0);
+                probeMg = Math.max(probeMg - rate / 7.0, 0);
+                if (probeMg <= 0) { undampedStockOutDate = today.plusDays(d); break; }
+            }
+
+            assertThat(undampedStockOutDate).isNotNull();
+            assertThat(actualDampedStockOutDate).isAfter(undampedStockOutDate);
         }
     }
 
