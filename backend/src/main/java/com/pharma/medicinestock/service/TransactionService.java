@@ -69,6 +69,7 @@ public class TransactionService {
         validateNotes(req.getNotes());
         validateSubmittedDate(req.getSubmittedDate());
         validateQuantity(req.getQuantity());
+        if (req.getPricePerUnit() != null) validatePricePerUnit(req.getPricePerUnit());
         req.setQuantity(QuantityUtil.round(req.getQuantity()));
         User user = findUserByUsername(username);
         Medicine medicine = findMedicineById(req.getMedicineId());

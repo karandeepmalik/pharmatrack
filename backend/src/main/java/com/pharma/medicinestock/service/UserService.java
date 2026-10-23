@@ -53,6 +53,7 @@ public class UserService {
     public void changePassword(String username,String oldPw,String newPw){
         User u=findEntityByUsername(username);
         if(!passwordEncoder.matches(oldPw,u.getPassword())) throw new IllegalArgumentException("Current password is incorrect");
+        if(newPw==null||newPw.length()<8) throw new IllegalArgumentException("Password must be at least 8 characters");
         u.setPassword(passwordEncoder.encode(newPw)); userRepository.save(u);
     }
     @Transactional

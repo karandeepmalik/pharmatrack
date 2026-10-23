@@ -145,6 +145,58 @@ class UserServiceTest {
     }
 
     @Nested
+    @DisplayName("changePassword")
+    class ChangePassword {
+
+        @BeforeEach
+        void setUp() {
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(user));
+        }
+
+        @Test
+        void throwsWhenCurrentPasswordIsWrong() {
+            when(passwordEncoder.matches("wrong", "hashed")).thenReturn(false);
+
+            assertThatThrownBy(() -> userService.changePassword("john.doe", "wrong", "NewPassword123"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Current password is incorrect");
+
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("rejects a new password shorter than 8 characters, instead of setting it unchecked")
+        void throwsWhenNewPasswordTooShort() {
+            when(passwordEncoder.matches("correct", "hashed")).thenReturn(true);
+
+            assertThatThrownBy(() -> userService.changePassword("john.doe", "correct", "short"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("at least 8 characters");
+
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        void rejectsNullNewPassword() {
+            when(passwordEncoder.matches("correct", "hashed")).thenReturn(true);
+
+            assertThatThrownBy(() -> userService.changePassword("john.doe", "correct", null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("at least 8 characters");
+        }
+
+        @Test
+        void setsNewPasswordWhenCurrentPasswordMatchesAndNewOneIsStrongEnough() {
+            when(passwordEncoder.matches("correct", "hashed")).thenReturn(true);
+            when(passwordEncoder.encode("NewPassword123")).thenReturn("newHashed");
+
+            userService.changePassword("john.doe", "correct", "NewPassword123");
+
+            verify(userRepository).save(argThat(u -> "newHashed".equals(u.getPassword())));
+        }
+    }
+
+    @Nested
     @DisplayName("register")
     class Register {
 
