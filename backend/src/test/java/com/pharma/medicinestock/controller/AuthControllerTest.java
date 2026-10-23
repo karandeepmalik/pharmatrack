@@ -304,24 +304,48 @@ class AuthControllerTest {
         }
 
         @Test
-        @DisplayName("only the first entry of a multi-hop X-Forwarded-For is used as the client IP")
-        void multiValueForwardedForUsesFirstEntry() throws Exception {
+        @DisplayName("only the last entry of a multi-hop X-Forwarded-For is trusted as the client IP")
+        void multiValueForwardedForUsesLastEntry() throws Exception {
             when(authenticationManager.authenticate(any()))
                     .thenThrow(new BadCredentialsException("bad"));
 
+            // Cloud Run appends the real client IP (10.0.0.99) as the last hop; every entry
+            // before it is attacker-suppliable, so a different leading value on every request
+            // must not be enough to dodge the per-IP lockout.
             for (int i = 0; i < 20; i++) {
                 mockMvc.perform(post("/api/auth/login")
-                        .header("X-Forwarded-For", "10.0.1.8, 35.190.0.1, 10.0.0.99")
+                        .header("X-Forwarded-For", "10.0.1." + i + ", 35.190.0.1, 10.0.0.99")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json("ratelimit.xff" + i, "wrong")));
             }
 
-            // Same real client (10.0.1.8) behind a different chain of intermediate proxies —
-            // still recognized as the same source and blocked.
             mockMvc.perform(post("/api/auth/login")
-                            .header("X-Forwarded-For", "10.0.1.8, 35.190.0.2")
+                            .header("X-Forwarded-For", "203.0.113.50, 35.190.0.2, 10.0.0.99")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(json("ratelimit.xff.new", "wrong")))
+                    .andExpect(status().isTooManyRequests());
+        }
+
+        @Test
+        @DisplayName("a spoofed leading X-Forwarded-For value does not let a real source dodge its own lockout")
+        void spoofedLeadingForwardedForDoesNotBypassLockout() throws Exception {
+            when(authenticationManager.authenticate(any()))
+                    .thenThrow(new BadCredentialsException("bad"));
+
+            // Every request claims a different fake first hop (what an attacker fully controls),
+            // but Cloud Run would append the same real IP as the last hop — must still count
+            // as one source.
+            for (int i = 0; i < 20; i++) {
+                mockMvc.perform(post("/api/auth/login")
+                        .header("X-Forwarded-For", "203.0.113." + i + ", 10.0.0.99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json("ratelimit.spoof" + i, "wrong")));
+            }
+
+            mockMvc.perform(post("/api/auth/login")
+                            .header("X-Forwarded-For", "198.51.100.1, 10.0.0.99")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json("ratelimit.spoof.new", "wrong")))
                     .andExpect(status().isTooManyRequests());
         }
 
