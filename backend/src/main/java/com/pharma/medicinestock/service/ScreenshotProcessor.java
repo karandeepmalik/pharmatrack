@@ -39,6 +39,8 @@ public class ScreenshotProcessor {
     private static final int  MAX_DIMENSION = 900;           // px on longest side
     private static final int  MAX_DECODE_DIMENSION = 8000;   // reject before allocating a buffer this large
     private static final float JPEG_QUALITY = 0.65f;
+    private static final int  MAX_SCREENSHOTS = 8;            // matches the frontend's own cap (useScreenshot) — enforced
+                                                                // here too since this is the actual API boundary
 
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
         "image/png",
@@ -74,16 +76,22 @@ public class ScreenshotProcessor {
     public List<String[]> encodeAll(List<MultipartFile> files) throws IOException {
         List<String[]> result = new ArrayList<>();
         if (files == null) return result;
+        List<MultipartFile> nonEmpty = new ArrayList<>();
         for (MultipartFile file : files) {
-            if (hasScreenshot(file)) {
-                validateContentType(file);
-                validateSize(file);
-                byte[] bytes = file.getBytes();
-                // The real MIME type is derived from the file's own magic bytes, never trusted
-                // from the client-supplied Content-Type header — see validateRealFormat().
-                String realMimeType = validateRealFormat(bytes);
-                result.add(compressAndEncode(bytes, realMimeType));
-            }
+            if (hasScreenshot(file)) nonEmpty.add(file);
+        }
+        if (nonEmpty.size() > MAX_SCREENSHOTS) {
+            throw new InvalidScreenshotException(
+                "At most " + MAX_SCREENSHOTS + " payment screenshots are allowed.");
+        }
+        for (MultipartFile file : nonEmpty) {
+            validateContentType(file);
+            validateSize(file);
+            byte[] bytes = file.getBytes();
+            // The real MIME type is derived from the file's own magic bytes, never trusted
+            // from the client-supplied Content-Type header — see validateRealFormat().
+            String realMimeType = validateRealFormat(bytes);
+            result.add(compressAndEncode(bytes, realMimeType));
         }
         return result;
     }

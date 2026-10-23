@@ -248,6 +248,43 @@ class TransactionServiceTest {
                     .hasMessageContaining("at least 0.1");
         }
 
+        @Test @DisplayName("throws IllegalArgumentException for a negative pricePerUnit instead of persisting it onto the ledger")
+        void submit_negativePricePerUnit_throwsIllegalArgument() {
+            TransactionRequest req = buildReq("Trying to game the reports here");
+            req.setPricePerUnit(-500);
+
+            assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Price per unit must be positive");
+            verify(transactionRepository, never()).save(any());
+        }
+
+        @Test @DisplayName("throws IllegalArgumentException for a zero pricePerUnit")
+        void submit_zeroPricePerUnit_throwsIllegalArgument() {
+            TransactionRequest req = buildReq("Zero price per unit attempt");
+            req.setPricePerUnit(0);
+
+            assertThatThrownBy(() -> transactionService.submit(req, "john.doe"))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Price per unit must be positive");
+        }
+
+        @Test @DisplayName("a null pricePerUnit is left unvalidated and defaults to the medicine's catalogue price")
+        void submit_nullPricePerUnit_succeeds() {
+            TransactionRequest req = buildReq("No price override provided");
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.save(any())).thenReturn(medicineStock);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            assertThatNoException().isThrownBy(() -> transactionService.submit(req, "john.doe"));
+        }
+
         @Test @DisplayName("throws IllegalArgumentException when notes are blank")
         void submit_blankNotes_throwsIllegalArgument() {
             TransactionRequest req = buildReq("  ");

@@ -214,6 +214,45 @@ class ScreenshotProcessorTest {
                 .isInstanceOf(InvalidScreenshotException.class);
     }
 
+    // ── encodeAll — server-side screenshot count cap ───────────────────
+
+    @Test @DisplayName("encodeAll accepts exactly 8 screenshots")
+    void encodeAll_exactlyEightFiles_succeeds() throws IOException {
+        byte[] content = realPngBytes();
+        List<MultipartFile> files = java.util.stream.IntStream.range(0, 8)
+                .<MultipartFile>mapToObj(i -> new MockMultipartFile("f" + i, "a" + i + ".png", "image/png", content))
+                .toList();
+
+        List<String[]> result = processor.encodeAll(files);
+
+        assertThat(result).hasSize(8);
+    }
+
+    @Test @DisplayName("encodeAll rejects a 9th screenshot even though each file individually passes")
+    void encodeAll_moreThanEightFiles_throwsInvalidScreenshot() throws IOException {
+        byte[] content = realPngBytes();
+        List<MultipartFile> files = java.util.stream.IntStream.range(0, 9)
+                .<MultipartFile>mapToObj(i -> new MockMultipartFile("f" + i, "a" + i + ".png", "image/png", content))
+                .toList();
+
+        assertThatThrownBy(() -> processor.encodeAll(files))
+                .isInstanceOf(InvalidScreenshotException.class)
+                .hasMessageContaining("At most 8");
+    }
+
+    @Test @DisplayName("encodeAll's count cap only counts non-empty files, ignoring null/empty entries")
+    void encodeAll_countCap_ignoresEmptyEntries() throws IOException {
+        byte[] content = realPngBytes();
+        List<MultipartFile> files = new java.util.ArrayList<>(java.util.stream.IntStream.range(0, 8)
+                .<MultipartFile>mapToObj(i -> new MockMultipartFile("f" + i, "a" + i + ".png", "image/png", content))
+                .toList());
+        files.add(new MockMultipartFile("empty", new byte[0])); // skipped, must not count toward the cap
+
+        List<String[]> result = processor.encodeAll(files);
+
+        assertThat(result).hasSize(8);
+    }
+
     // ── compressAndEncode — decompression-bomb guard ────────────────────
 
     @Test @DisplayName("compressAndEncode's dimension guard does not false-positive on a normal small image")
