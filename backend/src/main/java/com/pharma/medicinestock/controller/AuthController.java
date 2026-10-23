@@ -50,11 +50,16 @@ public class AuthController {
     }
 
     // Cloud Run terminates TLS and proxies requests, so request.getRemoteAddr() is always the
-    // load balancer's address — the real client IP is the first entry in X-Forwarded-For.
+    // load balancer's address. Cloud Run's front end APPENDS the real client IP as the LAST
+    // entry of X-Forwarded-For rather than replacing a client-supplied header, so every entry
+    // except the last is attacker-controlled (a client can send its own X-Forwarded-For with
+    // an arbitrary first value). Trusting the first entry let an attacker dodge the per-IP
+    // login rate limit entirely by rotating a fake leading value on every request.
     private String clientIp(HttpServletRequest request) {
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+            String[] hops = forwarded.split(",");
+            return hops[hops.length - 1].trim();
         }
         return request.getRemoteAddr();
     }
