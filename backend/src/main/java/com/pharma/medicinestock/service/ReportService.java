@@ -717,7 +717,7 @@ public class ReportService {
                     .toList();
 
             double[] coeffsMg = linearRegression(historicalQuantityMg);
-            double slopeMg = coeffsMg[0], interceptMg = coeffsMg[1];
+            double slopeMg = coeffsMg[0], interceptMg = coeffsMg[1], levelMg = coeffsMg[2], phiMg = coeffsMg[3];
 
             BigDecimal totalMg = lineTotalMg.getOrDefault(line, BigDecimal.ZERO);
             long totalRevenue = lineTotalRevenue.getOrDefault(line, 0L);
@@ -740,7 +740,7 @@ public class ReportService {
 
             lines.add(new InventoryProjectionResponse.LineProjection(
                     line, lineDosageForm.get(line), historicalQuantityMg, forecastQuantityMg,
-                    forecastRevenue, lineForecastRevenue, slopeMg, interceptMg));
+                    forecastRevenue, lineForecastRevenue, slopeMg, interceptMg, levelMg, phiMg));
         }
 
         String forecastStartDate = thisWeekMonday.plusWeeks(1).toString();
@@ -829,8 +829,10 @@ public class ReportService {
         LocalDate forecastStart = LocalDate.parse(projection.getForecastStartDate());
         LocalDate thisWeekMonday = forecastStart.minusWeeks(1);
         LocalDate today = todayIST();
-        double weekIndexToday = (projection.getHistoryWeeks() - 1)
-                + java.time.temporal.ChronoUnit.DAYS.between(thisWeekMonday, today) / 7.0;
+        // Weeks ahead of the end of the fitted history ("h" in the damped-trend formula — see
+        // linearRegression's Javadoc), not an absolute week index — simulateRunway only ever
+        // needs an offset from history's end, since level/trend are already anchored there.
+        double hToday = java.time.temporal.ChronoUnit.DAYS.between(thisWeekMonday, today) / 7.0;
 
         List<StockRunwayResponse.RunwayLine> lines = new ArrayList<>();
 
@@ -839,20 +841,22 @@ public class ReportService {
             boolean isMg = "MG".equalsIgnoreCase(oralUnit);
             double mgPerUnit = isMg ? 1.0 : refMg * TABLETS_PER_STRIP;
             String unitLabel = isMg ? "mg" : "strips (" + refMg + "mg)";
-            double slope = oralLine != null ? oralLine.getRegressionSlopeMg() : 0;
-            double intercept = oralLine != null ? oralLine.getRegressionInterceptMg() : 0;
+            double level = oralLine != null ? oralLine.getRegressionLevelMg() : 0;
+            double trend = oralLine != null ? oralLine.getRegressionSlopeMg() : 0;
+            double phi = oralLine != null ? oralLine.getRegressionPhi() : 1.0;
             lines.add(simulateRunway("Total Oral", unitLabel, oralStock, mgPerUnit,
-                    slope, intercept, today, weekIndexToday, oralLine == null));
+                    level, trend, phi, today, hToday, oralLine == null));
         }
 
         if (vialStock != null && vialStock.compareTo(BigDecimal.ZERO) > 0) {
             int refMl = vialRefMl != null ? vialRefMl : 8;
             double mgPerUnit = refMl * DEFAULT_VIAL_CONCENTRATION_MG_PER_ML;
             String unitLabel = "vials (" + refMl + "ml)";
-            double slope = vialLine != null ? vialLine.getRegressionSlopeMg() : 0;
-            double intercept = vialLine != null ? vialLine.getRegressionInterceptMg() : 0;
+            double level = vialLine != null ? vialLine.getRegressionLevelMg() : 0;
+            double trend = vialLine != null ? vialLine.getRegressionSlopeMg() : 0;
+            double phi = vialLine != null ? vialLine.getRegressionPhi() : 1.0;
             lines.add(simulateRunway("Total Injectable", unitLabel, vialStock, mgPerUnit,
-                    slope, intercept, today, weekIndexToday, vialLine == null));
+                    level, trend, phi, today, hToday, vialLine == null));
         }
 
         return new StockRunwayResponse(lines);
@@ -860,22 +864,27 @@ public class ReportService {
 
     /**
      * Simulates day-by-day depletion of {@code currentStockInUnit} against the weekly mg rate
-     * {@code max(interceptMg + slopeMg * weekIndex, 0)} (the same floored linear model
-     * {@link #inventoryProjection} forecasts with), where {@code weekIndex} continues forward
-     * from {@code weekIndexToday} by {@code daysElapsed/7}. Finds the exact stock-out date (if
-     * any) within {@link #RUNWAY_CAP_DAYS}, then builds a downsampled chart series covering
-     * either the real depletion or a {@link #RUNWAY_NEVER_DEPLETES_CHART_DAYS}-day window when
-     * it doesn't deplete within the cap.
+     * {@code max(levelMg + trendMg*dampedTrendSum(h, phi), 0)} — the damped-trend forecast (see
+     * {@link #linearRegression}'s Javadoc), where {@code h} continues forward from {@code
+     * hToday} by {@code daysElapsed/7}. Using the damped form here (rather than the plain
+     * undamped slope/intercept {@link #inventoryProjection} forecasts with) matters specifically
+     * because this simulation's horizon ({@link #RUNWAY_CAP_DAYS}, up to 10 years) is long enough
+     * that a trend extrapolated linearly forever can run away to an absurd rate; damping lets the
+     * trend's influence decay toward a flat asymptote instead, while {@code phi=1} (the common
+     * case when the fitted history is itself close to linear) makes this identical to the plain
+     * linear read. Finds the exact stock-out date (if any) within {@code RUNWAY_CAP_DAYS}, then
+     * builds a downsampled chart series covering either the real depletion or a
+     * {@link #RUNWAY_NEVER_DEPLETES_CHART_DAYS}-day window when it doesn't deplete within the cap.
      */
     private StockRunwayResponse.RunwayLine simulateRunway(String name, String unitLabel, BigDecimal currentStockInUnit,
-            double mgPerUnit, double slopeMg, double interceptMg, LocalDate today, double weekIndexToday,
+            double mgPerUnit, double levelMg, double trendMg, double phi, LocalDate today, double hToday,
             boolean insufficientData) {
         double currentStockMg = currentStockInUnit.doubleValue() * mgPerUnit;
 
         LocalDate stockOutDate = null;
         double probe = currentStockMg;
         for (int d = 1; d <= RUNWAY_CAP_DAYS; d++) {
-            double rate = Math.max(interceptMg + slopeMg * (weekIndexToday + d / 7.0), 0);
+            double rate = Math.max(levelMg + trendMg * dampedTrendSum(hToday + d / 7.0, phi), 0);
             probe = Math.max(probe - rate / 7.0, 0);
             if (probe <= 0) {
                 stockOutDate = today.plusDays(d);
@@ -894,7 +903,7 @@ public class ReportService {
         dateLabels.add(today.format(DateTimeFormatter.ofPattern("d MMM")));
         remainingQuantity.add(QuantityUtil.round(BigDecimal.valueOf(remaining / mgPerUnit)));
         for (int d = 1; d <= chartDays; d++) {
-            double rate = Math.max(interceptMg + slopeMg * (weekIndexToday + d / 7.0), 0);
+            double rate = Math.max(levelMg + trendMg * dampedTrendSum(hToday + d / 7.0, phi), 0);
             remaining = Math.max(remaining - rate / 7.0, 0);
             if (d % step == 0 || d == chartDays) {
                 dateLabels.add(today.plusDays(d).format(DateTimeFormatter.ofPattern("d MMM")));
@@ -921,47 +930,80 @@ public class ReportService {
      * the series itself, rather than fixed at arbitrary constants.
      *
      * <p>The level/trend state at the end of the series (index {@code n-1}) is {@code (level,
-     * trend)}; forecasting {@code h} steps ahead is {@code level + trend*h}. Reparametrizing
+     * trend)}; forecasting {@code h} steps ahead is {@code level + trend*phi*(1-phi^h)/(1-phi)}
+     * ({@code phi=1} degenerates to the plain {@code level + trend*h}). Reparametrizing
      * {@code h = x - (n-1)} gives {@code intercept = level - (n-1)*trend}, {@code slope = trend}
-     * — an exact algebraic restatement, not an approximation.
+     * for the undamped (phi=1-equivalent) read — an exact algebraic restatement, not an
+     * approximation — which is what every caller using slope/intercept alone still gets.
+     *
+     * <p>{@code phi} (the damping factor) is grid-searched alongside alpha/beta rather than
+     * fixed, so a genuinely linear series still fits exactly with {@code phi=1} (damping only
+     * ever adds one-step-ahead error on a perfectly straight line — see
+     * {@code linearRegressionProjectsAPerfectTrendExactly}) while a series whose recent trend is
+     * a short-lived blip can fit better by letting {@code phi<1} win the search. Only
+     * {@link #stockRunway} actually evaluates the damped form (via {@code level}/{@code phi});
+     * {@link #inventoryProjection}'s own (much shorter, 26-week-capped) forecast table keeps
+     * reading the plain undamped slope/intercept, since compounding a trend linearly isn't a
+     * real risk over that short a horizon — only {@code stockRunway}'s up-to-10-year simulation
+     * needs the trend's influence to decay instead of extrapolating forever.
      */
+    private static final double[] DAMPING_CANDIDATES = {1.00, 0.98, 0.95, 0.90, 0.85, 0.80};
+
     private static double[] linearRegression(List<BigDecimal> ySeries) {
         int n = ySeries.size();
-        if (n == 0) return new double[]{0.0, 0.0};
-        if (n == 1) return new double[]{0.0, ySeries.get(0).doubleValue()};
+        if (n == 0) return new double[]{0.0, 0.0, 0.0, 1.0};
+        if (n == 1) {
+            double y0 = ySeries.get(0).doubleValue();
+            return new double[]{0.0, y0, y0, 1.0};
+        }
 
         double[] y = new double[n];
         for (int i = 0; i < n; i++) y[i] = ySeries.get(i).doubleValue();
 
         double bestSse = Double.MAX_VALUE;
-        double bestLevel = y[0], bestTrend = y[1] - y[0];
+        double bestLevel = y[0], bestTrend = y[1] - y[0], bestPhi = 1.0;
         for (int ai = 1; ai <= 9; ai++) {
             double alpha = ai / 10.0;
             for (int bi = 1; bi <= 9; bi++) {
                 double beta = bi / 10.0;
-                double level = y[0];
-                double trend = y[1] - y[0];
-                double sse = 0;
-                for (int t = 1; t < n; t++) {
-                    double forecast = level + trend;
-                    double err = y[t] - forecast;
-                    sse += err * err;
-                    double newLevel = alpha * y[t] + (1 - alpha) * (level + trend);
-                    double newTrend = beta * (newLevel - level) + (1 - beta) * trend;
-                    level = newLevel;
-                    trend = newTrend;
-                }
-                if (sse < bestSse) {
-                    bestSse = sse;
-                    bestLevel = level;
-                    bestTrend = trend;
+                for (double phi : DAMPING_CANDIDATES) {
+                    double level = y[0];
+                    double trend = y[1] - y[0];
+                    double sse = 0;
+                    for (int t = 1; t < n; t++) {
+                        double forecast = level + phi * trend;
+                        double err = y[t] - forecast;
+                        sse += err * err;
+                        double newLevel = alpha * y[t] + (1 - alpha) * (level + phi * trend);
+                        double newTrend = beta * (newLevel - level) + (1 - beta) * phi * trend;
+                        level = newLevel;
+                        trend = newTrend;
+                    }
+                    if (sse < bestSse) {
+                        bestSse = sse;
+                        bestLevel = level;
+                        bestTrend = trend;
+                        bestPhi = phi;
+                    }
                 }
             }
         }
 
         double slope = bestTrend;
         double intercept = bestLevel - (n - 1) * bestTrend;
-        return new double[]{slope, intercept};
+        return new double[]{slope, intercept, bestLevel, bestPhi};
+    }
+
+    /**
+     * The damped-trend geometric sum {@code phi + phi^2 + ... + phi^h} (continuous, non-integer
+     * {@code h} allowed — {@link #simulateRunway} steps forward in fractional weeks), evaluated
+     * in closed form as {@code phi*(1-phi^h)/(1-phi)}. Degenerates to the plain {@code h} at
+     * {@code phi=1} (L'Hopital's-rule limit of the same expression), which is the usual case
+     * since {@link #linearRegression} only picks {@code phi<1} when damping genuinely reduces
+     * fit error.
+     */
+    private static double dampedTrendSum(double h, double phi) {
+        return phi == 1.0 ? h : phi * (1 - Math.pow(phi, h)) / (1 - phi);
     }
 
     /** Mutable per-(period,spec) accumulator for salesGraph() — quantity is decimal, value (money) stays whole. */

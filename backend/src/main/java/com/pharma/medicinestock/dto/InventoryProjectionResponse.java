@@ -29,7 +29,12 @@ import java.util.List;
  * answer "given I currently have N left, when does it run out" purely client-side, against
  * whichever reference spec is selected, without a second request every time the admin types a
  * number. {@code forecastStartDate} is the calendar anchor those coefficients are relative to
- * (week index {@code historyWeeks} corresponds to this date).
+ * (week index {@code historyWeeks} corresponds to this date). {@code regressionLevelMg}/
+ * {@code regressionPhi} are the underlying damped-trend fit's level and damping factor
+ * (1.0 = undamped) — {@link com.pharma.medicinestock.service.ReportService#stockRunway} uses
+ * these (not slope/intercept) for its own long-horizon extrapolation, so a trend's influence
+ * decays toward flat far into the future instead of compounding forever; slope/intercept alone
+ * remain the plain (undamped) read this report's own {@code forecastQuantityMg} is built from.
  */
 @Data
 @NoArgsConstructor
@@ -54,5 +59,7 @@ public class InventoryProjectionResponse {
         private long totalForecastRevenue;
         private double regressionSlopeMg;
         private double regressionInterceptMg;
+        private double regressionLevelMg;
+        private double regressionPhi;
     }
 }
