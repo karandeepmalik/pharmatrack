@@ -730,7 +730,11 @@ public class ReportService {
             long lineForecastRevenue = 0;
             for (int i = 0; i < horizon; i++) {
                 int x = PROJECTION_HISTORY_WEEKS + i;
-                BigDecimal qtyMg = QuantityUtil.round(BigDecimal.valueOf(Math.max(interceptMg + slopeMg * x, 0)));
+                // h = weeks ahead of the end of the fitted history (index n-1, i.e. week
+                // PROJECTION_HISTORY_WEEKS-1) — same convention simulateRunway() uses via hToday.
+                double h = x - (PROJECTION_HISTORY_WEEKS - 1);
+                BigDecimal qtyMg = QuantityUtil.round(
+                        BigDecimal.valueOf(Math.max(levelMg + slopeMg * dampedTrendSum(h, phiMg), 0)));
                 long revenue = avgPricePerMg.multiply(qtyMg).setScale(0, RoundingMode.HALF_UP).longValue();
                 forecastQuantityMg.add(qtyMg);
                 forecastRevenue.add(revenue);
@@ -866,10 +870,10 @@ public class ReportService {
      * Simulates day-by-day depletion of {@code currentStockInUnit} against the weekly mg rate
      * {@code max(levelMg + trendMg*dampedTrendSum(h, phi), 0)} — the damped-trend forecast (see
      * {@link #linearRegression}'s Javadoc), where {@code h} continues forward from {@code
-     * hToday} by {@code daysElapsed/7}. Using the damped form here (rather than the plain
-     * undamped slope/intercept {@link #inventoryProjection} forecasts with) matters specifically
-     * because this simulation's horizon ({@link #RUNWAY_CAP_DAYS}, up to 10 years) is long enough
-     * that a trend extrapolated linearly forever can run away to an absurd rate; damping lets the
+     * hToday} by {@code daysElapsed/7}. {@link #inventoryProjection} evaluates the same damped
+     * form over its own (much shorter) forecast table. Damping matters especially here because
+     * this simulation's horizon ({@link #RUNWAY_CAP_DAYS}, up to 10 years) is long enough that a
+     * trend extrapolated linearly forever can run away to an absurd rate; damping lets the
      * trend's influence decay toward a flat asymptote instead, while {@code phi=1} (the common
      * case when the fitted history is itself close to linear) makes this identical to the plain
      * linear read. Finds the exact stock-out date (if any) within {@code RUNWAY_CAP_DAYS}, then
@@ -940,14 +944,18 @@ public class ReportService {
      * fixed, so a genuinely linear series still fits exactly with {@code phi=1} (damping only
      * ever adds one-step-ahead error on a perfectly straight line — see
      * {@code linearRegressionProjectsAPerfectTrendExactly}) while a series whose recent trend is
-     * a short-lived blip can fit better by letting {@code phi<1} win the search. Only
-     * {@link #stockRunway} actually evaluates the damped form (via {@code level}/{@code phi});
-     * {@link #inventoryProjection}'s own (much shorter, 26-week-capped) forecast table keeps
-     * reading the plain undamped slope/intercept, since compounding a trend linearly isn't a
-     * real risk over that short a horizon — only {@code stockRunway}'s up-to-10-year simulation
-     * needs the trend's influence to decay instead of extrapolating forever.
+     * a short-lived blip can fit better by letting {@code phi<1} win the search. Both
+     * {@link #stockRunway} and {@link #inventoryProjection} evaluate the damped form (via
+     * {@code level}/{@code phi}) — damped trend (Gardner &amp; McKenzie) is established in the
+     * forecasting literature as generally outperforming a plain linear trend even at short/medium
+     * horizons, not just the long one {@code stockRunway} simulates, so there's no horizon short
+     * enough to prefer the undamped read. The candidate grid spans {@code tau = -1/ln(phi)} weeks
+     * of decay time-constant from ~49 weeks ({@code phi=0.98}) down to ~1.6 weeks
+     * ({@code phi=0.50}) — the faster-decaying end (0.70/0.60/0.50) exists so a demand blip that
+     * reverts within a typical ~30-40 day stock runway shows up as visible curvature within that
+     * window, which the older {0.80}-floor grid couldn't reach.
      */
-    private static final double[] DAMPING_CANDIDATES = {1.00, 0.98, 0.95, 0.90, 0.85, 0.80};
+    private static final double[] DAMPING_CANDIDATES = {1.00, 0.98, 0.95, 0.90, 0.85, 0.80, 0.70, 0.60, 0.50};
 
     private static double[] linearRegression(List<BigDecimal> ySeries) {
         int n = ySeries.size();
