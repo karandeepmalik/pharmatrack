@@ -1314,6 +1314,65 @@ class ReportServiceTest {
         }
 
         @Test
+        @DisplayName("a demand gap that recovers selects a fast-decaying phi the old {1.00..0.80} grid couldn't reach")
+        void demandGapThatRecoversSelectsFastDecayingPhiBeyondTheOldGridsReach() {
+            // 20 flat weeks at 2 vials/week, then a 4-week demand gap (0 vials/week — e.g. a
+            // stockout or a stretch with no orders), then 2 weeks back at the original 2
+            // vials/week baseline — enough post-gap data for the fit to see the recovery, not
+            // just the gap itself (a blip with no data after it can't be told apart from a
+            // permanent shift).
+            List<Transaction> txs = new java.util.ArrayList<>();
+            for (int i = 0; i < 26; i++) {
+                LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
+                boolean isGapWeek = i >= 20 && i <= 23;
+                if (!isGapWeek) {
+                    txs.add(makeTx((long) i, john, vial, 2,
+                            Transaction.TransactionStatus.APPROVED, "wk" + i, weekAt));
+                }
+            }
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(txs);
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+
+            // phi<=0.7 is only reachable with the widened grid (DAMPING_CANDIDATES now adds
+            // 0.70/0.60/0.50) — the old grid's floor was 0.80, so this value is new behavior.
+            assertThat(r.getLines().get(0).getRegressionPhi()).isLessThanOrEqualTo(0.7);
+        }
+
+        @Test
+        @DisplayName("the damped forecast lands closer to the reverted baseline than the old undamped read would, for the same demand-gap-then-recovery scenario")
+        void dampedForecastIsCloserToTheRevertedBaselineThanTheOldUndampedReadWouldHaveBeen() {
+            List<Transaction> txs = new java.util.ArrayList<>();
+            for (int i = 0; i < 26; i++) {
+                LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
+                boolean isGapWeek = i >= 20 && i <= 23;
+                if (!isGapWeek) {
+                    txs.add(makeTx((long) i, john, vial, 2,
+                            Transaction.TransactionStatus.APPROVED, "wk" + i, weekAt));
+                }
+            }
+            when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(txs);
+
+            InventoryProjectionResponse r = reportService.inventoryProjection(8, null);
+            InventoryProjectionResponse.LineProjection line = r.getLines().get(0);
+            double actualDampedForecastMg = line.getForecastQuantityMg().get(0).doubleValue();
+
+            // Reference: the OLD undamped formula (intercept + slope*x) this forecast loop used
+            // before this change, reusing the SAME fitted slope/intercept the production fit
+            // exposes — not an independently re-fit series, since this PR only changes how the
+            // forecast loop reads the already-fitted coefficients, not the fit itself.
+            double slope = line.getRegressionSlopeMg();
+            double intercept = line.getRegressionInterceptMg();
+            int x = 26; // PROJECTION_HISTORY_WEEKS + 0, first forecast week
+            double oldUndampedForecastMg = Math.max(intercept + slope * x, 0);
+
+            double trueRevertedBaselineMg = 2 * 200.0; // 2 vials/week x 200mg (10ml x 20mg/ml)
+            double newGap = Math.abs(actualDampedForecastMg - trueRevertedBaselineMg);
+            double oldGap = Math.abs(oldUndampedForecastMg - trueRevertedBaselineMg);
+            assertThat(newGap).isLessThan(oldGap);
+        }
+
+        @Test
         void forecastStartDateIsTheMondayAfterTheCurrentWeekAndHistoryWeeksIs26() {
             when(transactionRepository.findApprovedBetween(any(), any(), any())).thenReturn(List.of());
 
@@ -1502,8 +1561,8 @@ class ReportServiceTest {
         }
 
         @Test
-        @DisplayName("damping stops a transient spike's trend from being extrapolated forever, so a long runway depletes later than naive linear extrapolation would predict")
-        void dampedTrendDepletesLaterThanUndampedExtrapolationWouldOverALongHorizon() {
+        @DisplayName("naive linear extrapolation of a transient spike's reversion is implausible (floors to permanent zero demand) while damping still gives a sensible, finite runway")
+        void dampedTrendGivesASensibleRunwayWhereNaiveLinearExtrapolationWouldImplyStockNeverDepletes() {
             List<Transaction> txs = new java.util.ArrayList<>();
             for (int i = 0; i < 26; i++) {
                 LocalDateTime weekAt = thisMonday.minusWeeks(25 - i).atTime(9, 0);
@@ -1517,8 +1576,16 @@ class ReportServiceTest {
             StockRunwayResponse r = reportService.stockRunway(null, null, "STRIPS", null, vials, 10);
             LocalDate actualDampedStockOutDate = LocalDate.parse(r.getLines().get(0).getStockOutDate());
 
-            // Reference: what the pre-fix undamped formula (intercept + slope*weekIndex, growing
-            // forever) would have predicted for the same stock and the same fitted slope/intercept.
+            // Reference: what the plain undamped formula (intercept + slope*weekIndex) would have
+            // predicted for the same stock, reusing the same fitted slope/intercept. With the
+            // widened DAMPING_CANDIDATES grid, the SSE-minimizing fit for *this* spike-then-revert
+            // series now lands on a declining trend (the last few weeks are back at baseline, and a
+            // strongly-damped fit explains that reversion better than the old grid's best-available
+            // mild-growth fit did) — so naive linear extrapolation of that decline floors to a
+            // permanent *zero* demand rate (max(rate, 0)) well before the 750-vial stock would run
+            // out, implausibly implying the stock never depletes at all. Damping avoids this trap:
+            // it anchors the forecast near the recently-observed level instead of extrapolating the
+            // trend indefinitely, so it still predicts a real, finite stock-out date.
             InventoryProjectionResponse projection = reportService.inventoryProjection(1, null);
             InventoryProjectionResponse.LineProjection line = projection.getLines().get(0);
             double slope = line.getRegressionSlopeMg(), intercept = line.getRegressionInterceptMg();
@@ -1535,8 +1602,8 @@ class ReportServiceTest {
                 if (probeMg <= 0) { undampedStockOutDate = today.plusDays(d); break; }
             }
 
-            assertThat(undampedStockOutDate).isNotNull();
-            assertThat(actualDampedStockOutDate).isAfter(undampedStockOutDate);
+            assertThat(undampedStockOutDate).isNull();
+            assertThat(actualDampedStockOutDate).isNotNull();
         }
     }
 
