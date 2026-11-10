@@ -11,10 +11,14 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface TransactionRepository extends JpaRepository<Transaction,Long> {
 
     void deleteBySubmittedById(Long userId);
+
+    /** Looks up a possible prior submission by its client-generated idempotency key — see submit(). */
+    Optional<Transaction> findByIdempotencyKey(String idempotencyKey);
 
     @Modifying
     @Query("UPDATE Transaction t SET t.approvedBy = null WHERE t.approvedBy.id = :userId")

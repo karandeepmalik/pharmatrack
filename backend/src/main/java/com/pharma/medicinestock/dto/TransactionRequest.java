@@ -54,6 +54,12 @@ public class TransactionRequest {
      */
     private LocalDate submittedDate;
 
+    /**
+     * Optional client-generated token identifying one logical submission attempt. Populated
+     * by the controller from a multipart param (not validated here — it's an opaque string).
+     */
+    private String idempotencyKey;
+
     // ── Getters & Setters ──────────────────────────────────────────────
 
     public Long getMedicineId() { return medicineId; }
@@ -83,4 +89,7 @@ public class TransactionRequest {
 
     public LocalDate getSubmittedDate() { return submittedDate; }
     public void setSubmittedDate(LocalDate submittedDate) { this.submittedDate = submittedDate; }
+
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 }

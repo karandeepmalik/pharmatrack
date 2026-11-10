@@ -39,6 +39,7 @@ public class DataMigrationService {
         addTransactionHotPathIndex();
         addUserLocationColumn();
         backfillUserLocations();
+        addIdempotencyKeyColumn();
     }
 
     /** ddl-auto=validate in prod won't create this new column — add it if missing. */
@@ -87,6 +88,22 @@ public class DataMigrationService {
             if (total > 0) log.info("DataMigration: backfilled location for {} users", total);
         } catch (Exception e) {
             log.debug("DataMigration: user location backfill skipped — {}", e.getMessage());
+        }
+    }
+
+    /** ddl-auto=validate in prod won't create this new column/index — add them if missing. */
+    private void addIdempotencyKeyColumn() {
+        try {
+            Integer exists = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                "WHERE table_name = 'transactions' AND column_name = 'idempotency_key'", Integer.class);
+            if (exists == null || exists == 0) {
+                jdbc.execute("ALTER TABLE transactions ADD COLUMN idempotency_key VARCHAR(100)");
+                log.info("DataMigration: added idempotency_key column to transactions table");
+            }
+            jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_idempotency_key ON transactions(idempotency_key)");
+        } catch (Exception e) {
+            log.debug("DataMigration: transactions.idempotency_key column/index add skipped — {}", e.getMessage());
         }
     }
 

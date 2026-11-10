@@ -59,7 +59,7 @@ export const getPharmaCompanies    = ()     => api.get('/medicines/companies');
 export const createPharmaCompany   = (data) => api.post('/medicines/companies', data);
 
 // ── Transactions ───────────────────────────────────────────────────────
-export const submitTransaction = ({ medicineId, quantity, notes, screenshotFiles, pricePerUnit, medicineStockType, submittedDate }) => {
+export const submitTransaction = ({ medicineId, quantity, notes, screenshotFiles, pricePerUnit, medicineStockType, submittedDate, idempotencyKey }) => {
   const form = new FormData();
   form.append('medicineId', String(medicineId));
   form.append('quantity',   String(quantity));
@@ -68,6 +68,7 @@ export const submitTransaction = ({ medicineId, quantity, notes, screenshotFiles
   if (pricePerUnit != null) form.append('pricePerUnit', String(pricePerUnit));
   if (medicineStockType) form.append('medicineStockType', medicineStockType);
   if (submittedDate) form.append('submittedDate', submittedDate);
+  if (idempotencyKey) form.append('idempotencyKey', idempotencyKey);
   return api.post('/transactions', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });

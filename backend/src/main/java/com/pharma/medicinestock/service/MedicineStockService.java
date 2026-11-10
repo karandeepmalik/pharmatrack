@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -162,7 +163,14 @@ public class MedicineStockService {
 
     @Transactional(readOnly=true)
     public List<MedicineStockResponse> getAll() {
-        return medicineStockRepository.findAll().stream().map(this::toResponse).toList();
+        // Same forward-reconstruction used by getAvailableForUser()/reports — the admin "Modify
+        // Medicine Stock" view must never show a quantity that disagrees with what can actually
+        // be dispatched, which the cached MedicineStock.quantity field can silently drift from.
+        Map<Long, Map<String, BigDecimal>> settledByUser = new HashMap<>();
+        return medicineStockRepository.findAll().stream()
+            .map(i -> toDispatchableResponse(i,
+                settledByUser.computeIfAbsent(i.getUser().getId(), currentStockCalculator::settledQuantitiesForUser)))
+            .toList();
     }
 
     private MedicineStockResponse toResponse(MedicineStock i) {

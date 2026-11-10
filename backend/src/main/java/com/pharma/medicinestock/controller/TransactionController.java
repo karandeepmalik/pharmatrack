@@ -55,10 +55,12 @@ public class TransactionController {
             @RequestParam(value = "medicineStockType", required = false) String medicineStockType,
             @RequestParam(value = "submittedDate", required = false)
                 @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedDate,
+            @RequestParam(value = "idempotencyKey", required = false) String idempotencyKey,
             @AuthenticationPrincipal UserDetails userDetails) throws IOException {
 
         TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshots, pricePerUnit, medicineStockType);
         req.setSubmittedDate(submittedDate);
+        req.setIdempotencyKey(idempotencyKey);
         return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
                 .body(transactionService.submit(req, userDetails.getUsername()));
     }

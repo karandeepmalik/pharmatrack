@@ -132,6 +132,63 @@ class TransactionServiceTest {
             verify(medicineStockRepository).save(argThat(i -> i.getQuantity().compareTo(BigDecimal.valueOf(40)) == 0));
         }
 
+        @Test @DisplayName("stores the idempotency key on the created transaction")
+        void submit_withIdempotencyKey_storesItOnTransaction() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            req.setIdempotencyKey("key-123");
+            Transaction tx = savedTx(req);
+
+            when(transactionRepository.findByIdempotencyKey("key-123")).thenReturn(Optional.empty());
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.save(any())).thenReturn(medicineStock);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            transactionService.submit(req, "john.doe");
+
+            verify(transactionRepository).save(argThat(t -> "key-123".equals(t.getIdempotencyKey())));
+        }
+
+        @Test @DisplayName("a retried submission with an already-used idempotency key replays the original response instead of creating a second transaction")
+        void submit_withReusedIdempotencyKey_replaysWithoutDoubleDeducting() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            req.setIdempotencyKey("key-123");
+            Transaction existingTx = savedTx(req);
+
+            when(transactionRepository.findByIdempotencyKey("key-123")).thenReturn(Optional.of(existingTx));
+            when(transactionMapper.toResponse(existingTx)).thenReturn(stubResponse(existingTx));
+
+            TransactionResponse res = transactionService.submit(req, "john.doe");
+
+            assertThat(res.getId()).isEqualTo(existingTx.getId());
+            verify(medicineStockRepository, never()).save(any());
+            verify(transactionRepository, never()).save(any());
+            verifyNoInteractions(userRepository, medicineRepository);
+        }
+
+        @Test @DisplayName("a blank idempotency key is treated as absent — submits normally")
+        void submit_withBlankIdempotencyKey_submitsNormally() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            req.setIdempotencyKey("   ");
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.save(any())).thenReturn(medicineStock);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            transactionService.submit(req, "john.doe");
+
+            verify(transactionRepository, never()).findByIdempotencyKey(any());
+            verify(transactionRepository).save(any());
+        }
+
         @Test @DisplayName("saves TransactionScreenshot entries when screenshots provided")
         void submit_withScreenshots_savesScreenshotEntities() {
             String b64 = Base64.getEncoder().encodeToString("png".getBytes());

@@ -21,6 +21,7 @@ const mockMedicineStock = [
 
 beforeEach(() => {
   jest.clearAllMocks();
+  sessionStorage.clear();
   api.getAvailableMedicineStock.mockResolvedValue({ data: mockMedicineStock });
 });
 
@@ -473,5 +474,61 @@ describe('Form submission', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/insufficient stock/i)
     );
     expect(api.getAvailableMedicineStock).not.toHaveBeenCalled();
+  });
+
+  // Regression: a dispatch submitted on a slow/backgrounded mobile connection can appear to
+  // fail client-side (e.g. the response never arrives) even though it landed server-side —
+  // the user then taps Submit again. Reusing the same idempotency key across that retry lets
+  // the backend recognize it as the same attempt and avoid creating a second dispatch.
+  test('includes a generated idempotencyKey in the submitTransaction call', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() =>
+      expect(api.submitTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: expect.any(String) })
+      )
+    );
+  });
+
+  test('retrying after a failed submit reuses the same idempotencyKey', async () => {
+    api.submitTransaction.mockRejectedValueOnce({
+      response: { data: { message: 'Network error, please retry' } },
+    });
+    await fillValidForm();
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() => screen.getByRole('alert'));
+    const firstKey = api.submitTransaction.mock.calls[0][0].idempotencyKey;
+    expect(firstKey).toBeTruthy();
+
+    api.submitTransaction.mockResolvedValueOnce({ data: { id: 1, status: 'PENDING' } });
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/submitted successfully/i)
+    );
+    const secondKey = api.submitTransaction.mock.calls[1][0].idempotencyKey;
+    expect(secondKey).toBe(firstKey);
+  });
+
+  test('a new dispatch after a successful submit gets a fresh idempotencyKey', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() => screen.getByRole('alert'));
+    const firstKey = api.submitTransaction.mock.calls[0][0].idempotencyKey;
+
+    await userEvent.selectOptions(screen.getByLabelText(/pharma company/i), '1');
+    await userEvent.selectOptions(screen.getByLabelText(/medicine type/i), 'VIAL');
+    await userEvent.selectOptions(screen.getByLabelText(/volume \(ml\)|specification/i), '10');
+    await userEvent.type(screen.getByLabelText(/quantity/i), '3');
+    await userEvent.type(screen.getByLabelText(/medicine dispatch note/i),
+      'Second dispatch to a different clinic');
+    await attachScreenshot('pay-2.png');
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() => expect(api.submitTransaction).toHaveBeenCalledTimes(2));
+
+    const secondKey = api.submitTransaction.mock.calls[1][0].idempotencyKey;
+    expect(secondKey).toBeTruthy();
+    expect(secondKey).not.toBe(firstKey);
   });
 });
