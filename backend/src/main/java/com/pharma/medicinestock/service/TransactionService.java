@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class TransactionService {
@@ -66,6 +67,15 @@ public class TransactionService {
 
     @Transactional
     public TransactionResponse submit(TransactionRequest req, String username) {
+        // A retried submission (same client-generated key as an attempt that already landed —
+        // e.g. the client never saw the response because the app was backgrounded mid-request)
+        // replays the original result instead of deducting stock and creating a second record.
+        if (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
+            Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(req.getIdempotencyKey());
+            if (existing.isPresent()) {
+                return transactionMapper.toResponse(existing.get());
+            }
+        }
         validateNotes(req.getNotes());
         validateSubmittedDate(req.getSubmittedDate());
         validateQuantity(req.getQuantity());
@@ -97,6 +107,7 @@ public class TransactionService {
                 .pricePerUnit(req.getPricePerUnit())
                 .medicineStockType(invType)
                 .submittedAt(submittedAt)
+                .idempotencyKey(req.getIdempotencyKey())
                 .build());
 
         List<String> dataList = req.getPaymentScreenshots();

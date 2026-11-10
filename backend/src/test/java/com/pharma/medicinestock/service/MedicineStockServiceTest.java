@@ -616,10 +616,20 @@ class MedicineStockServiceTest {
     @DisplayName("getAll")
     class GetAll {
 
+        @BeforeEach
+        void noReconstructedDataByDefault() {
+            // Default: CurrentStockCalculator has no data for this user, so every bucket
+            // defaults to 0. Individual tests override this to exercise specific quantities.
+            lenient().when(currentStockCalculator.settledQuantitiesForUser(any()))
+                    .thenReturn(Map.of());
+        }
+
         @Test
         @DisplayName("returns all medicineStock items mapped to MedicineStockResponse")
         void returnsAllMapped() {
             when(medicineStockRepository.findAll()).thenReturn(List.of(medicineStock));
+            when(currentStockCalculator.settledQuantitiesForUser(2L))
+                    .thenReturn(Map.of("1|REGULAR_MEDICINE_STOCK", BigDecimal.valueOf(50)));
 
             List<MedicineStockResponse> result = medicineStockService.getAll();
 
@@ -674,6 +684,40 @@ class MedicineStockServiceTest {
             List<MedicineStockResponse> result = medicineStockService.getAll();
 
             assertThat(result.get(0).getSpecUnit()).isEqualTo("mg (10 Tablets)");
+        }
+
+        @Test
+        @DisplayName("shows the CurrentStockCalculator's reconstructed quantity, not the raw MedicineStock.quantity field")
+        void usesReconstructedQuantityNotRawField() {
+            // Raw ledger says 50 but the reconstructed/settled figure (ledger of adjustments +
+            // non-rejected transactions) is 42 — admin's "Modify Medicine Stock" view must match
+            // the same settled figure getAvailableForUser()/reports show, not the drifted cache.
+            when(medicineStockRepository.findAll()).thenReturn(List.of(medicineStock));
+            when(currentStockCalculator.settledQuantitiesForUser(2L))
+                    .thenReturn(Map.of("1|REGULAR_MEDICINE_STOCK", BigDecimal.valueOf(42)));
+
+            List<MedicineStockResponse> result = medicineStockService.getAll();
+
+            assertThat(result.get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(42));
+        }
+
+        @Test
+        @DisplayName("reconstructs quantities independently per user across multiple rows")
+        void reconstructsPerUserAcrossMultipleRows() {
+            MedicineStock otherUserStock = MedicineStock.builder().id(20L).user(adminUser).medicine(medicine)
+                    .quantity(BigDecimal.valueOf(99)).medicineStockType(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK).build();
+
+            when(medicineStockRepository.findAll()).thenReturn(List.of(medicineStock, otherUserStock));
+            when(currentStockCalculator.settledQuantitiesForUser(2L))
+                    .thenReturn(Map.of("1|REGULAR_MEDICINE_STOCK", BigDecimal.valueOf(42)));
+            when(currentStockCalculator.settledQuantitiesForUser(1L))
+                    .thenReturn(Map.of("1|REGULAR_MEDICINE_STOCK", BigDecimal.valueOf(7)));
+
+            List<MedicineStockResponse> result = medicineStockService.getAll();
+
+            assertThat(result.get(0).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(42));
+            assertThat(result.get(1).getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(7));
+            verify(currentStockCalculator, times(1)).settledQuantitiesForUser(2L);
         }
     }
 }

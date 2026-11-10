@@ -566,14 +566,19 @@ async function run() {
       inTransit: true,
     }, adminToken);
     assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
-    // Restore immediately
-    await apiPost(`${API}/medicine-stock/adjust`, {
-      userId: johnId,
-      medicineId: adjustMedicineId,
-      adjustmentType: 'REDUCE',
-      quantity: 3,
-      note: 'Reversing in-transit test addition',
-    }, adminToken);
+    // Undo via DELETE, not a compensating REDUCE: a REDUCE here would cancel the raw
+    // quantity back out, but the ADD(inTransit) adjustment row stays in the ledger and
+    // keeps excluding 3 units from the settled/reconstructed figure for its whole transit
+    // window — a lingering discrepancy a plain reversal can't clean up. Deleting the
+    // adjustment removes it from the ledger entirely, so it never got "shipped" at all.
+    const today = istDateString(new Date());
+    const adjR = await apiGet(`${API}/medicine-stock/adjustments?from=${today}&to=${today}`, adminToken);
+    const adj = adjR.data.find(a => a.userId === johnId && a.medicineId === adjustMedicineId
+      && a.adjustmentType === 'ADD' && a.inTransit === true
+      && a.note === 'In-transit shipment from central warehouse');
+    assert(adj, 'Could not find newly created in-transit adjustment to undo');
+    const delR = await apiDelete(`${API}/medicine-stock/adjustments/${adj.id}`, adminToken);
+    assert(delR.status === 204, `Expected 204, got ${delR.status}`);
   });
 
   await test('Admin can ADD medicineStock with inTransit=false (explicit default)', async () => {
@@ -767,6 +772,93 @@ async function run() {
   });
 
   await test('[VERIFY TEARDOWN] john.doe medicineStock restored after decimal transaction test', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
+    const restored = inv ? inv.quantity : 0;
+    assert(Math.abs(restored - quantityBeforeAdjust) < 0.001,
+      `Expected ${quantityBeforeAdjust}, got ${restored}`);
+  });
+
+  // ── Submission Idempotency Key (duplicate-submit protection) ────────────
+  console.log('\n-- Submission Idempotency Key');
+
+  let idempotencyTestKey;
+  let idempotencyTestTxId;
+  const idempotencyTestNote = 'E2E idempotency key duplicate-submission test';
+
+  await test('[SETUP] Allocate stock for idempotency-key test', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 5,
+      note: 'E2E setup — allocating stock for idempotency-key test',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('User submits a dispatch with a client-generated idempotencyKey', async () => {
+    idempotencyTestKey = `e2e-idempotency-${Date.now()}-${Math.random()}`;
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '2',
+      notes: idempotencyTestNote,
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      idempotencyKey: idempotencyTestKey,
+      screenshots: [makeFakePng('E')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(Math.abs(r.data.quantity - 2) < 0.001, `Expected quantity 2, got ${r.data.quantity}`);
+    idempotencyTestTxId = r.data.id;
+  });
+
+  await test('Retrying with the SAME idempotencyKey replays the original dispatch instead of creating a second one', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '2',
+      notes: idempotencyTestNote,
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      idempotencyKey: idempotencyTestKey,
+      screenshots: [makeFakePng('E')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.id === idempotencyTestTxId,
+      `Expected the replayed response to be the same transaction (id ${idempotencyTestTxId}), got ${r.data.id}`);
+  });
+
+  await test('Only one transaction record exists for the idempotency-key test despite two submissions', async () => {
+    const r = await apiGet(`${API}/transactions/my?size=50`, userToken);
+    const matches = r.data.content.filter(t => t.notes === idempotencyTestNote);
+    assert(matches.length === 1, `Expected exactly 1 transaction, found ${matches.length}`);
+  });
+
+  await test('Stock was deducted only once, not twice, across the two submissions', async () => {
+    const r = await apiGet(`${API}/medicine-stock/available`, userToken);
+    const item = r.data.find(i => i.medicineId === adjustMedicineId && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const available = item ? item.quantity : 0;
+    // Setup allocated +5 on top of the restored baseline; a single 2-unit deduction (not two)
+    // should leave baseline + 3.
+    const expected = quantityBeforeAdjust + 3;
+    assert(Math.abs(available - expected) < 0.001, `Expected ${expected} available after a single 2-unit deduction, got ${available}`);
+  });
+
+  await test('[TEARDOWN] Delete the idempotency-key test dispatch (credits stock back)', async () => {
+    const r = await apiDelete(`${API}/transactions/my/${idempotencyTestTxId}`, userToken);
+    assert(r.status === 204, `Delete failed: ${r.status}`);
+  });
+
+  await test('[TEARDOWN] Removes the leftover allocation from idempotency-key test setup', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 5,
+      note: 'E2E teardown — removing allocation for idempotency-key test',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[VERIFY TEARDOWN] john.doe medicineStock restored after idempotency-key test', async () => {
     const r = await apiGet(`${API}/medicine-stock`, adminToken);
     const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
     const restored = inv ? inv.quantity : 0;
@@ -1955,8 +2047,11 @@ async function run() {
     // The tx no longer draws from REGULAR at all, so it's back to editRegularBefore + 5 (setup ADD).
     assert(Math.abs(regularQty - (editRegularBefore + 5)) < 0.001,
       `Expected REGULAR at ${editRegularBefore + 5}, got ${regularQty}`);
-    // ADMIN_MEDICINE_STOCK never existed for this (user, medicine) pair before — debited by 3.
-    assert(Math.abs(adminQty - (-3)) < 0.001, `Expected ADMIN_MEDICINE_STOCK at -3, got ${adminQty}`);
+    // ADMIN_MEDICINE_STOCK never existed for this (user, medicine) pair before, so the raw
+    // cache goes to -3 once debited — but GET /medicine-stock now shows the settled/reconstructed
+    // figure (the single source of truth elsewhere in the app), which floors at 0 rather than
+    // surfacing a negative deficit.
+    assert(Math.abs(adminQty - 0) < 0.001, `Expected ADMIN_MEDICINE_STOCK at 0 (floored), got ${adminQty}`);
   });
 
   await test('[TEARDOWN] Admin deletes the edit-test dispatch record (credits back ADMIN_MEDICINE_STOCK)', async () => {

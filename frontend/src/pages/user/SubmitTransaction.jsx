@@ -6,6 +6,25 @@ import useScreenshot from '../../hooks/useScreenshot';
 import ScreenshotUpload from '../../components/ScreenshotUpload';
 import TransactionPreview from '../../components/TransactionPreview';
 
+// Persisted in sessionStorage (not component state) so the same key survives a retry even if
+// the page gets reloaded/remounted in between — e.g. the user backgrounds the app mid-submit
+// on a slow mobile connection, the response never arrives, and they resubmit once they're back.
+// The backend treats a repeat of the same key as a no-op replay instead of a second dispatch.
+const IDEMPOTENCY_KEY_STORAGE_KEY = 'pendingDispatchIdempotencyKey';
+
+function getOrCreatePendingIdempotencyKey() {
+  let key = sessionStorage.getItem(IDEMPOTENCY_KEY_STORAGE_KEY);
+  if (!key) {
+    key = crypto.randomUUID();
+    sessionStorage.setItem(IDEMPOTENCY_KEY_STORAGE_KEY, key);
+  }
+  return key;
+}
+
+function clearPendingIdempotencyKey() {
+  sessionStorage.removeItem(IDEMPOTENCY_KEY_STORAGE_KEY);
+}
+
 export default function SubmitTransaction() {
   // ── Server data ──────────────────────────────────────────────────────
   const [medicineStock, setMedicineStock] = useState([]);
@@ -131,6 +150,7 @@ export default function SubmitTransaction() {
     setErrorMessage('');
     setSuccessMessage('');
 
+    const idempotencyKey = getOrCreatePendingIdempotencyKey();
     try {
       await api.submitTransaction({
         medicineId: selectedItem.medicineId,
@@ -140,6 +160,7 @@ export default function SubmitTransaction() {
         pricePerUnit: priceOverride !== '' ? parseInt(priceOverride, 10) : undefined,
         medicineStockType: selectedMedicineStockType,
         submittedDate: dispatchDate,
+        idempotencyKey,
       });
     } catch (err) {
       setErrorMessage(
@@ -152,6 +173,7 @@ export default function SubmitTransaction() {
     // Submission itself succeeded — everything below is best-effort cleanup/refresh. A failure
     // here (e.g. the stock refetch) must never be reported as a submit failure, since the
     // dispatch was already accepted server-side.
+    clearPendingIdempotencyKey();
     setSuccessMessage('Medicine dispatch submitted successfully and is pending admin approval.');
     setSelectedMedicineStockType('REGULAR_MEDICINE_STOCK');
     setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');

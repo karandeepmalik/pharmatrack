@@ -23,6 +23,11 @@ import java.util.List;
     // every transaction submission) in one index scan; supersedes a standalone index on
     // submitted_by alone via leftmost-prefix matching — see DataMigrationService.
     @Index(name = "idx_tx_submitted_by_status_at", columnList = "submitted_by, status, submitted_at"),
+    // Lets submit() detect a retried request (same client-generated key) and replay the
+    // original result instead of deducting stock twice — see TransactionService.submit().
+    // Unique but nullable: Postgres allows any number of NULLs through a unique index, so
+    // older rows (and any future caller that omits the key) are unaffected.
+    @Index(name = "idx_tx_idempotency_key", columnList = "idempotency_key", unique = true),
 })
 @Data
 @NoArgsConstructor
@@ -87,6 +92,15 @@ public class Transaction {
     @Convert(converter = MedicineStockTypeConverter.class)
     @Column(name = "medicine_stock_type", length = 30)
     private MedicineStock.MedicineStockType medicineStockType;
+
+    /**
+     * Optional client-generated token identifying one logical submission attempt — the same
+     * key is resent on a client-side retry of a dispatch the user already tapped "Submit" on
+     * (e.g. a slow mobile network drops the response while the app was backgrounded, and the
+     * client, seeing no confirmation, retries). Null for any caller that doesn't send one.
+     */
+    @Column(name = "idempotency_key", length = 100)
+    private String idempotencyKey;
 
     @Builder.Default
     @OneToMany(mappedBy = "transaction", cascade = CascadeType.ALL,
