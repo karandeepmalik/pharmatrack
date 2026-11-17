@@ -3,6 +3,7 @@ package com.pharma.medicinestock.service;
 import com.pharma.medicinestock.dto.AdjustMedicineStockRequest;
 import com.pharma.medicinestock.dto.MedicineStockAdjustmentResponse;
 import com.pharma.medicinestock.dto.MedicineStockResponse;
+import com.pharma.medicinestock.dto.UpdateMedicineStockAdjustmentRequest;
 import com.pharma.medicinestock.entity.*;
 import com.pharma.medicinestock.exception.InsufficientMedicineStockException;
 import com.pharma.medicinestock.exception.ResourceNotFoundException;
@@ -607,6 +608,200 @@ class MedicineStockServiceTest {
                     .isInstanceOf(ResourceNotFoundException.class);
 
             verify(medicineStockAdjustmentRepository, never()).deleteById(any());
+        }
+    }
+
+    // ── updateAdjustment ─────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("updateAdjustment")
+    class UpdateAdjustment {
+
+        private MedicineStockAdjustment existingAdj;
+
+        private UpdateMedicineStockAdjustmentRequest req(String note, Integer qty, String adjType, String stockType) {
+            UpdateMedicineStockAdjustmentRequest r = new UpdateMedicineStockAdjustmentRequest();
+            r.setNote(note);
+            if (qty != null) r.setQuantity(BigDecimal.valueOf(qty));
+            r.setAdjustmentType(adjType);
+            r.setMedicineStockType(stockType);
+            return r;
+        }
+
+        @BeforeEach
+        void setup() {
+            existingAdj = MedicineStockAdjustment.builder()
+                    .id(30L).user(user).medicine(medicine).quantity(BigDecimal.valueOf(10))
+                    .adjustmentType("ADD").note("Original note here")
+                    .inTransit(false).wasInTransit(false).transitDays(2).internalMovement(false)
+                    .medicineStockType(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK)
+                    .adjustedAt(LocalDateTime.of(2026, 1, 10, 9, 0))
+                    .build();
+
+            lenient().when(medicineStockAdjustmentRepository.findById(30L)).thenReturn(Optional.of(existingAdj));
+            lenient().when(medicineStockAdjustmentRepository.save(any()))
+                    .thenAnswer(inv -> inv.getArgument(0));
+            lenient().when(medicineStockRepository.save(any()))
+                    .thenAnswer(inv -> inv.getArgument(0));
+        }
+
+        @Test
+        @DisplayName("throws ResourceNotFoundException when adjustment does not exist")
+        void notFound_throwsResourceNotFound() {
+            when(medicineStockAdjustmentRepository.findById(999L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> medicineStockService.updateAdjustment(999L, req("Valid note here", null, null, null)))
+                    .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("note-only edit updates the note and leaves the net medicineStock quantity unchanged")
+        void noteOnly_updatesNoteLeavesStockUntouched() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock)); // qty = 50, original ADD was 10
+
+            medicineStockService.updateAdjustment(30L, req("Corrected note wording", null, null, null));
+
+            assertThat(existingAdj.getNote()).isEqualTo("Corrected note wording");
+            // Revert ADD 10 (50-10=40), then re-apply the unchanged ADD 10 (40+10=50) — net no-op.
+            verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(50)) == 0));
+        }
+
+        @Test
+        @DisplayName("increasing quantity on an ADD adjustment credits the extra amount to the same bucket")
+        void addQuantityIncrease_creditsDifference() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock)); // qty = 50, original ADD was 10
+
+            medicineStockService.updateAdjustment(30L, req("Recount found more stock", 15, null, null));
+
+            // Revert ADD 10 (50-10=40), then apply new ADD 15 (40+15=55)
+            verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(55)) == 0));
+            assertThat(existingAdj.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(15));
+        }
+
+        @Test
+        @DisplayName("decreasing quantity on an ADD adjustment debits the difference from the same bucket")
+        void addQuantityDecrease_debitsDifference() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock)); // qty = 50, original ADD was 10
+
+            medicineStockService.updateAdjustment(30L, req("Recount found less stock", 4, null, null));
+
+            // Revert ADD 10 (50-10=40), then apply new ADD 4 (40+4=44)
+            verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(44)) == 0));
+        }
+
+        @Test
+        @DisplayName("switching adjustmentType from ADD to REDUCE reverses direction on the same bucket")
+        void addToReduce_reversesDirection() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock)); // qty = 50, original ADD was 10
+
+            medicineStockService.updateAdjustment(30L, req("This was actually a reduction", 10, "REDUCE", null));
+
+            // Revert ADD 10 (50-10=40), then apply REDUCE 10 (40-10=30)
+            verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(30)) == 0));
+            assertThat(existingAdj.getAdjustmentType()).isEqualTo("REDUCE");
+        }
+
+        @Test
+        @DisplayName("reverting an ADD clamps at zero rather than going negative, mirroring deleteAdjustment")
+        void revertingAdd_clampsAtZero() {
+            medicineStock.setQuantity(BigDecimal.valueOf(5)); // only 5 left, but original ADD was 10
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+
+            medicineStockService.updateAdjustment(30L, req("Fixing the note only", null, null, null));
+
+            // Revert ADD 10 clamps (5-10 -> 0) before re-applying the unchanged ADD 10 -> 10
+            verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(10)) == 0));
+        }
+
+        @Test
+        @DisplayName("changing medicineStockType moves the effect from the old bucket to the new one")
+        void changingStockType_movesBetweenBuckets() {
+            MedicineStock adminBucket = MedicineStock.builder()
+                    .id(11L).user(user).medicine(medicine).quantity(BigDecimal.valueOf(3))
+                    .medicineStockType(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK).build();
+
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock)); // qty = 50
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(adminBucket));
+
+            medicineStockService.updateAdjustment(30L, req("This was actually admin stock", null, null, "ADMIN_MEDICINE_STOCK"));
+
+            verify(medicineStockRepository).save(argThat(s ->
+                    s.getMedicineStockType() == MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK
+                            && s.getQuantity().compareTo(BigDecimal.valueOf(40)) == 0)); // 50 - 10 reverted
+            verify(medicineStockRepository).save(argThat(s ->
+                    s.getMedicineStockType() == MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK
+                            && s.getQuantity().compareTo(BigDecimal.valueOf(13)) == 0)); // 3 + 10 applied
+            assertThat(existingAdj.getMedicineStockType()).isEqualTo(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK);
+        }
+
+        @Test
+        @DisplayName("changing medicineStockType creates the target bucket if it doesn't exist yet")
+        void changingStockType_createsTargetBucketIfMissing() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK))
+                    .thenReturn(Optional.empty());
+
+            medicineStockService.updateAdjustment(30L, req("Reassigning to a fresh admin bucket", null, null, "ADMIN_MEDICINE_STOCK"));
+
+            verify(medicineStockRepository).save(argThat(s ->
+                    s.getMedicineStockType() == MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK
+                            && s.getQuantity().compareTo(BigDecimal.valueOf(10)) == 0)); // 0 + 10, newly created
+        }
+
+        @Test
+        @DisplayName("an unrecognized medicineStockType falls back to the adjustment's existing type")
+        void invalidStockType_fallsBackToExisting() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+
+            medicineStockService.updateAdjustment(30L, req("Note update only", null, null, "GARBAGE"));
+
+            assertThat(existingAdj.getMedicineStockType()).isEqualTo(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK);
+        }
+
+        @Test
+        @DisplayName("updates the adjustment date when a new one is provided")
+        void updatesAdjustmentDate() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            UpdateMedicineStockAdjustmentRequest r = req("Backdating this correction", null, null, null);
+            r.setAdjustmentDate(LocalDate.of(2026, 1, 5));
+
+            medicineStockService.updateAdjustment(30L, r);
+
+            assertThat(existingAdj.getAdjustedAt()).isEqualTo(LocalDate.of(2026, 1, 5).atStartOfDay());
+        }
+
+        @Test
+        @DisplayName("omitting the adjustment date leaves it unchanged")
+        void omittedAdjustmentDate_leavesUnchanged() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    2L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            LocalDateTime original = existingAdj.getAdjustedAt();
+
+            medicineStockService.updateAdjustment(30L, req("Just the note changed", null, null, null));
+
+            assertThat(existingAdj.getAdjustedAt()).isEqualTo(original);
         }
     }
 

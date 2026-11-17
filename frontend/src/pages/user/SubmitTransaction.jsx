@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
-import { NOTES_CONSTRAINTS } from '../../constants';
+import { NOTES_CONSTRAINTS, PAYMENT_STATUSES, paymentStatusLabel } from '../../constants';
 import useScreenshot from '../../hooks/useScreenshot';
 import ScreenshotUpload from '../../components/ScreenshotUpload';
 import TransactionPreview from '../../components/TransactionPreview';
@@ -48,6 +48,9 @@ export default function SubmitTransaction() {
 
   // ── Notes ────────────────────────────────────────────────────────────
   const [notes, setNotes] = useState('');
+
+  // ── Payment status ───────────────────────────────────────────────────
+  const [paymentStatus, setPaymentStatus] = useState('PAID');
 
   // ── Screenshots (all state lives in hook) ────────────────────────────
   const screenshot = useScreenshot();
@@ -161,6 +164,7 @@ export default function SubmitTransaction() {
         medicineStockType: selectedMedicineStockType,
         submittedDate: dispatchDate,
         idempotencyKey,
+        paymentStatus,
       });
     } catch (err) {
       setErrorMessage(
@@ -178,6 +182,7 @@ export default function SubmitTransaction() {
     setSelectedMedicineStockType('REGULAR_MEDICINE_STOCK');
     setSelectedPharma(''); setSelectedType(''); setSelectedSpec('');
     setQuantity(''); setNotes(''); setPriceOverride('');
+    setPaymentStatus('PAID');
     setDispatchDate(new Date().toISOString().slice(0, 10));
     screenshot.clearAll();
 
@@ -307,6 +312,19 @@ export default function SubmitTransaction() {
             value={dispatchDate}
             onChange={(e) => setDispatchDate(e.target.value)}
           />
+        </div>
+
+        {/* Payment Status */}
+        <div className="form-group">
+          <label htmlFor="payment-status-select">Payment Status</label>
+          <select
+            id="payment-status-select"
+            value={paymentStatus}
+            onChange={(e) => setPaymentStatus(e.target.value)}>
+            {PAYMENT_STATUSES.map((s) => (
+              <option key={s} value={s}>{paymentStatusLabel(s)}</option>
+            ))}
+          </select>
         </div>
 
         {/* Notes */}

@@ -54,6 +54,7 @@ public class TransactionMapper {
         r.setMedicineStockType(t.getMedicineStockType() != null ? t.getMedicineStockType().name() : "REGULAR_MEDICINE_STOCK");
         r.setSubmittedAt(t.getSubmittedAt());
         r.setNotes(t.getNotes());
+        r.setPaymentStatus(t.getPaymentStatus() != null ? t.getPaymentStatus().name() : "PAID");
 
         // Screenshots — prefer new table; fall back to legacy columns for old records
         List<TransactionScreenshot> shots = t.getScreenshots();

@@ -51,4 +51,12 @@ public class MedicineStockController {
         medicineStockService.deleteAdjustment(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PatchMapping("/adjustments/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<MedicineStockAdjustmentResponse> updateAdjustment(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateMedicineStockAdjustmentRequest req) {
+        return ResponseEntity.ok(medicineStockService.updateAdjustment(id, req));
+    }
 }

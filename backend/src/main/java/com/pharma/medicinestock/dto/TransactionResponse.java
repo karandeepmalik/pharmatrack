@@ -39,6 +39,9 @@ public class TransactionResponse {
     /** Price per unit submitted by the user at transaction time. May be null if not overridden. */
     private Integer pricePerUnit;
 
+    /** PAID / UNPAID / PARTIAL_PAYMENT. */
+    private String paymentStatus;
+
     // ── Getters & Setters ─────────────────────────────────────────────
 
     public Long getId() { return id; }
@@ -109,4 +112,7 @@ public class TransactionResponse {
 
     public Integer getPricePerUnit() { return pricePerUnit; }
     public void setPricePerUnit(Integer pricePerUnit) { this.pricePerUnit = pricePerUnit; }
+
+    public String getPaymentStatus() { return paymentStatus; }
+    public void setPaymentStatus(String paymentStatus) { this.paymentStatus = paymentStatus; }
 }

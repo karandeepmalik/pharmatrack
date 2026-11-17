@@ -56,11 +56,13 @@ public class TransactionController {
             @RequestParam(value = "submittedDate", required = false)
                 @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedDate,
             @RequestParam(value = "idempotencyKey", required = false) String idempotencyKey,
+            @RequestParam(value = "paymentStatus", required = false) String paymentStatus,
             @AuthenticationPrincipal UserDetails userDetails) throws IOException {
 
         TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshots, pricePerUnit, medicineStockType);
         req.setSubmittedDate(submittedDate);
         req.setIdempotencyKey(idempotencyKey);
+        req.setPaymentStatus(paymentStatus);
         return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
                 .body(transactionService.submit(req, userDetails.getUsername()));
     }
@@ -176,6 +178,9 @@ public class TransactionController {
      * @param submittedDate     optional — omit to leave unchanged; corrects the dispatch date
      * @param screenshots       optional — if provided (non-empty), replaces the existing set
      *                          entirely; omit to leave existing screenshots unchanged
+     * @param paymentStatus     optional — omit to leave unchanged; PAID/UNPAID/PARTIAL_PAYMENT.
+     *                          Unlike quantity/stock-type, this is never gated by transaction
+     *                          status — payment can be settled well after a dispatch is approved.
      */
     @PatchMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
@@ -187,7 +192,8 @@ public class TransactionController {
             @RequestParam(value = "pricePerUnit", required = false) Integer pricePerUnit,
             @RequestParam(value = "submittedDate", required = false)
                 @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedDate,
-            @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots)
+            @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots,
+            @RequestParam(value = "paymentStatus", required = false) String paymentStatus)
             throws IOException {
         // Encoding here, not in the service, mirrors submit()/buildRequest() — screenshot
         // compression is an HTTP-boundary concern (MultipartFile), not business logic.
@@ -195,7 +201,7 @@ public class TransactionController {
         // exactly this endpoint's "screenshots omitted -> leave existing ones alone" contract.
         List<String[]> encodedScreenshots = screenshotProcessor.encodeAll(screenshots);
         return ResponseEntity.ok(
-                transactionService.updateTransaction(id, notes, quantity, medicineStockType, pricePerUnit, submittedDate, encodedScreenshots));
+                transactionService.updateTransaction(id, notes, quantity, medicineStockType, pricePerUnit, submittedDate, encodedScreenshots, paymentStatus));
     }
 
     // ── Assembly helper (no logic — only construction) ─────────────────

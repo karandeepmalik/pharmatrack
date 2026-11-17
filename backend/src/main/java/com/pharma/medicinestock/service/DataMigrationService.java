@@ -40,6 +40,7 @@ public class DataMigrationService {
         addUserLocationColumn();
         backfillUserLocations();
         addIdempotencyKeyColumn();
+        addPaymentStatusColumn();
     }
 
     /** ddl-auto=validate in prod won't create this new column — add it if missing. */
@@ -104,6 +105,24 @@ public class DataMigrationService {
             jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_idempotency_key ON transactions(idempotency_key)");
         } catch (Exception e) {
             log.debug("DataMigration: transactions.idempotency_key column/index add skipped — {}", e.getMessage());
+        }
+    }
+
+    /**
+     * ddl-auto=validate in prod won't create this new column — add it if missing. The DEFAULT
+     * backfills every pre-existing row to PAID in the same ALTER (the whole payment-tracking
+     * feature is new, so there's no real payment history to otherwise infer this from).
+     */
+    private void addPaymentStatusColumn() {
+        try {
+            Integer exists = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns " +
+                "WHERE table_name = 'transactions' AND column_name = 'payment_status'", Integer.class);
+            if (exists != null && exists > 0) return;
+            jdbc.execute("ALTER TABLE transactions ADD COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'PAID'");
+            log.info("DataMigration: added payment_status column to transactions table");
+        } catch (Exception e) {
+            log.debug("DataMigration: transactions.payment_status column add skipped — {}", e.getMessage());
         }
     }
 

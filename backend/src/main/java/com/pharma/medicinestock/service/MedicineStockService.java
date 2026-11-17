@@ -114,6 +114,80 @@ public class MedicineStockService {
         medicineStockAdjustmentRepository.deleteById(id);
     }
 
+    /**
+     * Admin edit of a past medicine stock adjustment record — previously the only way to correct
+     * one was to delete it outright. Reconciles the affected medicineStock bucket(s) the same way
+     * {@link #deleteAdjustment} + {@link #adjustMedicineStock} would in combination: first undo
+     * the adjustment's old effect, then (re)apply its new one — against the same bucket if the
+     * type didn't change, or across both old and new buckets if it did (mirrors
+     * TransactionService.reconcileStockForEdit's two-branch shape for the same reason).
+     */
+    @Transactional
+    public MedicineStockAdjustmentResponse updateAdjustment(Long id, UpdateMedicineStockAdjustmentRequest req) {
+        MedicineStockAdjustment adj = medicineStockAdjustmentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("MedicineStockAdjustment", id));
+
+        BigDecimal oldQuantity = adj.getQuantity();
+        String oldAdjustmentType = adj.getAdjustmentType();
+        MedicineStock.MedicineStockType oldType = adj.getMedicineStockType();
+
+        BigDecimal newQuantity = req.getQuantity() != null ? QuantityUtil.round(req.getQuantity()) : oldQuantity;
+        String newAdjustmentType = req.getAdjustmentType() != null ? req.getAdjustmentType() : oldAdjustmentType;
+        MedicineStock.MedicineStockType newType = resolveBucketType(req.getMedicineStockType(), oldType);
+
+        Long userId = adj.getUser().getId();
+        Long medicineId = adj.getMedicine().getId();
+
+        if (oldType == newType) {
+            MedicineStock bucket = medicineStockRepository
+                    .findByUserIdAndMedicineIdAndMedicineStockType(userId, medicineId, oldType)
+                    .orElseGet(() -> MedicineStock.builder()
+                            .user(adj.getUser()).medicine(adj.getMedicine())
+                            .quantity(BigDecimal.ZERO).medicineStockType(oldType).build());
+            BigDecimal reverted = "ADD".equals(oldAdjustmentType)
+                    ? bucket.getQuantity().subtract(oldQuantity).max(BigDecimal.ZERO)
+                    : bucket.getQuantity().add(oldQuantity);
+            bucket.setQuantity("ADD".equals(newAdjustmentType)
+                    ? reverted.add(newQuantity) : reverted.subtract(newQuantity));
+            medicineStockRepository.save(bucket);
+        } else {
+            medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(userId, medicineId, oldType)
+                    .ifPresent(bucket -> {
+                        bucket.setQuantity("ADD".equals(oldAdjustmentType)
+                                ? bucket.getQuantity().subtract(oldQuantity).max(BigDecimal.ZERO)
+                                : bucket.getQuantity().add(oldQuantity));
+                        medicineStockRepository.save(bucket);
+                    });
+            MedicineStock newBucket = medicineStockRepository
+                    .findByUserIdAndMedicineIdAndMedicineStockType(userId, medicineId, newType)
+                    .orElseGet(() -> MedicineStock.builder()
+                            .user(adj.getUser()).medicine(adj.getMedicine())
+                            .quantity(BigDecimal.ZERO).medicineStockType(newType).build());
+            newBucket.setQuantity("ADD".equals(newAdjustmentType)
+                    ? newBucket.getQuantity().add(newQuantity) : newBucket.getQuantity().subtract(newQuantity));
+            medicineStockRepository.save(newBucket);
+        }
+
+        adj.setQuantity(newQuantity);
+        adj.setAdjustmentType(newAdjustmentType);
+        adj.setMedicineStockType(newType);
+        adj.setNote(req.getNote().trim());
+        if (req.getAdjustmentDate() != null) {
+            adj.setAdjustedAt(req.getAdjustmentDate().atStartOfDay());
+        }
+
+        return toAdjResponse(medicineStockAdjustmentRepository.save(adj));
+    }
+
+    private MedicineStock.MedicineStockType resolveBucketType(String rawType, MedicineStock.MedicineStockType fallback) {
+        if (rawType == null) return fallback;
+        try {
+            return MedicineStock.MedicineStockType.valueOf(rawType);
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
+    }
+
     private MedicineStockAdjustmentResponse toAdjResponse(MedicineStockAdjustment a) {
         return MedicineStockAdjustmentResponse.builder()
                 .id(a.getId())
@@ -128,6 +202,7 @@ public class MedicineStockService {
                 .adjustmentType(a.getAdjustmentType())
                 .note(a.getNote())
                 .adjustedAt(a.getAdjustedAt() != null ? a.getAdjustedAt().format(ADJ_FMT) : null)
+                .adjustedAtDate(a.getAdjustedAt() != null ? a.getAdjustedAt().toLocalDate().toString() : null)
                 .adjustedByUsername(a.getAdjustedBy() != null ? a.getAdjustedBy().getUsername() : null)
                 .inTransit(a.isInTransit())
                 .transitDays(a.getTransitDays())

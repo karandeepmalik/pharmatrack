@@ -6,6 +6,7 @@ import com.pharma.medicinestock.config.SecurityConfig;
 import com.pharma.medicinestock.dto.AdjustMedicineStockRequest;
 import com.pharma.medicinestock.dto.MedicineStockAdjustmentResponse;
 import com.pharma.medicinestock.dto.MedicineStockResponse;
+import com.pharma.medicinestock.dto.UpdateMedicineStockAdjustmentRequest;
 import com.pharma.medicinestock.dto.UserResponse;
 import com.pharma.medicinestock.exception.InsufficientMedicineStockException;
 import com.pharma.medicinestock.exception.ResourceNotFoundException;
@@ -397,6 +398,118 @@ class MedicineStockControllerTest {
         @Test
         void unauthenticatedIsUnauthorized() throws Exception {
             mockMvc.perform(delete("/api/medicine-stock/adjustments/1").with(csrf()))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    // ── PATCH /api/medicine-stock/adjustments/{id} ─────────────────────────
+
+    @Nested @DisplayName("PATCH /api/medicine-stock/adjustments/{id} — admin edits a past adjustment")
+    class UpdateAdjustment {
+
+        private UpdateMedicineStockAdjustmentRequest validReq() {
+            UpdateMedicineStockAdjustmentRequest r = new UpdateMedicineStockAdjustmentRequest();
+            r.setNote("Corrected after a recount");
+            r.setQuantity(BigDecimal.valueOf(8));
+            r.setAdjustmentType("ADD");
+            r.setMedicineStockType("REGULAR_MEDICINE_STOCK");
+            return r;
+        }
+
+        private MedicineStockAdjustmentResponse updatedResponse() {
+            return MedicineStockAdjustmentResponse.builder()
+                    .id(1L).userId(2L).username("john.doe")
+                    .medicineId(1L).quantity(BigDecimal.valueOf(8))
+                    .adjustmentType("ADD").note("Corrected after a recount")
+                    .medicineStockType("REGULAR_MEDICINE_STOCK")
+                    .build();
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanUpdateAdjustment() throws Exception {
+            when(medicineStockService.updateAdjustment(eq(1L), any())).thenReturn(updatedResponse());
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validReq())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.quantity").value(8))
+                    .andExpect(jsonPath("$.note").value("Corrected after a recount"));
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void returnsNotFoundForMissingAdjustment() throws Exception {
+            when(medicineStockService.updateAdjustment(eq(999L), any()))
+                    .thenThrow(new ResourceNotFoundException("MedicineStockAdjustment", 999L));
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/999").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validReq())))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsMissingNote() throws Exception {
+            UpdateMedicineStockAdjustmentRequest req = validReq();
+            req.setNote(null);
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsNoteTooShort() throws Exception {
+            UpdateMedicineStockAdjustmentRequest req = validReq();
+            req.setNote("ok");
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsInvalidAdjustmentType() throws Exception {
+            UpdateMedicineStockAdjustmentRequest req = validReq();
+            req.setAdjustmentType("INVALID");
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void rejectsFutureAdjustmentDate() throws Exception {
+            UpdateMedicineStockAdjustmentRequest req = validReq();
+            req.setAdjustmentDate(LocalDate.now().plusDays(1));
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test @WithMockUser(roles = "ADMIN")
+        void allowsOmittedQuantityAndType() throws Exception {
+            UpdateMedicineStockAdjustmentRequest req = new UpdateMedicineStockAdjustmentRequest();
+            req.setNote("Just fixing the note wording");
+            when(medicineStockService.updateAdjustment(eq(1L), any())).thenReturn(updatedResponse());
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isOk());
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userIsForbidden() throws Exception {
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validReq())))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedIsUnauthorized() throws Exception {
+            mockMvc.perform(patch("/api/medicine-stock/adjustments/1").with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(validReq())))
                     .andExpect(status().isUnauthorized());
         }
     }

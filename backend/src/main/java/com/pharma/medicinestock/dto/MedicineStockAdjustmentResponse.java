@@ -19,6 +19,9 @@ public class MedicineStockAdjustmentResponse {
     private String adjustmentType;
     private String note;
     private String adjustedAt;
+    /** Plain ISO yyyy-MM-dd of adjustedAt — lets an edit form prefill a &lt;input type="date"&gt;
+     *  without having to parse the human-readable adjustedAt display string back apart. */
+    private String adjustedAtDate;
     private String adjustedByUsername;
     private boolean inTransit;
     private int    transitDays;

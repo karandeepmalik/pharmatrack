@@ -250,6 +250,84 @@ describe('AdminEditDispatch — stock type column', () => {
   });
 });
 
+// ── Payment status column ───────────────────────────────────────────────
+
+describe('AdminEditDispatch — payment status column', () => {
+  test('renders the Payment Status column header', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /payment status/i })).toBeInTheDocument()
+    );
+  });
+
+  test('shows Paid badge for a PAID dispatch', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ paymentStatus: 'PAID' })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(screen.getByText('Paid')).toBeInTheDocument());
+  });
+
+  test('shows Unpaid badge for an UNPAID dispatch', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ paymentStatus: 'UNPAID' })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(screen.getByText('Unpaid')).toBeInTheDocument());
+  });
+
+  test('shows Partial Payment badge for a PARTIAL_PAYMENT dispatch', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ paymentStatus: 'PARTIAL_PAYMENT' })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(screen.getByText('Partial Payment')).toBeInTheDocument());
+  });
+
+  test('clicking Edit shows a payment status select prefilled with the current value', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ paymentStatus: 'UNPAID' })]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByRole('combobox', { name: /edit payment status/i })).toHaveValue('UNPAID');
+  });
+
+  test('changing payment status on an already-APPROVED record still saves it', async () => {
+    api.getTransactionHistory.mockResolvedValue(
+      mkPage([makeTx({ status: 'APPROVED', paymentStatus: 'UNPAID' })])
+    );
+    api.updateTransaction.mockResolvedValue({
+      data: makeTx({ status: 'APPROVED', paymentStatus: 'PAID' }),
+    });
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /edit payment status/i }), 'PAID');
+    const textarea = screen.getByRole('textbox', { name: /edit notes/i });
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, 'Payment settled after approval');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(api.updateTransaction).toHaveBeenCalledWith(1, expect.objectContaining({
+        paymentStatus: 'PAID',
+      }))
+    );
+  });
+});
+
 // ── Price/Unit column ───────────────────────────────────────────────────
 
 describe('AdminEditDispatch — price/unit column', () => {
@@ -415,6 +493,7 @@ describe('AdminEditDispatch — edit', () => {
         pricePerUnit: '4200',
         submittedDate: '2026-05-01',
         screenshotFiles: [],
+        paymentStatus: 'PAID',
       })
     );
   });
@@ -456,6 +535,7 @@ describe('AdminEditDispatch — edit', () => {
         pricePerUnit: null,
         submittedDate: '2026-04-20',
         screenshotFiles: [],
+        paymentStatus: 'PAID',
       })
     );
   });
@@ -498,6 +578,7 @@ describe('AdminEditDispatch — edit', () => {
         pricePerUnit: null,
         submittedDate: '2026-05-01',
         screenshotFiles: [],
+        paymentStatus: 'PAID',
       })
     );
     await waitFor(() =>
@@ -533,6 +614,7 @@ describe('AdminEditDispatch — edit', () => {
         pricePerUnit: null,
         submittedDate: '2026-05-01',
         screenshotFiles: [],
+        paymentStatus: 'PAID',
       })
     );
   });
