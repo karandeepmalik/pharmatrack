@@ -140,6 +140,7 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "AND (:username IS NULL OR u.username = :username) " +
            "AND (:medicineId IS NULL OR m.id = :medicineId) " +
            "AND (:medicineStockType IS NULL OR t.medicineStockType = :medicineStockType) " +
+           "AND (:paymentStatus IS NULL OR t.paymentStatus = :paymentStatus) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern) " +
            "ORDER BY t.submittedAt DESC, t.id DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t " +
@@ -148,6 +149,7 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "AND (:username IS NULL OR t.submittedBy.username = :username) " +
            "AND (:medicineId IS NULL OR t.medicine.id = :medicineId) " +
            "AND (:medicineStockType IS NULL OR t.medicineStockType = :medicineStockType) " +
+           "AND (:paymentStatus IS NULL OR t.paymentStatus = :paymentStatus) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern)")
     Page<Transaction> searchHistory(
             @Param("start") LocalDateTime start,
@@ -156,6 +158,7 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("username") String username,
             @Param("medicineId") Long medicineId,
             @Param("medicineStockType") MedicineStock.MedicineStockType medicineStockType,
+            @Param("paymentStatus") Transaction.PaymentStatus paymentStatus,
             @Param("notesPattern") String notesPattern,
             Pageable pageable);
 
@@ -172,6 +175,7 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "AND (:username IS NULL OR t.submittedBy.username = :username) " +
            "AND (:medicineId IS NULL OR t.medicine.id = :medicineId) " +
            "AND (:medicineStockType IS NULL OR t.medicineStockType = :medicineStockType) " +
+           "AND (:paymentStatus IS NULL OR t.paymentStatus = :paymentStatus) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern)")
     BigDecimal sumQuantityForHistory(
             @Param("start") LocalDateTime start,
@@ -180,6 +184,7 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
             @Param("username") String username,
             @Param("medicineId") Long medicineId,
             @Param("medicineStockType") MedicineStock.MedicineStockType medicineStockType,
+            @Param("paymentStatus") Transaction.PaymentStatus paymentStatus,
             @Param("notesPattern") String notesPattern);
 
     /**

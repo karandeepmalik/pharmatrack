@@ -106,9 +106,10 @@ export const approveTransactionsBulk = (items, approved = true) =>
  * @param {number} [medicineId] optional exact medicine filter
  * @param {string} [notes]      optional case-insensitive notes substring filter
  * @param {string} [medicineStockType] optional exact REGULAR_MEDICINE_STOCK/ADMIN_MEDICINE_STOCK filter
+ * @param {string} [paymentStatus] optional exact PAID/UNPAID/PARTIAL_PAYMENT filter
  */
-export const getTransactionHistory = (from, to, status = 'ALL', page = 0, size = 10, username, medicineId, notes, medicineStockType) =>
-  api.get('/transactions/history', { params: { from, to, status, page, size, username, medicineId, notes, medicineStockType } });
+export const getTransactionHistory = (from, to, status = 'ALL', page = 0, size = 10, username, medicineId, notes, medicineStockType, paymentStatus) =>
+  api.get('/transactions/history', { params: { from, to, status, page, size, username, medicineId, notes, medicineStockType, paymentStatus } });
 
 export const deleteTransaction  = (id)      => api.delete(`/transactions/${id}`);
 export const deleteMyTransaction = (id)     => api.delete(`/transactions/my/${id}`);

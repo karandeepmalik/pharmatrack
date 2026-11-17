@@ -2049,6 +2049,64 @@ async function run() {
       `medicineStockType=ALL (${explicitAll.data.totalElements}) should match no filter (${unfiltered.data.totalElements})`);
   });
 
+  // ── GET /transactions/history — paymentStatus filter ────────────────────
+
+  let paymentStatusFilterTxId;
+  await test('[SETUP] Submit a dispatch with paymentStatus=UNPAID for filter tests', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '0.1',
+      notes: 'E2E paymentStatus filter test dispatch',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      paymentStatus: 'UNPAID',
+      screenshots: [makeFakePng('PSF')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    paymentStatusFilterTxId = r.data.id;
+  });
+
+  await test('GET /transactions/history filters by paymentStatus=UNPAID', async () => {
+    const today = istDateString(new Date());
+    const r = await apiGet(
+      `${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100&paymentStatus=UNPAID`,
+      adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(r.data.content.some(t => t.id === paymentStatusFilterTxId),
+      `UNPAID transaction #${paymentStatusFilterTxId} should be included when filtering by paymentStatus=UNPAID`);
+    assert(r.data.content.every(t => t.paymentStatus === 'UNPAID'),
+      'Every returned record must actually have paymentStatus=UNPAID');
+  });
+
+  await test('GET /transactions/history filters by paymentStatus=PAID excludes the UNPAID dispatch', async () => {
+    const today = istDateString(new Date());
+    const r = await apiGet(
+      `${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100&paymentStatus=PAID`,
+      adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(!r.data.content.some(t => t.id === paymentStatusFilterTxId),
+      `UNPAID transaction #${paymentStatusFilterTxId} should be excluded when filtering by paymentStatus=PAID`);
+  });
+
+  await test('GET /transactions/history paymentStatus=ALL matches the unfiltered result', async () => {
+    const today = istDateString(new Date());
+    const unfiltered = await apiGet(`${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100`, adminToken);
+    const explicitAll = await apiGet(
+      `${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100&paymentStatus=ALL`, adminToken);
+    assert(explicitAll.status === 200, `Expected 200, got ${explicitAll.status}`);
+    assert(explicitAll.data.totalElements === unfiltered.data.totalElements,
+      `paymentStatus=ALL (${explicitAll.data.totalElements}) should match no filter (${unfiltered.data.totalElements})`);
+  });
+
+  await test('[TEARDOWN] Admin rejects the paymentStatus-filter-test transaction', async () => {
+    const r = await apiPost(`${API}/transactions/${paymentStatusFilterTxId}/approve`, { approved: false }, adminToken);
+    assert(r.status === 200, `Reject failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[TEARDOWN] Admin deletes the paymentStatus-filter-test transaction', async () => {
+    const r = await apiDelete(`${API}/transactions/${paymentStatusFilterTxId}`, adminToken);
+    assert(r.status === 204, `Delete failed: ${r.status}`);
+  });
+
   // Regression guard: /transactions/history was changed from returning a bare array to a
   // PagedResponse ({content, last, totalElements, ...}). A frontend consumer of this endpoint
   // (AdminEditDispatch.jsx, "Modify or Delete a Medicine Dispatch Record") was missed when that

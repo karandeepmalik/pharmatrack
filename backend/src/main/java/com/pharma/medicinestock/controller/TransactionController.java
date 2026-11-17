@@ -102,6 +102,7 @@ public class TransactionController {
      * @param medicineId optional exact medicine filter
      * @param notes      optional case-insensitive notes substring filter
      * @param medicineStockType optional exact REGULAR_MEDICINE_STOCK/ADMIN_MEDICINE_STOCK filter
+     * @param paymentStatus optional exact PAID/UNPAID/PARTIAL_PAYMENT filter
      */
     @GetMapping("/history")
     @PreAuthorize("hasRole('ADMIN')")
@@ -114,9 +115,10 @@ public class TransactionController {
             @RequestParam(required = false) String username,
             @RequestParam(required = false) Long medicineId,
             @RequestParam(required = false) String notes,
-            @RequestParam(required = false) String medicineStockType) {
-        Page<TransactionResponse> result = transactionService.getHistory(from, to, status, page, size, username, medicineId, notes, medicineStockType);
-        BigDecimal totalQuantity = transactionService.getHistoryTotalQuantity(from, to, status, username, medicineId, notes, medicineStockType);
+            @RequestParam(required = false) String medicineStockType,
+            @RequestParam(required = false) String paymentStatus) {
+        Page<TransactionResponse> result = transactionService.getHistory(from, to, status, page, size, username, medicineId, notes, medicineStockType, paymentStatus);
+        BigDecimal totalQuantity = transactionService.getHistoryTotalQuantity(from, to, status, username, medicineId, notes, medicineStockType, paymentStatus);
         return ResponseEntity.ok(PagedResponse.of(result, totalQuantity));
     }
 
