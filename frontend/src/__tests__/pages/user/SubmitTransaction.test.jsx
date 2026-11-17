@@ -389,6 +389,70 @@ describe('MedicineStock type selector', () => {
   });
 });
 
+// ── Payment status selector ─────────────────────────────────────────────
+
+describe('Payment status selector', () => {
+  test('renders payment status select with Paid, Unpaid and Partial Payment options', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/payment status/i));
+    const selector = screen.getByLabelText(/payment status/i);
+    expect(selector).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /^paid$/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /^unpaid$/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /partial payment/i })).toBeInTheDocument();
+  });
+
+  test('defaults to Paid', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/payment status/i));
+    expect(screen.getByLabelText(/payment status/i)).toHaveValue('PAID');
+  });
+
+  test('submit call includes the default PAID payment status when untouched', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() =>
+      expect(api.submitTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentStatus: 'PAID' })
+      )
+    );
+  });
+
+  test('changing payment status to Unpaid is included in the submit call', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'UNPAID');
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() =>
+      expect(api.submitTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentStatus: 'UNPAID' })
+      )
+    );
+  });
+
+  test('changing payment status to Partial Payment is included in the submit call', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'PARTIAL_PAYMENT');
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() =>
+      expect(api.submitTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentStatus: 'PARTIAL_PAYMENT' })
+      )
+    );
+  });
+
+  test('resets to Paid after a successful submission', async () => {
+    api.submitTransaction.mockResolvedValue({ data: { id: 1, status: 'PENDING' } });
+    await fillValidForm();
+    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'UNPAID');
+    await userEvent.click(screen.getByRole('button', { name: /submit medicine dispatch/i }));
+    await waitFor(() => screen.getByRole('alert'));
+    expect(screen.getByLabelText(/payment status/i)).toHaveValue('PAID');
+  });
+});
+
 // ── Submit ─────────────────────────────────────────────────────────────
 
 describe('Form submission', () => {

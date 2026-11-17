@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
-import { medicineStockTypeLabel } from '../../constants';
+import { medicineStockTypeLabel, PAYMENT_STATUSES, paymentStatusLabel } from '../../constants';
 import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
 import ScreenshotUpload from '../../components/ScreenshotUpload';
 import useScreenshot from '../../hooks/useScreenshot';
@@ -120,6 +120,7 @@ export default function AdminEditDispatch() {
                 // untouched keeps using the medicine's catalogue price, exactly as before.
                 pricePerUnit: tx.pricePerUnit != null ? String(tx.pricePerUnit) : '',
                 date: tx.submittedAt ? tx.submittedAt.slice(0, 10) : '',
+                paymentStatus: tx.paymentStatus || 'PAID',
                 screenshotFiles: [],
                 saving: false,
                 error: '',
@@ -146,6 +147,7 @@ export default function AdminEditDispatch() {
                 pricePerUnit: edit.pricePerUnit === '' ? null : edit.pricePerUnit,
                 submittedDate: edit.date === '' ? null : edit.date,
                 screenshotFiles: edit.screenshotFiles,
+                paymentStatus: edit.paymentStatus,
             });
             setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, ...res.data } : tx));
             setEditState(prev => ({ ...prev, [id]: { active: false, saving: false, error: '' } }));
@@ -294,6 +296,7 @@ export default function AdminEditDispatch() {
                                         <th>Medicine</th>
                                         <th>Qty</th>
                                         <th>Stock Type</th>
+                                        <th>Payment Status</th>
                                         <th>Price/Unit</th>
                                         <th>Notes</th>
                                         <th>Screenshot</th>
@@ -350,6 +353,22 @@ export default function AdminEditDispatch() {
                                                     ) : (
                                                         <span className={`status-badge ${tx.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
                                                             {medicineStockTypeLabel(tx.medicineStockType)}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {edit.active ? (
+                                                        <select
+                                                            aria-label="Edit payment status"
+                                                            value={edit.paymentStatus}
+                                                            onChange={e => handleFieldChange(tx.id, 'paymentStatus', e.target.value)}>
+                                                            {PAYMENT_STATUSES.map(s => (
+                                                                <option key={s} value={s}>{paymentStatusLabel(s)}</option>
+                                                            ))}
+                                                        </select>
+                                                    ) : (
+                                                        <span className={`status-badge ${tx.paymentStatus === 'PAID' ? 'badge-approved' : 'badge-pending'}`}>
+                                                            {paymentStatusLabel(tx.paymentStatus)}
                                                         </span>
                                                     )}
                                                 </td>

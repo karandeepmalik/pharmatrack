@@ -36,6 +36,8 @@ export default function ViewMedicineStockAdjustments() {
 
     // Per-row delete state: { [id]: { confirming, deleting, error } }
     const [deleteState, setDeleteState] = useState({});
+    // Per-row edit state: { [id]: { active, note, quantity, adjustmentType, medicineStockType, date, saving, error } }
+    const [editState, setEditState]     = useState({});
 
     useEffect(() => {
         api.getMedicines().then(r => setMedicines(r.data || [])).catch(() => {});
@@ -48,6 +50,7 @@ export default function ViewMedicineStockAdjustments() {
         setLoading(true);
         setError('');
         setDeleteState({});
+        setEditState({});
         try {
             const res = await api.getMedicineStockAdjustments(from, to);
             setAdjustments(res.data);
@@ -90,6 +93,49 @@ export default function ViewMedicineStockAdjustments() {
         } catch (err) {
             const msg = err.response?.data?.message || 'Failed to delete record.';
             setDeleteState(prev => ({ ...prev, [id]: { confirming: true, deleting: false, error: msg } }));
+        }
+    };
+
+    // ── Edit flow ──────────────────────────────────────────────────────
+
+    const startEdit = (adj) => {
+        setEditState(prev => ({
+            ...prev,
+            [adj.id]: {
+                active: true,
+                note: adj.note || '',
+                quantity: String(adj.quantity ?? ''),
+                adjustmentType: adj.adjustmentType || 'ADD',
+                medicineStockType: adj.medicineStockType || 'REGULAR_MEDICINE_STOCK',
+                date: adj.adjustedAtDate || '',
+                saving: false,
+                error: '',
+            },
+        }));
+    };
+
+    const cancelEdit = (id) =>
+        setEditState(prev => ({ ...prev, [id]: { ...prev[id], active: false } }));
+
+    const handleEditFieldChange = (id, field, value) =>
+        setEditState(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+
+    const saveEdit = async (id) => {
+        const edit = editState[id] || {};
+        setEditState(prev => ({ ...prev, [id]: { ...prev[id], saving: true, error: '' } }));
+        try {
+            const res = await api.updateMedicineStockAdjustment(id, {
+                note: edit.note,
+                quantity: edit.quantity === '' ? null : edit.quantity,
+                adjustmentType: edit.adjustmentType,
+                medicineStockType: edit.medicineStockType,
+                adjustmentDate: edit.date === '' ? null : edit.date,
+            });
+            setAdjustments(prev => prev.map(a => a.id === id ? { ...a, ...res.data } : a));
+            setEditState(prev => ({ ...prev, [id]: { active: false, saving: false, error: '' } }));
+        } catch (err) {
+            const msg = err.response?.data?.message || 'Failed to save changes.';
+            setEditState(prev => ({ ...prev, [id]: { ...prev[id], saving: false, error: msg } }));
         }
     };
 
@@ -219,26 +265,106 @@ export default function ViewMedicineStockAdjustments() {
                                     <tbody>
                                         {displayed.map(adj => {
                                             const del = deleteState[adj.id] || {};
+                                            const edit = editState[adj.id] || {};
                                             return (
                                                 <tr key={adj.id}>
-                                                    <td>{adj.adjustedAt || '—'}</td>
+                                                    <td>
+                                                        {edit.active ? (
+                                                            <input
+                                                                aria-label="Edit adjustment date"
+                                                                type="date"
+                                                                max={todayStr()}
+                                                                value={edit.date}
+                                                                onChange={e => handleEditFieldChange(adj.id, 'date', e.target.value)}
+                                                            />
+                                                        ) : (
+                                                            adj.adjustedAt || '—'
+                                                        )}
+                                                    </td>
                                                     <td>{adj.username}</td>
                                                     <td>
                                                         {adj.medicineName}<br />
                                                         <small>{specLabel(adj.medicineType, adj.specification)}</small>
                                                     </td>
-                                                    <td>{Number(adj.quantity).toFixed(1)}</td>
                                                     <td>
-                                                        <span className={`status-badge ${adj.adjustmentType === 'ADD' ? 'badge-approved' : 'badge-rejected'}`}>
-                                                            {adj.adjustmentType}
-                                                        </span>
+                                                        {edit.active ? (
+                                                            <input
+                                                                aria-label="Edit quantity"
+                                                                type="number"
+                                                                min="0.1"
+                                                                step="0.1"
+                                                                value={edit.quantity}
+                                                                onChange={e => handleEditFieldChange(adj.id, 'quantity', e.target.value)}
+                                                                style={{ width: '5rem' }}
+                                                            />
+                                                        ) : (
+                                                            Number(adj.quantity).toFixed(1)
+                                                        )}
                                                     </td>
                                                     <td>
-                                                        <span className={`status-badge ${adj.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
-                                                            {medicineStockTypeLabel(adj.medicineStockType)}
-                                                        </span>
+                                                        {edit.active ? (
+                                                            <select
+                                                                aria-label="Edit adjustment type"
+                                                                value={edit.adjustmentType}
+                                                                onChange={e => handleEditFieldChange(adj.id, 'adjustmentType', e.target.value)}>
+                                                                <option value="ADD">ADD</option>
+                                                                <option value="REDUCE">REDUCE</option>
+                                                            </select>
+                                                        ) : (
+                                                            <span className={`status-badge ${adj.adjustmentType === 'ADD' ? 'badge-approved' : 'badge-rejected'}`}>
+                                                                {adj.adjustmentType}
+                                                            </span>
+                                                        )}
                                                     </td>
-                                                    <td>{adj.note || '—'}</td>
+                                                    <td>
+                                                        {edit.active ? (
+                                                            <select
+                                                                aria-label="Edit stock type"
+                                                                value={edit.medicineStockType}
+                                                                onChange={e => handleEditFieldChange(adj.id, 'medicineStockType', e.target.value)}>
+                                                                <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
+                                                                <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
+                                                            </select>
+                                                        ) : (
+                                                            <span className={`status-badge ${adj.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
+                                                                {medicineStockTypeLabel(adj.medicineStockType)}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        {edit.active ? (
+                                                            <div>
+                                                                <textarea
+                                                                    aria-label="Edit note"
+                                                                    value={edit.note}
+                                                                    onChange={e => handleEditFieldChange(adj.id, 'note', e.target.value)}
+                                                                    rows={3}
+                                                                    style={{ width: '100%', resize: 'vertical' }}
+                                                                />
+                                                                {edit.error && (
+                                                                    <p role="alert" className="form-error">{edit.error}</p>
+                                                                )}
+                                                                <div className="btn-group" style={{ marginTop: '0.25rem' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-primary btn-sm"
+                                                                        disabled={edit.saving}
+                                                                        onClick={() => saveEdit(adj.id)}>
+                                                                        {edit.saving ? 'Saving…' : 'Save'}
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-secondary btn-sm"
+                                                                        disabled={edit.saving}
+                                                                        onClick={() => cancelEdit(adj.id)}>
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            adj.note || '—'
+                                                        )}
+                                                    </td>
                                                     <td>
                                                         {adj.inTransit
                                                             ? `Yes (${adj.transitDays}d)`
@@ -272,12 +398,22 @@ export default function ViewMedicineStockAdjustments() {
                                                                 </div>
                                                             </div>
                                                         ) : (
-                                                            <button
-                                                                type="button"
-                                                                className="btn btn-danger btn-sm"
-                                                                onClick={() => startDelete(adj.id)}>
-                                                                Delete
-                                                            </button>
+                                                            <div className="btn-group">
+                                                                {!edit.active && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-secondary btn-sm"
+                                                                        onClick={() => startEdit(adj)}>
+                                                                        Edit
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-danger btn-sm"
+                                                                    onClick={() => startDelete(adj.id)}>
+                                                                    Delete
+                                                                </button>
+                                                            </div>
                                                         )}
                                                     </td>
                                                 </tr>

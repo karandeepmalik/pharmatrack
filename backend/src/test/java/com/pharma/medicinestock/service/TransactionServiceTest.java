@@ -189,6 +189,81 @@ class TransactionServiceTest {
             verify(transactionRepository).save(any());
         }
 
+        @Test @DisplayName("defaults paymentStatus to PAID when not provided")
+        void submit_withoutPaymentStatus_defaultsToPaid() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.save(any())).thenReturn(medicineStock);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            transactionService.submit(req, "john.doe");
+
+            verify(transactionRepository).save(argThat(t -> t.getPaymentStatus() == Transaction.PaymentStatus.PAID));
+        }
+
+        @Test @DisplayName("stores an explicitly submitted paymentStatus")
+        void submit_withExplicitPaymentStatus_stored() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            req.setPaymentStatus("UNPAID");
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.save(any())).thenReturn(medicineStock);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            transactionService.submit(req, "john.doe");
+
+            verify(transactionRepository).save(argThat(t -> t.getPaymentStatus() == Transaction.PaymentStatus.UNPAID));
+        }
+
+        @Test @DisplayName("stores PARTIAL_PAYMENT when submitted")
+        void submit_withPartialPaymentStatus_stored() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            req.setPaymentStatus("PARTIAL_PAYMENT");
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.save(any())).thenReturn(medicineStock);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            transactionService.submit(req, "john.doe");
+
+            verify(transactionRepository).save(argThat(t -> t.getPaymentStatus() == Transaction.PaymentStatus.PARTIAL_PAYMENT));
+        }
+
+        @Test @DisplayName("an unrecognized paymentStatus value falls back to PAID rather than rejecting the submission")
+        void submit_withInvalidPaymentStatus_fallsBackToPaid() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            req.setPaymentStatus("GARBAGE");
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.save(any())).thenReturn(medicineStock);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            transactionService.submit(req, "john.doe");
+
+            verify(transactionRepository).save(argThat(t -> t.getPaymentStatus() == Transaction.PaymentStatus.PAID));
+        }
+
         @Test @DisplayName("saves TransactionScreenshot entries when screenshots provided")
         void submit_withScreenshots_savesScreenshotEntities() {
             String b64 = Base64.getEncoder().encodeToString("png".getBytes());
@@ -1309,7 +1384,7 @@ class TransactionServiceTest {
         @Test @DisplayName("updates notes and returns updated response")
         void notesOnly_savesAndReturns() {
             TransactionResponse res = transactionService.updateTransaction(
-                    1L, "Updated notes for this record", null, null, null, null, List.of());
+                    1L, "Updated notes for this record", null, null, null, null, List.of(), null);
 
             assertThat(res.getNotes()).isEqualTo("Updated notes for this record");
             verify(transactionRepository).save(argThat(t -> "Updated notes for this record".equals(t.getNotes())));
@@ -1320,7 +1395,7 @@ class TransactionServiceTest {
             when(transactionRepository.findById(99L)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    99L, "Valid note here", null, null, null, null, List.of()))
+                    99L, "Valid note here", null, null, null, null, List.of(), null))
                     .isInstanceOf(ResourceNotFoundException.class)
                     .hasMessageContaining("Transaction").hasMessageContaining("99");
         }
@@ -1328,7 +1403,7 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException when notes are blank")
         void blankNotes_throwsIllegalArgument() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "   ", null, null, null, null, List.of()))
+                    1L, "   ", null, null, null, null, List.of(), null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("adjustment note is required");
         }
@@ -1336,7 +1411,7 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException when notes are too short")
         void tooShortNotes_throwsIllegalArgument() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "Hi", null, null, null, null, List.of()))
+                    1L, "Hi", null, null, null, null, List.of(), null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("5 and 500");
         }
@@ -1344,7 +1419,7 @@ class TransactionServiceTest {
         @Test @DisplayName("notes is still required even when only quantity/stock type change")
         void notesRequired_evenForQuantityOnlyEdit() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "", BigDecimal.valueOf(8), null, null, null, List.of()))
+                    1L, "", BigDecimal.valueOf(8), null, null, null, List.of(), null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("adjustment note is required");
         }
@@ -1352,7 +1427,7 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException for a quantity below 0.1")
         void quantityTooLow_throwsIllegalArgument() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "Correcting a data entry mistake", BigDecimal.valueOf(0.05), null, null, null, List.of()))
+                    1L, "Correcting a data entry mistake", BigDecimal.valueOf(0.05), null, null, null, List.of(), null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("at least 0.1");
         }
@@ -1364,7 +1439,7 @@ class TransactionServiceTest {
                     .thenReturn(Optional.of(regularStock));
 
             transactionService.updateTransaction(
-                    1L, "Corrected quantity after recount", BigDecimal.valueOf(8), null, null, null, List.of());
+                    1L, "Corrected quantity after recount", BigDecimal.valueOf(8), null, null, null, List.of(), null);
 
             // Original submit reserved 5; now reserving 8 -> credit back 5, debit 8 -> net -3 from 20.
             verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(17)) == 0));
@@ -1379,7 +1454,7 @@ class TransactionServiceTest {
                     .thenReturn(Optional.of(regularStock));
 
             transactionService.updateTransaction(
-                    1L, "Admin approved the wrong quantity, correcting", BigDecimal.valueOf(3), null, null, null, List.of());
+                    1L, "Admin approved the wrong quantity, correcting", BigDecimal.valueOf(3), null, null, null, List.of(), null);
 
             // Original reserved 5; now reserving 3 -> credit back 5, debit 3 -> net +2 on 20 -> 22.
             verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(22)) == 0));
@@ -1390,7 +1465,7 @@ class TransactionServiceTest {
             existingTx.setStatus(TransactionStatus.REJECTED);
 
             transactionService.updateTransaction(
-                    1L, "Correcting the record after rejection", BigDecimal.valueOf(8), null, null, null, List.of());
+                    1L, "Correcting the record after rejection", BigDecimal.valueOf(8), null, null, null, List.of(), null);
 
             verify(medicineStockRepository, never()).findByUserIdAndMedicineIdAndMedicineStockType(any(), any(), any());
             verify(medicineStockRepository, never()).save(any());
@@ -1407,7 +1482,7 @@ class TransactionServiceTest {
                     .thenReturn(Optional.empty());
 
             transactionService.updateTransaction(
-                    1L, "This was actually an admin-stock dispatch", null, "ADMIN_MEDICINE_STOCK", null, null, List.of());
+                    1L, "This was actually an admin-stock dispatch", null, "ADMIN_MEDICINE_STOCK", null, null, List.of(), null);
 
             verify(medicineStockRepository).save(argThat(s ->
                     s.getMedicineStockType() == MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK
@@ -1428,7 +1503,7 @@ class TransactionServiceTest {
                     .thenReturn(Optional.of(adminStock));
 
             transactionService.updateTransaction(
-                    1L, "Reassigning to the existing admin-stock bucket", null, "ADMIN_MEDICINE_STOCK", null, null, List.of());
+                    1L, "Reassigning to the existing admin-stock bucket", null, "ADMIN_MEDICINE_STOCK", null, null, List.of(), null);
 
             verify(medicineStockRepository).save(argThat(s ->
                     s.getMedicineStockType() == MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK
@@ -1439,7 +1514,7 @@ class TransactionServiceTest {
         void unchangedQuantityAndType_noReconciliation() {
             transactionService.updateTransaction(
                     1L, "Just fixing a typo in the notes", BigDecimal.valueOf(5),
-                    "REGULAR_MEDICINE_STOCK", null, null, List.of());
+                    "REGULAR_MEDICINE_STOCK", null, null, List.of(), null);
 
             verify(medicineStockRepository, never()).findByUserIdAndMedicineIdAndMedicineStockType(any(), any(), any());
         }
@@ -1449,7 +1524,7 @@ class TransactionServiceTest {
             existingTx.setPricePerUnit(4000);
 
             transactionService.updateTransaction(
-                    1L, "Correcting the recorded price", null, null, 4500, null, List.of());
+                    1L, "Correcting the recorded price", null, null, 4500, null, List.of(), null);
 
             assertThat(existingTx.getPricePerUnit()).isEqualTo(4500);
         }
@@ -1459,7 +1534,7 @@ class TransactionServiceTest {
             existingTx.setPricePerUnit(4000);
 
             transactionService.updateTransaction(
-                    1L, "No price change here", null, null, null, null, List.of());
+                    1L, "No price change here", null, null, null, null, List.of(), null);
 
             assertThat(existingTx.getPricePerUnit()).isEqualTo(4000);
         }
@@ -1467,12 +1542,12 @@ class TransactionServiceTest {
         @Test @DisplayName("throws IllegalArgumentException for a zero or negative pricePerUnit")
         void nonPositivePricePerUnit_throwsIllegalArgument() {
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "Trying to set a bad price", null, null, 0, null, List.of()))
+                    1L, "Trying to set a bad price", null, null, 0, null, List.of(), null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("must be positive");
 
             assertThatThrownBy(() -> transactionService.updateTransaction(
-                    1L, "Trying to set a bad price", null, null, -100, null, List.of()))
+                    1L, "Trying to set a bad price", null, null, -100, null, List.of(), null))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("must be positive");
         }
@@ -1482,7 +1557,7 @@ class TransactionServiceTest {
             existingTx.getScreenshots().add(TransactionScreenshot.builder()
                     .transaction(existingTx).data("original").mimeType("image/png").displayOrder(0).build());
 
-            transactionService.updateTransaction(1L, "No screenshot change here", null, null, null, null, List.of());
+            transactionService.updateTransaction(1L, "No screenshot change here", null, null, null, null, List.of(), null);
 
             assertThat(existingTx.getScreenshots()).hasSize(1);
             assertThat(existingTx.getScreenshots().get(0).getData()).isEqualTo("original");
@@ -1496,7 +1571,7 @@ class TransactionServiceTest {
                     .transaction(existingTx).data("old-two").mimeType("image/png").displayOrder(1).build());
 
             transactionService.updateTransaction(1L, "Replacing with the correct screenshot", null, null, null, null,
-                    List.<String[]>of(new String[]{"new-data", "image/jpeg"}));
+                    List.<String[]>of(new String[]{"new-data", "image/jpeg"}), null);
 
             assertThat(existingTx.getScreenshots()).hasSize(1);
             assertThat(existingTx.getScreenshots().get(0).getData()).isEqualTo("new-data");
@@ -1506,13 +1581,79 @@ class TransactionServiceTest {
         @Test @DisplayName("providing multiple screenshots replaces the set in order")
         void providedMultipleScreenshots_replaceInOrder() {
             transactionService.updateTransaction(1L, "Adding two corrected screenshots", null, null, null, null,
-                    List.of(new String[]{"first", "image/png"}, new String[]{"second", "image/jpeg"}));
+                    List.of(new String[]{"first", "image/png"}, new String[]{"second", "image/jpeg"}), null);
 
             assertThat(existingTx.getScreenshots()).hasSize(2);
             assertThat(existingTx.getScreenshots().get(0).getData()).isEqualTo("first");
             assertThat(existingTx.getScreenshots().get(0).getDisplayOrder()).isEqualTo(0);
             assertThat(existingTx.getScreenshots().get(1).getData()).isEqualTo("second");
             assertThat(existingTx.getScreenshots().get(1).getDisplayOrder()).isEqualTo(1);
+        }
+
+        // ── paymentStatus ────────────────────────────────────────────────
+
+        @Test @DisplayName("updates paymentStatus on a PENDING transaction")
+        void paymentStatus_pending_updates() {
+            transactionService.updateTransaction(
+                    1L, "Marking as unpaid pending follow-up", null, null, null, null, List.of(), "UNPAID");
+
+            assertThat(existingTx.getPaymentStatus()).isEqualTo(Transaction.PaymentStatus.UNPAID);
+        }
+
+        @Test @DisplayName("updates paymentStatus on an already-APPROVED transaction — not gated by status like quantity/stock-type")
+        void paymentStatus_approved_stillUpdates() {
+            existingTx.setStatus(TransactionStatus.APPROVED);
+
+            transactionService.updateTransaction(
+                    1L, "Payment settled after approval", null, null, null, null, List.of(), "PAID");
+
+            assertThat(existingTx.getPaymentStatus()).isEqualTo(Transaction.PaymentStatus.PAID);
+            // Must not have touched medicineStock — a pure payment-status correction, no quantity/type change.
+            verify(medicineStockRepository, never()).save(any());
+        }
+
+        @Test @DisplayName("updates paymentStatus on a REJECTED transaction too")
+        void paymentStatus_rejected_stillUpdates() {
+            existingTx.setStatus(TransactionStatus.REJECTED);
+
+            transactionService.updateTransaction(
+                    1L, "Correcting payment status after rejection", null, null, null, null, List.of(), "PARTIAL_PAYMENT");
+
+            assertThat(existingTx.getPaymentStatus()).isEqualTo(Transaction.PaymentStatus.PARTIAL_PAYMENT);
+        }
+
+        @Test @DisplayName("omitting paymentStatus leaves the existing value unchanged")
+        void paymentStatus_omitted_leavesUnchanged() {
+            existingTx.setPaymentStatus(Transaction.PaymentStatus.UNPAID);
+
+            transactionService.updateTransaction(
+                    1L, "Only fixing the notes here", null, null, null, null, List.of(), null);
+
+            assertThat(existingTx.getPaymentStatus()).isEqualTo(Transaction.PaymentStatus.UNPAID);
+        }
+
+        @Test @DisplayName("an unrecognized paymentStatus value falls back to PAID rather than rejecting the edit")
+        void paymentStatus_invalidValue_fallsBackToPaid() {
+            existingTx.setPaymentStatus(Transaction.PaymentStatus.UNPAID);
+
+            transactionService.updateTransaction(
+                    1L, "Trying to set a bogus payment status", null, null, null, null, List.of(), "GARBAGE");
+
+            assertThat(existingTx.getPaymentStatus()).isEqualTo(Transaction.PaymentStatus.PAID);
+        }
+
+        @Test @DisplayName("paymentStatus change alongside a quantity change still reconciles stock for the quantity change")
+        void paymentStatus_withQuantityChange_bothApplied() {
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(
+                    1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(regularStock));
+
+            transactionService.updateTransaction(
+                    1L, "Correcting quantity and marking unpaid", BigDecimal.valueOf(8), null, null, null, List.of(), "UNPAID");
+
+            assertThat(existingTx.getQuantity()).isEqualByComparingTo(BigDecimal.valueOf(8));
+            assertThat(existingTx.getPaymentStatus()).isEqualTo(Transaction.PaymentStatus.UNPAID);
+            verify(medicineStockRepository).save(argThat(s -> s.getQuantity().compareTo(BigDecimal.valueOf(17)) == 0));
         }
     }
 }

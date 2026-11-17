@@ -108,6 +108,7 @@ public class TransactionService {
                 .medicineStockType(invType)
                 .submittedAt(submittedAt)
                 .idempotencyKey(req.getIdempotencyKey())
+                .paymentStatus(resolvePaymentStatus(req.getPaymentStatus()))
                 .build());
 
         List<String> dataList = req.getPaymentScreenshots();
@@ -343,17 +344,25 @@ public class TransactionService {
      *                           must not be in the future, same rule as submit()
      * @param encodedScreenshots empty to leave existing screenshots unchanged; non-empty fully
      *                           replaces them (already compressed/encoded by the caller)
+     * @param paymentStatus      null to leave unchanged; otherwise PAID/UNPAID/PARTIAL_PAYMENT —
+     *                           deliberately not gated by transaction status (unlike quantity/
+     *                           stock-type above): payment can be settled well after approval.
      */
     @Transactional
     public TransactionResponse updateTransaction(Long id, String notes, BigDecimal quantity,
                                                    String medicineStockType, Integer pricePerUnit,
                                                    LocalDate submittedDate,
-                                                   List<String[]> encodedScreenshots) {
+                                                   List<String[]> encodedScreenshots,
+                                                   String paymentStatus) {
         Transaction tx = transactionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction", id));
 
         validateNotes(notes);
         tx.setNotes(notes.trim());
+
+        if (paymentStatus != null) {
+            tx.setPaymentStatus(resolvePaymentStatus(paymentStatus));
+        }
 
         BigDecimal oldQuantity = tx.getQuantity();
         MedicineStock.MedicineStockType oldType = tx.getMedicineStockType() != null
@@ -478,6 +487,15 @@ public class TransactionService {
             return MedicineStock.MedicineStockType.valueOf(rawType.toUpperCase());
         } catch (IllegalArgumentException e) {
             return MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK;
+        }
+    }
+
+    private Transaction.PaymentStatus resolvePaymentStatus(String rawStatus) {
+        if (rawStatus == null || rawStatus.isBlank()) return Transaction.PaymentStatus.PAID;
+        try {
+            return Transaction.PaymentStatus.valueOf(rawStatus.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return Transaction.PaymentStatus.PAID;
         }
     }
 }

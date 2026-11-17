@@ -102,6 +102,11 @@ public class Transaction {
     @Column(name = "idempotency_key", length = 100)
     private String idempotencyKey;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", length = 20, nullable = false)
+    @Builder.Default
+    private PaymentStatus paymentStatus = PaymentStatus.PAID;
+
     @Builder.Default
     @OneToMany(mappedBy = "transaction", cascade = CascadeType.ALL,
                fetch = FetchType.LAZY, orphanRemoval = true)
@@ -116,5 +121,9 @@ public class Transaction {
 
     public enum TransactionStatus {
         PENDING, APPROVED, REJECTED
+    }
+
+    public enum PaymentStatus {
+        PAID, UNPAID, PARTIAL_PAYMENT
     }
 }

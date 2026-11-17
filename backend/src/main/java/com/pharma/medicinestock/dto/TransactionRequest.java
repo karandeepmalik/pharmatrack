@@ -60,6 +60,13 @@ public class TransactionRequest {
      */
     private String idempotencyKey;
 
+    /**
+     * Optional payment status: PAID / UNPAID / PARTIAL_PAYMENT. Defaults to PAID when null/blank
+     * (see TransactionService.resolvePaymentStatus) — not validated here since an unrecognized
+     * value also just falls back to PAID rather than rejecting the submission.
+     */
+    private String paymentStatus;
+
     // ── Getters & Setters ──────────────────────────────────────────────
 
     public Long getMedicineId() { return medicineId; }
@@ -92,4 +99,7 @@ public class TransactionRequest {
 
     public String getIdempotencyKey() { return idempotencyKey; }
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+
+    public String getPaymentStatus() { return paymentStatus; }
+    public void setPaymentStatus(String paymentStatus) { this.paymentStatus = paymentStatus; }
 }

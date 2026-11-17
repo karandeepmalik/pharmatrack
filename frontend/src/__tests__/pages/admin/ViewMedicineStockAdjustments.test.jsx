@@ -20,6 +20,7 @@ const ADJ_ADD = {
     adjustmentType: 'ADD',
     note: 'Restocking Ward 3 supply',
     adjustedAt: '06 Jun 2026, 10:00 AM',
+    adjustedAtDate: '2026-06-06',
     adjustedByUsername: 'admin',
     inTransit: true,
     transitDays: 3,
@@ -40,6 +41,7 @@ const ADJ_REDUCE = {
     adjustmentType: 'REDUCE',
     note: 'Returned expired stock from clinic',
     adjustedAt: '05 Jun 2026, 02:00 PM',
+    adjustedAtDate: '2026-06-05',
     adjustedByUsername: 'admin',
     inTransit: false,
     transitDays: 2,
@@ -59,6 +61,7 @@ beforeEach(() => {
     jest.clearAllMocks();
     api.getMedicineStockAdjustments.mockResolvedValue({ data: [] });
     api.deleteMedicineStockAdjustment.mockResolvedValue({});
+    api.updateMedicineStockAdjustment.mockResolvedValue({ data: {} });
     api.getMedicines.mockResolvedValue({ data: MEDICINES });
 });
 
@@ -229,6 +232,11 @@ describe('ViewMedicineStockAdjustments — table content', () => {
     test('shows Delete button for each row', () => {
         const deleteBtns = screen.getAllByRole('button', { name: /^delete$/i });
         expect(deleteBtns).toHaveLength(2);
+    });
+
+    test('shows Edit button for each row', () => {
+        const editBtns = screen.getAllByRole('button', { name: /^edit$/i });
+        expect(editBtns).toHaveLength(2);
     });
 });
 
@@ -461,5 +469,116 @@ describe('ViewMedicineStockAdjustments — delete flow', () => {
         await waitFor(() =>
             expect(screen.getByRole('alert')).toHaveTextContent(/record not found/i)
         );
+    });
+});
+
+// ── Edit flow ─────────────────────────────────────────────────────────────
+
+describe('ViewMedicineStockAdjustments — edit flow', () => {
+    beforeEach(async () => {
+        api.getMedicineStockAdjustments.mockResolvedValue({ data: [ADJ_ADD, ADJ_REDUCE] });
+        renderPage();
+        await userEvent.click(screen.getByRole('button', { name: /search/i }));
+        await waitFor(() => screen.getByRole('table'));
+    });
+
+    test('clicking Edit shows editable note, quantity, type, stock type and date fields prefilled', async () => {
+        const [firstEdit] = screen.getAllByRole('button', { name: /^edit$/i });
+        await userEvent.click(firstEdit);
+
+        expect(screen.getByRole('textbox', { name: /edit note/i })).toHaveValue(ADJ_ADD.note);
+        expect(screen.getByRole('spinbutton', { name: /edit quantity/i })).toHaveValue(8);
+        expect(screen.getByRole('combobox', { name: /edit adjustment type/i })).toHaveValue('ADD');
+        expect(screen.getByRole('combobox', { name: /edit stock type/i })).toHaveValue('REGULAR_MEDICINE_STOCK');
+        expect(screen.getByLabelText(/edit adjustment date/i)).toHaveValue('2026-06-06');
+    });
+
+    test('clicking Cancel hides the edit form and restores the original note display', async () => {
+        const [firstEdit] = screen.getAllByRole('button', { name: /^edit$/i });
+        await userEvent.click(firstEdit);
+        await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+        expect(screen.queryByRole('textbox', { name: /edit note/i })).not.toBeInTheDocument();
+        expect(screen.getByText(ADJ_ADD.note)).toBeInTheDocument();
+    });
+
+    test('saving an edit calls updateMedicineStockAdjustment with the new values', async () => {
+        const [firstEdit] = screen.getAllByRole('button', { name: /^edit$/i });
+        await userEvent.click(firstEdit);
+
+        const qtyInput = screen.getByRole('spinbutton', { name: /edit quantity/i });
+        await userEvent.clear(qtyInput);
+        await userEvent.type(qtyInput, '12');
+        const noteInput = screen.getByRole('textbox', { name: /edit note/i });
+        await userEvent.clear(noteInput);
+        await userEvent.type(noteInput, 'Corrected after a recount');
+        await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+        await waitFor(() =>
+            expect(api.updateMedicineStockAdjustment).toHaveBeenCalledWith(ADJ_ADD.id, {
+                note: 'Corrected after a recount',
+                quantity: '12',
+                adjustmentType: 'ADD',
+                medicineStockType: 'REGULAR_MEDICINE_STOCK',
+                adjustmentDate: '2026-06-06',
+            })
+        );
+    });
+
+    test('changing adjustmentType and stock type sends both through to the service', async () => {
+        const [firstEdit] = screen.getAllByRole('button', { name: /^edit$/i });
+        await userEvent.click(firstEdit);
+
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: /edit adjustment type/i }), 'REDUCE');
+        await userEvent.selectOptions(screen.getByRole('combobox', { name: /edit stock type/i }), 'ADMIN_MEDICINE_STOCK');
+        const noteInput = screen.getByRole('textbox', { name: /edit note/i });
+        await userEvent.clear(noteInput);
+        await userEvent.type(noteInput, 'This was actually an admin-stock reduction');
+        await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+        await waitFor(() =>
+            expect(api.updateMedicineStockAdjustment).toHaveBeenCalledWith(ADJ_ADD.id, expect.objectContaining({
+                adjustmentType: 'REDUCE',
+                medicineStockType: 'ADMIN_MEDICINE_STOCK',
+            }))
+        );
+    });
+
+    test('row reflects the updated values returned by the API after saving', async () => {
+        api.updateMedicineStockAdjustment.mockResolvedValue({
+            data: { ...ADJ_ADD, note: 'Corrected after a recount', quantity: 12 },
+        });
+        const [firstEdit] = screen.getAllByRole('button', { name: /^edit$/i });
+        await userEvent.click(firstEdit);
+        const noteInput = screen.getByRole('textbox', { name: /edit note/i });
+        await userEvent.clear(noteInput);
+        await userEvent.type(noteInput, 'Corrected after a recount');
+        await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+        await waitFor(() => expect(screen.getByText('Corrected after a recount')).toBeInTheDocument());
+        expect(screen.getByText('12.0')).toBeInTheDocument();
+    });
+
+    test('shows inline error when save fails', async () => {
+        api.updateMedicineStockAdjustment.mockRejectedValue({
+            response: { data: { message: 'Note must be between 5 and 500 characters' } },
+        });
+        const [firstEdit] = screen.getAllByRole('button', { name: /^edit$/i });
+        await userEvent.click(firstEdit);
+        await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+        await waitFor(() =>
+            expect(screen.getByRole('alert')).toHaveTextContent(/note must be between 5 and 500 characters/i)
+        );
+        // Edit mode stays active so the admin can correct and retry.
+        expect(screen.getByRole('textbox', { name: /edit note/i })).toBeInTheDocument();
+    });
+
+    test('only one row enters edit mode at a time per button clicked', async () => {
+        const [firstEdit, secondEdit] = screen.getAllByRole('button', { name: /^edit$/i });
+        await userEvent.click(firstEdit);
+        await userEvent.click(secondEdit);
+
+        expect(screen.getAllByRole('textbox', { name: /edit note/i })).toHaveLength(2);
     });
 });

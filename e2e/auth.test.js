@@ -58,6 +58,15 @@ async function apiPut(url, body, token) {
   return { status: res.status, data };
 }
 
+async function apiPatch(url, body, token) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(body) });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  return { status: res.status, data };
+}
+
 async function apiDelete(url, token) {
   const headers = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -866,6 +875,90 @@ async function run() {
       `Expected ${quantityBeforeAdjust}, got ${restored}`);
   });
 
+  // ── Payment Status on Submission ─────────────────────────────────────
+  console.log('\n-- Payment Status on Submission');
+
+  await test('[SETUP] Allocate stock for payment-status submission tests', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 3,
+      note: 'E2E setup — allocating stock for payment-status submission tests',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  let defaultPaymentStatusTxId;
+  await test('Submitting without paymentStatus defaults to PAID', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '1',
+      notes: 'E2E payment-status test — no paymentStatus provided',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('PS1')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.paymentStatus === 'PAID', `Expected PAID, got ${r.data.paymentStatus}`);
+    defaultPaymentStatusTxId = r.data.id;
+  });
+
+  let unpaidTxId;
+  await test('Submitting with paymentStatus=UNPAID stores UNPAID', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '1',
+      notes: 'E2E payment-status test — explicit UNPAID',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      paymentStatus: 'UNPAID',
+      screenshots: [makeFakePng('PS2')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.paymentStatus === 'UNPAID', `Expected UNPAID, got ${r.data.paymentStatus}`);
+    unpaidTxId = r.data.id;
+  });
+
+  let partialTxId;
+  await test('Submitting with paymentStatus=PARTIAL_PAYMENT stores PARTIAL_PAYMENT', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '1',
+      notes: 'E2E payment-status test — explicit PARTIAL_PAYMENT',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      paymentStatus: 'PARTIAL_PAYMENT',
+      screenshots: [makeFakePng('PS3')],
+    }, userToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.paymentStatus === 'PARTIAL_PAYMENT', `Expected PARTIAL_PAYMENT, got ${r.data.paymentStatus}`);
+    partialTxId = r.data.id;
+  });
+
+  await test('[TEARDOWN] Delete the three payment-status test dispatches', async () => {
+    for (const id of [defaultPaymentStatusTxId, unpaidTxId, partialTxId]) {
+      const r = await apiDelete(`${API}/transactions/my/${id}`, userToken);
+      assert(r.status === 204, `Delete failed for tx ${id}: ${r.status}`);
+    }
+  });
+
+  await test('[TEARDOWN] Removes the leftover allocation from payment-status submission setup', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 3,
+      note: 'E2E teardown — removing allocation for payment-status submission tests',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[VERIFY TEARDOWN] john.doe medicineStock restored after payment-status submission tests', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId);
+    const restored = inv ? inv.quantity : 0;
+    assert(Math.abs(restored - quantityBeforeAdjust) < 0.001,
+      `Expected ${quantityBeforeAdjust}, got ${restored}`);
+  });
+
   // ── Admin: User Management ────────────────────────────────────────────
   console.log('\n-- Admin: User Management');
   await test('Admin can list all users', async () => {
@@ -1489,6 +1582,112 @@ async function run() {
     assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
   });
 
+  // ── MedicineStock Adjustments — PATCH (edit) ─────────────────────────────
+  console.log('\n-- MedicineStock Adjustments (PATCH edit)');
+
+  let adjustmentIdForEdit;
+  await test('[SETUP] Create adjustment for edit test', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 6,
+      note: 'E2E test adjustment for edit test',
+    }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    const adjR = await apiGet(`${API}/medicine-stock/adjustments?from=${today}&to=${today}`, adminToken);
+    const adj = adjR.data.find(a => a.username === 'john.doe' && a.adjustmentType === 'ADD' && a.quantity === 6);
+    assert(adj, 'Could not find newly created adjustment in list');
+    adjustmentIdForEdit = adj.id;
+  });
+
+  await test('PATCH without a note returns 400', async () => {
+    const r = await apiPatch(`${API}/medicine-stock/adjustments/${adjustmentIdForEdit}`, { quantity: 9 }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}: ${JSON.stringify(r.data)}`);
+  });
+
+  await test('Non-admin cannot edit an medicineStock adjustment (401/403)', async () => {
+    const r = await apiPatch(`${API}/medicine-stock/adjustments/${adjustmentIdForEdit}`,
+      { note: 'Trying to edit as a non-admin user' }, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  await test('Editing quantity on an ADD adjustment credits only the difference, not the full new amount', async () => {
+    const beforeR = await apiGet(`${API}/medicine-stock`, adminToken);
+    const before = beforeR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const beforeQty = before ? before.quantity : 0;
+
+    const r = await apiPatch(`${API}/medicine-stock/adjustments/${adjustmentIdForEdit}`,
+      { note: 'Recount found more stock than originally recorded', quantity: 9 }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(Math.abs(r.data.quantity - 9) < 0.001, `Expected quantity 9, got ${r.data.quantity}`);
+    assert(r.data.note === 'Recount found more stock than originally recorded', `Note not updated: ${r.data.note}`);
+
+    const afterR = await apiGet(`${API}/medicine-stock`, adminToken);
+    const after = afterR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const afterQty = after ? after.quantity : 0;
+    // Original ADD was 6, new is 9 — only the +3 difference should land, not +9.
+    assert(Math.abs(afterQty - (beforeQty + 3)) < 0.001,
+      `Expected ${beforeQty + 3} after editing 6->9, got ${afterQty}`);
+  });
+
+  await test('Switching adjustmentType from ADD to REDUCE reverses direction on the same bucket', async () => {
+    const beforeR = await apiGet(`${API}/medicine-stock`, adminToken);
+    const before = beforeR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const beforeQty = before ? before.quantity : 0;
+
+    const r = await apiPatch(`${API}/medicine-stock/adjustments/${adjustmentIdForEdit}`,
+      { note: 'This was actually a reduction, not an addition', adjustmentType: 'REDUCE' }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.adjustmentType === 'REDUCE', `Expected REDUCE, got ${r.data.adjustmentType}`);
+
+    const afterR = await apiGet(`${API}/medicine-stock`, adminToken);
+    const after = afterR.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const afterQty = after ? after.quantity : 0;
+    // Revert ADD 9 (beforeQty - 9), then apply REDUCE 9 (that result - 9) -> net beforeQty - 18.
+    assert(Math.abs(afterQty - (beforeQty - 18)) < 0.001,
+      `Expected ${beforeQty - 18} after switching ADD 9 -> REDUCE 9, got ${afterQty}`);
+  });
+
+  await test('[TEARDOWN] Revert the edit-test adjustment back to its original ADD 6 state', async () => {
+    // Switch back to ADD 6, which undoes the REDUCE 9 (+9) then applies ADD 6 (+6) -> net +15
+    // relative to the REDUCE 9 state, restoring the original pre-edit-test baseline.
+    const r = await apiPatch(`${API}/medicine-stock/adjustments/${adjustmentIdForEdit}`,
+      { note: 'E2E teardown — restoring original edit-test adjustment', quantity: 6, adjustmentType: 'ADD' }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[TEARDOWN] Delete the edit-test adjustment entirely', async () => {
+    const r = await apiDelete(`${API}/medicine-stock/adjustments/${adjustmentIdForEdit}`, adminToken);
+    assert(r.status === 204, `Expected 204, got ${r.status}`);
+  });
+
+  await test('Editing a non-existent adjustment returns 404', async () => {
+    const r = await apiPatch(`${API}/medicine-stock/adjustments/999999`, { note: 'Valid note here' }, adminToken);
+    assert(r.status === 404, `Expected 404, got ${r.status}`);
+  });
+
+  await test('Editing with an invalid adjustmentType returns 400', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId, medicineId: adjustMedicineId, adjustmentType: 'ADD',
+      quantity: 1, note: 'E2E setup — throwaway adjustment for validation test',
+    }, adminToken);
+    const adjR = await apiGet(`${API}/medicine-stock/adjustments?from=${today}&to=${today}`, adminToken);
+    const adj = adjR.data.find(a => a.username === 'john.doe' && a.adjustmentType === 'ADD' && a.quantity === 1);
+    assert(adj, 'Could not find throwaway adjustment');
+
+    const patchR = await apiPatch(`${API}/medicine-stock/adjustments/${adj.id}`,
+      { note: 'Trying an invalid adjustment type', adjustmentType: 'INVALID' }, adminToken);
+    assert(patchR.status === 400, `Expected 400, got ${patchR.status}`);
+
+    // Cleanup the throwaway adjustment.
+    await apiDelete(`${API}/medicine-stock/adjustments/${adj.id}`, adminToken);
+  });
+
   // ── Multi-Screenshot Transactions ────────────────────────────────────
   console.log('\n-- Multi-Screenshot Transactions');
 
@@ -2024,6 +2223,42 @@ async function run() {
       pricePerUnit: '0',
     }, adminToken);
     assert(r.status === 400, `Expected 400, got ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('Admin can change paymentStatus to UNPAID on an already-APPROVED record', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Payment not received yet, marking unpaid',
+      paymentStatus: 'UNPAID',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.paymentStatus === 'UNPAID', `Expected UNPAID, got ${r.data.paymentStatus}`);
+    assert(r.data.status === 'APPROVED', `Status should stay APPROVED, got ${r.data.status}`);
+  });
+
+  await test('Admin can change paymentStatus to PARTIAL_PAYMENT on the same record', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Partial payment received, updating status',
+      paymentStatus: 'PARTIAL_PAYMENT',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.paymentStatus === 'PARTIAL_PAYMENT', `Expected PARTIAL_PAYMENT, got ${r.data.paymentStatus}`);
+  });
+
+  await test('Admin can change paymentStatus back to PAID, settling it', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Full payment now received',
+      paymentStatus: 'PAID',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.paymentStatus === 'PAID', `Expected PAID, got ${r.data.paymentStatus}`);
+  });
+
+  await test('Omitting paymentStatus on a later edit leaves it unchanged', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${editTxId}`, {
+      notes: 'Unrelated follow-up correction, payment status not touched',
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(r.data.paymentStatus === 'PAID', `Expected paymentStatus to remain PAID, got ${r.data.paymentStatus}`);
   });
 
   await test('Admin moves the record from REGULAR to ADMIN_MEDICINE_STOCK (get-or-create bucket)', async () => {

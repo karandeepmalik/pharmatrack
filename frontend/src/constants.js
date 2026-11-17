@@ -35,3 +35,17 @@ export const TRANSACTION_STATUSES = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 /** Human-readable label for a medicineStockType value ('REGULAR_MEDICINE_STOCK' / 'ADMIN_MEDICINE_STOCK'). */
 export const medicineStockTypeLabel = (type) =>
   type === 'ADMIN_MEDICINE_STOCK' ? 'Admin Stock' : 'Regular Stock';
+
+// ── Payment status ──────────────────────────────────────────────────────
+
+/** Selectable payment status options, in display order. PAID is the default on submission. */
+export const PAYMENT_STATUSES = ['PAID', 'UNPAID', 'PARTIAL_PAYMENT'];
+
+/** Human-readable label for a paymentStatus value. */
+export const paymentStatusLabel = (status) => {
+  switch (status) {
+    case 'UNPAID': return 'Unpaid';
+    case 'PARTIAL_PAYMENT': return 'Partial Payment';
+    default: return 'Paid';
+  }
+};
