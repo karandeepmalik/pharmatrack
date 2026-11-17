@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import ViewPastTransactions from '../../../pages/admin/ViewPastTransactions';
@@ -91,15 +91,16 @@ describe('ViewPastTransactions — render', () => {
 
   test('renders status filter with ALL, APPROVED, REJECTED options', () => {
     renderPage();
-    expect(screen.getByLabelText(/status/i)).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /^all$/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /^approved$/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /^rejected$/i })).toBeInTheDocument();
+    const statusSelect = screen.getByLabelText('Status');
+    expect(statusSelect).toBeInTheDocument();
+    expect(within(statusSelect).getByRole('option', { name: /^all$/i })).toBeInTheDocument();
+    expect(within(statusSelect).getByRole('option', { name: /^approved$/i })).toBeInTheDocument();
+    expect(within(statusSelect).getByRole('option', { name: /^rejected$/i })).toBeInTheDocument();
   });
 
   test('defaults to APPROVED status', () => {
     renderPage();
-    expect(screen.getByLabelText(/status/i)).toHaveValue('APPROVED');
+    expect(screen.getByLabelText('Status')).toHaveValue('APPROVED');
   });
 
   test('renders User filter dropdown', () => {
@@ -247,6 +248,8 @@ describe('ViewPastTransactions — search', () => {
         10,
         undefined,
         undefined,
+        undefined,
+        undefined,
         undefined
       )
     );
@@ -256,7 +259,7 @@ describe('ViewPastTransactions — search', () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
-    await userEvent.selectOptions(screen.getByLabelText(/status/i), 'ALL');
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'ALL');
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
@@ -266,6 +269,8 @@ describe('ViewPastTransactions — search', () => {
         'ALL',
         0,
         10,
+        undefined,
+        undefined,
         undefined,
         undefined,
         undefined
@@ -307,7 +312,9 @@ describe('ViewPastTransactions — pagination', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -325,7 +332,9 @@ describe('ViewPastTransactions — pagination', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 1, 10, undefined, undefined, undefined
+        expect.any(String), expect.any(String), expect.any(String), 1, 10, undefined, undefined, undefined,
+        undefined,
+        undefined
       )
     );
     await waitFor(() => screen.getByText('Second page dispatch'));
@@ -514,7 +523,9 @@ describe('ViewPastTransactions — user filter', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, 'john.doe', undefined, undefined
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, 'john.doe', undefined, undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -527,7 +538,9 @@ describe('ViewPastTransactions — user filter', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -579,7 +592,9 @@ describe('ViewPastTransactions — medicine filter', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, '10', undefined
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, '10', undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -592,7 +607,9 @@ describe('ViewPastTransactions — medicine filter', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -624,7 +641,9 @@ describe('ViewPastTransactions — notes search', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, 'clinic'
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, 'clinic',
+        undefined,
+        undefined
       )
     );
   });
@@ -637,7 +656,9 @@ describe('ViewPastTransactions — notes search', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        undefined,
+        undefined
       )
     );
   });
@@ -651,6 +672,104 @@ describe('ViewPastTransactions — notes search', () => {
     await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+});
+
+// ── Payment status filter ─────────────────────────────────────────────────
+
+describe('ViewPastTransactions — payment status filter', () => {
+  const unpaidTx = makeTx({ id: 1, notes: 'Unpaid dispatch note', paymentStatus: 'UNPAID' });
+
+  test('renders Payment Status filter with All, Paid, Unpaid and Partial Payment options', async () => {
+    renderPage();
+    const select = screen.getByLabelText(/payment status/i);
+    expect(select).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /^all$/i })).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /^paid$/i })).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /^unpaid$/i })).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /partial payment/i })).toBeInTheDocument();
+  });
+
+  test('defaults to All', () => {
+    renderPage();
+    expect(screen.getByLabelText(/payment status/i)).toHaveValue('ALL');
+  });
+
+  test('selecting Unpaid and searching sends it as the paymentStatus query param', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([unpaidTx]));
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/payment status/i));
+
+    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'UNPAID');
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        undefined,
+        'UNPAID'
+      )
+    );
+  });
+
+  test('All omits the paymentStatus param (undefined)', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([unpaidTx]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        undefined,
+        undefined
+      )
+    );
+  });
+
+  test('changing the payment status filter after a search hides results until Search is pressed again', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([unpaidTx]));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByText('Unpaid dispatch note'));
+
+    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'UNPAID');
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  test('renders the Payment Status column header', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([unpaidTx]));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('columnheader', { name: /payment status/i })).toBeInTheDocument()
+    );
+  });
+
+  test('shows Unpaid badge for an UNPAID dispatch', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([unpaidTx]));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(within(screen.getByRole('table')).getByText('Unpaid')).toBeInTheDocument());
+  });
+
+  test('shows Paid badge for a PAID dispatch', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ paymentStatus: 'PAID' })]));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(within(screen.getByRole('table')).getByText('Paid')).toBeInTheDocument());
+  });
+
+  test('shows Partial Payment badge for a PARTIAL_PAYMENT dispatch', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ paymentStatus: 'PARTIAL_PAYMENT' })]));
+    renderPage();
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() => expect(within(screen.getByRole('table')).getByText('Partial Payment')).toBeInTheDocument());
   });
 });
 
@@ -671,7 +790,9 @@ describe('ViewPastTransactions — combined filters', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, 'john.doe', '10', 'clinic b'
+        expect.any(String), expect.any(String), expect.any(String), 0, 10, 'john.doe', '10', 'clinic b',
+        undefined,
+        undefined
       )
     );
   });

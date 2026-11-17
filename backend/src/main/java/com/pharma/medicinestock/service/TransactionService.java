@@ -174,13 +174,15 @@ public class TransactionService {
         return ids.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
     }
 
-    /** Shared status/username/stockType/notes normalization for getHistory and
+    /** Shared status/username/stockType/paymentStatus/notes normalization for getHistory and
      *  getHistoryTotalQuantity — both must filter identically or the displayed total quantity
      *  would silently disagree with what the results table actually shows. */
     private record HistoryFilters(TransactionStatus status, String username,
-                                   MedicineStock.MedicineStockType stockType, String notesPattern) {}
+                                   MedicineStock.MedicineStockType stockType,
+                                   Transaction.PaymentStatus paymentStatus, String notesPattern) {}
 
-    private HistoryFilters normalizeHistoryFilters(String status, String username, String medicineStockType, String notes) {
+    private HistoryFilters normalizeHistoryFilters(String status, String username, String medicineStockType,
+                                                    String paymentStatus, String notes) {
         TransactionStatus txStatus = (status == null || "ALL".equalsIgnoreCase(status))
                 ? null : TransactionStatus.valueOf(status.toUpperCase());
         String usernameFilter = (username == null || username.isBlank() || "ALL".equalsIgnoreCase(username))
@@ -192,23 +194,29 @@ public class TransactionService {
         MedicineStock.MedicineStockType stockTypeFilter = (medicineStockType == null || medicineStockType.isBlank()
                 || "ALL".equalsIgnoreCase(medicineStockType))
                 ? null : MedicineStock.MedicineStockType.valueOf(medicineStockType.toUpperCase());
+        // Same "blank/ALL means no filter" rule as stock type above — must never silently default
+        // to PAID, or UNPAID/PARTIAL_PAYMENT records would vanish from an unfiltered search.
+        Transaction.PaymentStatus paymentStatusFilter = (paymentStatus == null || paymentStatus.isBlank()
+                || "ALL".equalsIgnoreCase(paymentStatus))
+                ? null : Transaction.PaymentStatus.valueOf(paymentStatus.toUpperCase());
         // Built as a complete LIKE pattern here, not passed raw — see searchHistory's Javadoc for
         // why binding a raw substring through LOWER(CONCAT(...)) at the SQL level breaks on Postgres.
         String notesPattern = (notes == null || notes.isBlank())
                 ? null : "%" + notes.trim().toLowerCase() + "%";
-        return new HistoryFilters(txStatus, usernameFilter, stockTypeFilter, notesPattern);
+        return new HistoryFilters(txStatus, usernameFilter, stockTypeFilter, paymentStatusFilter, notesPattern);
     }
 
     @Transactional(readOnly = true)
     public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status, int page, int size,
-                                                 String username, Long medicineId, String notes, String medicineStockType) {
+                                                 String username, Long medicineId, String notes, String medicineStockType,
+                                                 String paymentStatus) {
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end   = to.plusDays(1).atStartOfDay();
         PageRequest pageable = PageRequest.of(page, size);
-        HistoryFilters f = normalizeHistoryFilters(status, username, medicineStockType, notes);
+        HistoryFilters f = normalizeHistoryFilters(status, username, medicineStockType, paymentStatus, notes);
 
         Page<Transaction> txPage = transactionRepository.searchHistory(
-                start, end, f.status(), f.username(), medicineId, f.stockType(), f.notesPattern(), pageable);
+                start, end, f.status(), f.username(), medicineId, f.stockType(), f.paymentStatus(), f.notesPattern(), pageable);
         return txPage.map(transactionMapper::toResponse);
     }
 
@@ -217,13 +225,14 @@ public class TransactionService {
      *  Medicine Dispatches. */
     @Transactional(readOnly = true)
     public BigDecimal getHistoryTotalQuantity(LocalDate from, LocalDate to, String status,
-                                               String username, Long medicineId, String notes, String medicineStockType) {
+                                               String username, Long medicineId, String notes, String medicineStockType,
+                                               String paymentStatus) {
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end   = to.plusDays(1).atStartOfDay();
-        HistoryFilters f = normalizeHistoryFilters(status, username, medicineStockType, notes);
+        HistoryFilters f = normalizeHistoryFilters(status, username, medicineStockType, paymentStatus, notes);
 
         return transactionRepository.sumQuantityForHistory(
-                start, end, f.status(), f.username(), medicineId, f.stockType(), f.notesPattern());
+                start, end, f.status(), f.username(), medicineId, f.stockType(), f.paymentStatus(), f.notesPattern());
     }
 
     @Transactional

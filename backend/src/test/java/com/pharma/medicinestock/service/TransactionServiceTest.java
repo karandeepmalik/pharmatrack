@@ -721,36 +721,36 @@ class TransactionServiceTest {
 
         @Test @DisplayName("returns empty page when no transactions in range")
         void getHistory_noTransactions_returnsEmpty() {
-            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            Page<TransactionResponse> result = transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null);
+            Page<TransactionResponse> result = transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null, null);
             assertThat(result.getContent()).isEmpty();
         }
 
         @Test @DisplayName("passes a null status to the repository when status is ALL")
         void getHistory_allStatus_passesNullStatus() {
-            when(transactionRepository.searchHistory(any(), any(), isNull(), any(), any(), any(), any(), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), isNull(), any(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null);
-            verify(transactionRepository).searchHistory(any(), any(), isNull(), any(), any(), any(), any(), any(Pageable.class));
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null, null);
+            verify(transactionRepository).searchHistory(any(), any(), isNull(), any(), any(), any(), any(), any(), any(Pageable.class));
         }
 
         @Test @DisplayName("passes the parsed status enum to the repository when status is not ALL")
         void getHistory_withStatus_passesParsedStatus() {
             when(transactionRepository.searchHistory(
-                    any(), any(), eq(TransactionStatus.APPROVED), any(), any(), any(), any(), any(Pageable.class)))
+                    any(), any(), eq(TransactionStatus.APPROVED), any(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "APPROVED", 0, 10, null, null, null, null);
+            transactionService.getHistory(from, to, "APPROVED", 0, 10, null, null, null, null, null);
             verify(transactionRepository).searchHistory(
-                    any(), any(), eq(TransactionStatus.APPROVED), any(), any(), any(), any(), any(Pageable.class));
+                    any(), any(), eq(TransactionStatus.APPROVED), any(), any(), any(), any(), any(), any(Pageable.class));
         }
 
         @Test @DisplayName("passes the requested page and size through as a Pageable")
         void getHistory_pageAndSize_passedAsPageable() {
-            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), any(), eq(PageRequest.of(1, 10))))
+            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), any(), any(), eq(PageRequest.of(1, 10))))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 1, 10, null, null, null, null);
-            verify(transactionRepository).searchHistory(any(), any(), any(), any(), any(), any(), any(), eq(PageRequest.of(1, 10)));
+            transactionService.getHistory(from, to, "ALL", 1, 10, null, null, null, null, null);
+            verify(transactionRepository).searchHistory(any(), any(), any(), any(), any(), any(), any(), any(), eq(PageRequest.of(1, 10)));
         }
 
         @Test @DisplayName("maps transactions via mapper and preserves total count")
@@ -761,60 +761,80 @@ class TransactionServiceTest {
             TransactionResponse r1 = stubResponse(t1);
             TransactionResponse r2 = stubResponse(t2);
 
-            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(new PageImpl<>(List.of(t1, t2), PageRequest.of(0, 10), 2));
             when(transactionMapper.toResponse(t1)).thenReturn(r1);
             when(transactionMapper.toResponse(t2)).thenReturn(r2);
 
-            Page<TransactionResponse> result = transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null);
+            Page<TransactionResponse> result = transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null, null);
             assertThat(result.getContent()).containsExactly(r1, r2);
             assertThat(result.getTotalElements()).isEqualTo(2);
         }
 
         @Test @DisplayName("passes username through as given")
         void getHistory_username_passedThrough() {
-            when(transactionRepository.searchHistory(any(), any(), any(), eq("john.doe"), any(), any(), any(), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), any(), eq("john.doe"), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 0, 10, "john.doe", null, null, null);
-            verify(transactionRepository).searchHistory(any(), any(), any(), eq("john.doe"), any(), any(), any(), any(Pageable.class));
+            transactionService.getHistory(from, to, "ALL", 0, 10, "john.doe", null, null, null, null);
+            verify(transactionRepository).searchHistory(any(), any(), any(), eq("john.doe"), any(), any(), any(), any(), any(Pageable.class));
         }
 
         @Test @DisplayName("normalizes a blank or ALL username to null (no filter)")
         void getHistory_blankOrAllUsername_normalizedToNull() {
-            when(transactionRepository.searchHistory(any(), any(), any(), isNull(), any(), any(), any(), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), any(), isNull(), any(), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 0, 10, "  ", null, null, null);
-            transactionService.getHistory(from, to, "ALL", 0, 10, "ALL", null, null, null);
+            transactionService.getHistory(from, to, "ALL", 0, 10, "  ", null, null, null, null);
+            transactionService.getHistory(from, to, "ALL", 0, 10, "ALL", null, null, null, null);
             verify(transactionRepository, times(2))
-                    .searchHistory(any(), any(), any(), isNull(), any(), any(), any(), any(Pageable.class));
+                    .searchHistory(any(), any(), any(), isNull(), any(), any(), any(), any(), any(Pageable.class));
         }
 
         @Test @DisplayName("passes medicineId through as given")
         void getHistory_medicineId_passedThrough() {
-            when(transactionRepository.searchHistory(any(), any(), any(), any(), eq(5L), any(), any(), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), any(), any(), eq(5L), any(), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 0, 10, null, 5L, null, null);
-            verify(transactionRepository).searchHistory(any(), any(), any(), any(), eq(5L), any(), any(), any(Pageable.class));
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, 5L, null, null, null);
+            verify(transactionRepository).searchHistory(any(), any(), any(), any(), eq(5L), any(), any(), any(), any(Pageable.class));
         }
 
         @Test @DisplayName("passes the parsed medicineStockType enum through as given")
         void getHistory_medicineStockType_passedThrough() {
             when(transactionRepository.searchHistory(
-                    any(), any(), any(), any(), any(), eq(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), any(), any(Pageable.class)))
+                    any(), any(), any(), any(), any(), eq(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, "ADMIN_MEDICINE_STOCK");
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, "ADMIN_MEDICINE_STOCK", null);
             verify(transactionRepository).searchHistory(
-                    any(), any(), any(), any(), any(), eq(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), any(), any(Pageable.class));
+                    any(), any(), any(), any(), any(), eq(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), any(), any(), any(Pageable.class));
         }
 
         @Test @DisplayName("normalizes a blank or ALL medicineStockType to null (no filter)")
         void getHistory_blankOrAllMedicineStockType_normalizedToNull() {
-            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), isNull(), any(), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), isNull(), any(), any(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, "  ");
-            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, "ALL");
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, "  ", null);
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, "ALL", null);
             verify(transactionRepository, times(2))
-                    .searchHistory(any(), any(), any(), any(), any(), isNull(), any(), any(Pageable.class));
+                    .searchHistory(any(), any(), any(), any(), any(), isNull(), any(), any(), any(Pageable.class));
+        }
+
+        @Test @DisplayName("passes the parsed paymentStatus enum through as given")
+        void getHistory_paymentStatus_passedThrough() {
+            when(transactionRepository.searchHistory(
+                    any(), any(), any(), any(), any(), any(), eq(Transaction.PaymentStatus.UNPAID), any(), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null, "UNPAID");
+            verify(transactionRepository).searchHistory(
+                    any(), any(), any(), any(), any(), any(), eq(Transaction.PaymentStatus.UNPAID), any(), any(Pageable.class));
+        }
+
+        @Test @DisplayName("normalizes a blank or ALL paymentStatus to null (no filter)")
+        void getHistory_blankOrAllPaymentStatus_normalizedToNull() {
+            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), isNull(), any(), any(Pageable.class)))
+                    .thenReturn(Page.empty());
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null, "  ");
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, null, null, "ALL");
+            verify(transactionRepository, times(2))
+                    .searchHistory(any(), any(), any(), any(), any(), any(), isNull(), any(), any(Pageable.class));
         }
 
         @Test @DisplayName("builds a trimmed, lowercased LIKE pattern from the notes filter")
@@ -822,18 +842,18 @@ class TransactionServiceTest {
             // Built as a complete pattern here (not passed raw to the repository) — binding a raw
             // substring through LOWER(CONCAT(...)) at the SQL level breaks on Postgres when the
             // parameter is null. See TransactionRepository.searchHistory's Javadoc.
-            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), eq("%clinic%"), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), any(), eq("%clinic%"), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, "  Clinic  ", null);
-            verify(transactionRepository).searchHistory(any(), any(), any(), any(), any(), any(), eq("%clinic%"), any(Pageable.class));
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, "  Clinic  ", null, null);
+            verify(transactionRepository).searchHistory(any(), any(), any(), any(), any(), any(), any(), eq("%clinic%"), any(Pageable.class));
         }
 
         @Test @DisplayName("normalizes a blank notes filter to null (no LIKE pattern built)")
         void getHistory_blankNotes_normalizedToNull() {
-            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), isNull(), any(Pageable.class)))
+            when(transactionRepository.searchHistory(any(), any(), any(), any(), any(), any(), any(), isNull(), any(Pageable.class)))
                     .thenReturn(Page.empty());
-            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, "   ", null);
-            verify(transactionRepository).searchHistory(any(), any(), any(), any(), any(), any(), isNull(), any(Pageable.class));
+            transactionService.getHistory(from, to, "ALL", 0, 10, null, null, "   ", null, null);
+            verify(transactionRepository).searchHistory(any(), any(), any(), any(), any(), any(), any(), isNull(), any(Pageable.class));
         }
     }
 
@@ -847,46 +867,56 @@ class TransactionServiceTest {
 
         @Test @DisplayName("returns the repository's sum unchanged")
         void returnsSum() {
-            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), any(), any(), any(), any()))
+            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), any(), any(), any(), any(), any()))
                     .thenReturn(new BigDecimal("42.5"));
-            BigDecimal result = transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null, null);
+            BigDecimal result = transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null, null, null);
             assertThat(result).isEqualByComparingTo("42.5");
         }
 
-        @Test @DisplayName("normalizes filters identically to getHistory — same status/username/stockType/notes handling")
+        @Test @DisplayName("normalizes filters identically to getHistory — same status/username/stockType/paymentStatus/notes handling")
         void normalizesFiltersLikeGetHistory() {
             when(transactionRepository.sumQuantityForHistory(
                     any(), any(), eq(TransactionStatus.PENDING), eq("john.doe"), eq(5L),
-                    eq(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), eq("%clinic%")))
+                    eq(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), eq(Transaction.PaymentStatus.UNPAID), eq("%clinic%")))
                     .thenReturn(BigDecimal.TEN);
 
             BigDecimal result = transactionService.getHistoryTotalQuantity(
-                    from, to, "PENDING", "john.doe", 5L, "  Clinic  ", "ADMIN_MEDICINE_STOCK");
+                    from, to, "PENDING", "john.doe", 5L, "  Clinic  ", "ADMIN_MEDICINE_STOCK", "UNPAID");
 
             assertThat(result).isEqualByComparingTo("10");
             verify(transactionRepository).sumQuantityForHistory(
                     any(), any(), eq(TransactionStatus.PENDING), eq("john.doe"), eq(5L),
-                    eq(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), eq("%clinic%"));
+                    eq(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), eq(Transaction.PaymentStatus.UNPAID), eq("%clinic%"));
+        }
+
+        @Test @DisplayName("normalizes a blank or ALL paymentStatus to null, same as getHistory")
+        void normalizesBlankOrAllPaymentStatusToNull() {
+            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), any(), any(), any(), isNull(), any()))
+                    .thenReturn(BigDecimal.ZERO);
+            transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null, null, "  ");
+            transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null, null, "ALL");
+            verify(transactionRepository, times(2))
+                    .sumQuantityForHistory(any(), any(), any(), any(), any(), any(), isNull(), any());
         }
 
         @Test @DisplayName("normalizes a blank or ALL username to null, same as getHistory")
         void normalizesBlankOrAllUsernameToNull() {
-            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), isNull(), any(), any(), any()))
+            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), isNull(), any(), any(), any(), any()))
                     .thenReturn(BigDecimal.ZERO);
-            transactionService.getHistoryTotalQuantity(from, to, "ALL", "  ", null, null, null);
-            transactionService.getHistoryTotalQuantity(from, to, "ALL", "ALL", null, null, null);
+            transactionService.getHistoryTotalQuantity(from, to, "ALL", "  ", null, null, null, null);
+            transactionService.getHistoryTotalQuantity(from, to, "ALL", "ALL", null, null, null, null);
             verify(transactionRepository, times(2))
-                    .sumQuantityForHistory(any(), any(), any(), isNull(), any(), any(), any());
+                    .sumQuantityForHistory(any(), any(), any(), isNull(), any(), any(), any(), any());
         }
 
         @Test @DisplayName("normalizes a blank or ALL medicineStockType to null, same as getHistory")
         void normalizesBlankOrAllMedicineStockTypeToNull() {
-            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), any(), any(), isNull(), any()))
+            when(transactionRepository.sumQuantityForHistory(any(), any(), any(), any(), any(), isNull(), any(), any()))
                     .thenReturn(BigDecimal.ZERO);
-            transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null, "  ");
-            transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null, "ALL");
+            transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null, "  ", null);
+            transactionService.getHistoryTotalQuantity(from, to, "ALL", null, null, null, "ALL", null);
             verify(transactionRepository, times(2))
-                    .sumQuantityForHistory(any(), any(), any(), any(), any(), isNull(), any());
+                    .sumQuantityForHistory(any(), any(), any(), any(), any(), isNull(), any(), any());
         }
     }
 

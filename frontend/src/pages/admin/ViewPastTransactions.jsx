@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
-import { medicineStockTypeLabel } from '../../constants';
+import { medicineStockTypeLabel, PAYMENT_STATUSES, paymentStatusLabel } from '../../constants';
 import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
 
 const PAGE_SIZE = 10;
@@ -46,6 +46,7 @@ export default function ViewPastTransactions() {
     const [userFilter, setUserFilter] = useState('ALL');
     const [medicineFilter, setMedicineFilter] = useState('ALL');
     const [notesSearch, setNotesSearch] = useState('');
+    const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
 
     const sentinelRef = useRef(null);
     const pageRef      = useRef(0);
@@ -53,7 +54,7 @@ export default function ViewPastTransactions() {
     // The exact filters a page-0 search was run with — scroll-triggered loads of subsequent
     // pages must keep using these, not whatever the form currently shows (the admin may have
     // changed a filter without pressing Search again yet).
-    const searchParamsRef = useRef({ from, to, status, userFilter, medicineFilter, notesSearch });
+    const searchParamsRef = useRef({ from, to, status, userFilter, medicineFilter, notesSearch, paymentStatusFilter });
 
     useEffect(() => {
         api.getUsers().then(r => setUsers(
@@ -76,11 +77,12 @@ export default function ViewPastTransactions() {
             setLoadingMore(true);
         }
 
-        const username   = params.userFilter === 'ALL' ? undefined : params.userFilter;
-        const medicineId = params.medicineFilter === 'ALL' ? undefined : params.medicineFilter;
-        const notes      = params.notesSearch.trim() ? params.notesSearch.trim() : undefined;
+        const username      = params.userFilter === 'ALL' ? undefined : params.userFilter;
+        const medicineId    = params.medicineFilter === 'ALL' ? undefined : params.medicineFilter;
+        const notes         = params.notesSearch.trim() ? params.notesSearch.trim() : undefined;
+        const paymentStatus = params.paymentStatusFilter === 'ALL' ? undefined : params.paymentStatusFilter;
 
-        api.getTransactionHistory(params.from, params.to, params.status, pg, PAGE_SIZE, username, medicineId, notes)
+        api.getTransactionHistory(params.from, params.to, params.status, pg, PAGE_SIZE, username, medicineId, notes, undefined, paymentStatus)
             .then((r) => {
                 const content = r.data?.content;
                 const last    = r.data?.last ?? true;
@@ -105,7 +107,7 @@ export default function ViewPastTransactions() {
 
     const handleSearch = () => {
         if (!isValid) return;
-        const params = { from, to, status, userFilter, medicineFilter, notesSearch };
+        const params = { from, to, status, userFilter, medicineFilter, notesSearch, paymentStatusFilter };
         searchParamsRef.current = params;
         pageRef.current = 0;
         setSearched(true);
@@ -217,6 +219,18 @@ export default function ViewPastTransactions() {
                             onChange={e => { setNotesSearch(e.target.value); invalidateSearch(); }}
                         />
                     </div>
+                    <div className="form-group">
+                        <label htmlFor="payment-status-filter">Payment Status</label>
+                        <select
+                            id="payment-status-filter"
+                            value={paymentStatusFilter}
+                            onChange={e => { setPaymentStatusFilter(e.target.value); invalidateSearch(); }}>
+                            <option value="ALL">All</option>
+                            {PAYMENT_STATUSES.map(s => (
+                                <option key={s} value={s}>{paymentStatusLabel(s)}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
 
                 {from > to && (
@@ -258,6 +272,7 @@ export default function ViewPastTransactions() {
                                         <th>Spec</th>
                                         <th>Qty</th>
                                         <th>Stock Type</th>
+                                        <th>Payment Status</th>
                                         <th>Price/Unit</th>
                                         <th>Notes</th>
                                         <th>Screenshot</th>
@@ -276,6 +291,11 @@ export default function ViewPastTransactions() {
                                             <td>
                                                 <span className={`status-badge ${tx.medicineStockType === 'ADMIN_MEDICINE_STOCK' ? 'badge-pending' : 'badge-approved'}`}>
                                                     {medicineStockTypeLabel(tx.medicineStockType)}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span className={`status-badge ${tx.paymentStatus === 'PAID' ? 'badge-approved' : 'badge-pending'}`}>
+                                                    {paymentStatusLabel(tx.paymentStatus)}
                                                 </span>
                                             </td>
                                             <td>{tx.pricePerUnit != null
