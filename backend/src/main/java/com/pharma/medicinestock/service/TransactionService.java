@@ -356,13 +356,18 @@ public class TransactionService {
      * @param paymentStatus      null to leave unchanged; otherwise PAID/UNPAID/PARTIAL_PAYMENT —
      *                           deliberately not gated by transaction status (unlike quantity/
      *                           stock-type above): payment can be settled well after approval.
+     * @param userId             null to leave unchanged; otherwise re-points the dispatch at a
+     *                           different (non-admin) user
+     * @param medicineId         null to leave unchanged; otherwise corrects the medicine the
+     *                           dispatch was actually for
      */
     @Transactional
     public TransactionResponse updateTransaction(Long id, String notes, BigDecimal quantity,
                                                    String medicineStockType, Integer pricePerUnit,
                                                    LocalDate submittedDate,
                                                    List<String[]> encodedScreenshots,
-                                                   String paymentStatus) {
+                                                   String paymentStatus,
+                                                   Long userId, Long medicineId) {
         Transaction tx = transactionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction", id));
 
@@ -376,11 +381,27 @@ public class TransactionService {
         BigDecimal oldQuantity = tx.getQuantity();
         MedicineStock.MedicineStockType oldType = tx.getMedicineStockType() != null
                 ? tx.getMedicineStockType() : MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK;
+        User oldUser = tx.getSubmittedBy();
+        Medicine oldMedicine = tx.getMedicine();
 
         if (quantity != null) validateQuantity(quantity);
         BigDecimal newQuantity = quantity != null ? QuantityUtil.round(quantity) : oldQuantity;
         MedicineStock.MedicineStockType newType = medicineStockType != null
                 ? resolveMedicineStockType(medicineStockType) : oldType;
+
+        User newUser = oldUser;
+        if (userId != null && !userId.equals(oldUser.getId())) {
+            newUser = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+            if (newUser.getRole() == User.Role.ADMIN) {
+                throw new IllegalArgumentException("Admin user cannot hold medicine stock");
+            }
+        }
+
+        Medicine newMedicine = oldMedicine;
+        if (medicineId != null && !medicineId.equals(oldMedicine.getId())) {
+            newMedicine = findMedicineById(medicineId);
+        }
 
         if (pricePerUnit != null) validatePricePerUnit(pricePerUnit);
         tx.setPricePerUnit(pricePerUnit != null ? pricePerUnit : tx.getPricePerUnit());
@@ -391,18 +412,21 @@ public class TransactionService {
         }
 
         // A PENDING or APPROVED transaction still has an "active" stock deduction from submission
-        // time (see submit()) that a quantity/stock-type change must stay consistent with — a
-        // REJECTED transaction already had that deduction reversed, so editing one afterward is a
-        // pure paper-record correction with nothing left to reconcile.
+        // time (see submit()) that a quantity/stock-type/user/medicine change must stay consistent
+        // with — a REJECTED transaction already had that deduction reversed, so editing one
+        // afterward is a pure paper-record correction with nothing left to reconcile.
         boolean hasActiveDeduction = tx.getStatus() == TransactionStatus.PENDING
                 || tx.getStatus() == TransactionStatus.APPROVED;
-        boolean quantityOrTypeChanged = newQuantity.compareTo(oldQuantity) != 0 || newType != oldType;
-        if (hasActiveDeduction && quantityOrTypeChanged) {
-            reconcileStockForEdit(tx, oldQuantity, oldType, newQuantity, newType);
+        boolean bucketChanged = newQuantity.compareTo(oldQuantity) != 0 || newType != oldType
+                || !newUser.getId().equals(oldUser.getId()) || !newMedicine.getId().equals(oldMedicine.getId());
+        if (hasActiveDeduction && bucketChanged) {
+            reconcileStockForEdit(oldUser, oldMedicine, oldQuantity, oldType, newUser, newMedicine, newQuantity, newType);
         }
 
         tx.setQuantity(newQuantity);
         tx.setMedicineStockType(newType);
+        tx.setSubmittedBy(newUser);
+        tx.setMedicine(newMedicine);
 
         if (!encodedScreenshots.isEmpty()) {
             tx.getScreenshots().clear();
@@ -423,25 +447,29 @@ public class TransactionService {
      * Keeps each affected MedicineStock.quantity consistent with the edited transaction, the
      * same way approve()'s reject branch / deleteTransaction() / deleteOwnPending() already do
      * when a transaction's effect on stock needs to be undone or replayed — this is that same
-     * bookkeeping, just for a quantity/stock-type correction instead of a status change.
+     * bookkeeping, just for a quantity/stock-type/user/medicine correction instead of a status
+     * change. The old (user, medicine, type) bucket is assumed to already exist (submit() created
+     * it) so reverting it throws if missing; the new bucket is created on demand if the dispatch
+     * is being moved to a user/medicine/type combination that's never held stock before.
      */
-    private void reconcileStockForEdit(Transaction tx, BigDecimal oldQty, MedicineStock.MedicineStockType oldType,
-                                        BigDecimal newQty, MedicineStock.MedicineStockType newType) {
-        Long userId = tx.getSubmittedBy().getId();
-        Long medicineId = tx.getMedicine().getId();
-        if (oldType == newType) {
-            MedicineStock inv = findMedicineStockByType(userId, medicineId, oldType);
+    private void reconcileStockForEdit(User oldUser, Medicine oldMedicine, BigDecimal oldQty, MedicineStock.MedicineStockType oldType,
+                                        User newUser, Medicine newMedicine, BigDecimal newQty, MedicineStock.MedicineStockType newType) {
+        boolean sameBucket = oldUser.getId().equals(newUser.getId())
+                && oldMedicine.getId().equals(newMedicine.getId())
+                && oldType == newType;
+        if (sameBucket) {
+            MedicineStock inv = findMedicineStockByType(oldUser.getId(), oldMedicine.getId(), oldType);
             inv.setQuantity(inv.getQuantity().add(oldQty).subtract(newQty));
             medicineStockRepository.save(inv);
         } else {
-            MedicineStock oldInv = findMedicineStockByType(userId, medicineId, oldType);
+            MedicineStock oldInv = findMedicineStockByType(oldUser.getId(), oldMedicine.getId(), oldType);
             oldInv.setQuantity(oldInv.getQuantity().add(oldQty));
             medicineStockRepository.save(oldInv);
 
             MedicineStock newInv = medicineStockRepository
-                    .findByUserIdAndMedicineIdAndMedicineStockType(userId, medicineId, newType)
+                    .findByUserIdAndMedicineIdAndMedicineStockType(newUser.getId(), newMedicine.getId(), newType)
                     .orElseGet(() -> MedicineStock.builder()
-                            .user(tx.getSubmittedBy()).medicine(tx.getMedicine())
+                            .user(newUser).medicine(newMedicine)
                             .quantity(BigDecimal.ZERO).medicineStockType(newType).build());
             newInv.setQuantity(newInv.getQuantity().subtract(newQty));
             medicineStockRepository.save(newInv);

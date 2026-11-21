@@ -183,6 +183,10 @@ public class TransactionController {
      * @param paymentStatus     optional — omit to leave unchanged; PAID/UNPAID/PARTIAL_PAYMENT.
      *                          Unlike quantity/stock-type, this is never gated by transaction
      *                          status — payment can be settled well after a dispatch is approved.
+     * @param userId            optional — omit to leave unchanged; re-points the dispatch at a
+     *                           different (non-admin) user, correcting whoever actually submitted it
+     * @param medicineId        optional — omit to leave unchanged; corrects the medicine brand/spec
+     *                           the dispatch was actually for
      */
     @PatchMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
@@ -195,7 +199,9 @@ public class TransactionController {
             @RequestParam(value = "submittedDate", required = false)
                 @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedDate,
             @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots,
-            @RequestParam(value = "paymentStatus", required = false) String paymentStatus)
+            @RequestParam(value = "paymentStatus", required = false) String paymentStatus,
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(value = "medicineId", required = false) Long medicineId)
             throws IOException {
         // Encoding here, not in the service, mirrors submit()/buildRequest() — screenshot
         // compression is an HTTP-boundary concern (MultipartFile), not business logic.
@@ -203,7 +209,7 @@ public class TransactionController {
         // exactly this endpoint's "screenshots omitted -> leave existing ones alone" contract.
         List<String[]> encodedScreenshots = screenshotProcessor.encodeAll(screenshots);
         return ResponseEntity.ok(
-                transactionService.updateTransaction(id, notes, quantity, medicineStockType, pricePerUnit, submittedDate, encodedScreenshots, paymentStatus));
+                transactionService.updateTransaction(id, notes, quantity, medicineStockType, pricePerUnit, submittedDate, encodedScreenshots, paymentStatus, userId, medicineId));
     }
 
     // ── Assembly helper (no logic — only construction) ─────────────────

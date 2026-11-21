@@ -494,6 +494,8 @@ describe('AdminEditDispatch — edit', () => {
         submittedDate: '2026-05-01',
         screenshotFiles: [],
         paymentStatus: 'PAID',
+        userId: null,
+        medicineId: null,
       })
     );
   });
@@ -536,6 +538,8 @@ describe('AdminEditDispatch — edit', () => {
         submittedDate: '2026-04-20',
         screenshotFiles: [],
         paymentStatus: 'PAID',
+        userId: null,
+        medicineId: null,
       })
     );
   });
@@ -579,6 +583,8 @@ describe('AdminEditDispatch — edit', () => {
         submittedDate: '2026-05-01',
         screenshotFiles: [],
         paymentStatus: 'PAID',
+        userId: null,
+        medicineId: null,
       })
     );
     await waitFor(() =>
@@ -615,7 +621,83 @@ describe('AdminEditDispatch — edit', () => {
         submittedDate: '2026-05-01',
         screenshotFiles: [],
         paymentStatus: 'PAID',
+        userId: null,
+        medicineId: null,
       })
+    );
+  });
+
+  // ── Editing user and medicine ───────────────────────────────────────────
+
+  const editUsers = [
+    { id: 2, username: 'john.doe', fullName: 'John Doe', role: 'USER' },
+    { id: 3, username: 'jane.smith', fullName: 'Jane Smith', role: 'USER' },
+  ];
+  const editMedicines = [
+    { id: 1, name: 'Shield FX Vial 10 ml', type: 'VIAL', specification: 10 },
+    { id: 2, name: 'Shield FX Tablet 25 mg', type: 'TABLET', specification: 25 },
+  ];
+
+  test('clicking Edit shows user and medicine editable with current values', async () => {
+    api.getUsers.mockResolvedValue({ data: editUsers });
+    api.getMedicines.mockResolvedValue({ data: editMedicines });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ submittedById: 2, medicineId: 1 })]));
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/^user$/i));
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByRole('combobox', { name: /edit user/i })).toHaveValue('2');
+    expect(screen.getByRole('combobox', { name: /edit medicine/i })).toHaveValue('1');
+  });
+
+  test('editing user and medicine sends both new ids to the service', async () => {
+    api.getUsers.mockResolvedValue({ data: editUsers });
+    api.getMedicines.mockResolvedValue({ data: editMedicines });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ submittedById: 2, medicineId: 1 })]));
+    api.updateTransaction.mockResolvedValue({ data: makeTx({ submittedByUsername: 'jane.smith' }) });
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/^user$/i));
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /edit user/i }), '3');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /edit medicine/i }), '2');
+    const textarea = screen.getByRole('textbox', { name: /edit notes/i });
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, 'This was actually dispatched to jane for the tablet form');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(api.updateTransaction).toHaveBeenCalledWith(1, expect.objectContaining({
+        userId: 3,
+        medicineId: 2,
+      }))
+    );
+  });
+
+  test('leaving user and medicine untouched sends their original ids unchanged', async () => {
+    api.getUsers.mockResolvedValue({ data: editUsers });
+    api.getMedicines.mockResolvedValue({ data: editMedicines });
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ submittedById: 2, medicineId: 1 })]));
+    api.updateTransaction.mockResolvedValue({ data: makeTx() });
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/^user$/i));
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() =>
+      expect(api.updateTransaction).toHaveBeenCalledWith(1, expect.objectContaining({
+        userId: 2,
+        medicineId: 1,
+      }))
     );
   });
 

@@ -66,7 +66,7 @@ export default function AdminEditDispatch() {
     const [stockTypeFilter, setStockTypeFilter]   = useState('ALL');
     const [notesSearch, setNotesSearch]           = useState('');
 
-    // Inline edit state: { [id]: { active, notes, quantity, medicineStockType, pricePerUnit, date, screenshotFiles, saving, error } }
+    // Inline edit state: { [id]: { active, userId, medicineId, notes, quantity, medicineStockType, pricePerUnit, date, paymentStatus, screenshotFiles, saving, error } }
     const [editState, setEditState]     = useState({});
     // Inline delete state: { [id]: { confirming: bool, deleting: bool, error: string } }
     const [deleteState, setDeleteState] = useState({});
@@ -113,6 +113,8 @@ export default function AdminEditDispatch() {
             ...prev,
             [tx.id]: {
                 active: true,
+                userId: String(tx.submittedById ?? ''),
+                medicineId: String(tx.medicineId ?? ''),
                 notes: tx.notes || '',
                 quantity: String(tx.quantity ?? ''),
                 medicineStockType: tx.medicineStockType || 'REGULAR_MEDICINE_STOCK',
@@ -148,6 +150,8 @@ export default function AdminEditDispatch() {
                 submittedDate: edit.date === '' ? null : edit.date,
                 screenshotFiles: edit.screenshotFiles,
                 paymentStatus: edit.paymentStatus,
+                userId: edit.userId === '' ? null : Number(edit.userId),
+                medicineId: edit.medicineId === '' ? null : Number(edit.medicineId),
             });
             setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, ...res.data } : tx));
             setEditState(prev => ({ ...prev, [id]: { active: false, saving: false, error: '' } }));
@@ -324,8 +328,38 @@ export default function AdminEditDispatch() {
                                                             : '—'
                                                     )}
                                                 </td>
-                                                <td>{tx.submittedByUsername}</td>
-                                                <td>{tx.medicineName}<br /><small>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</small></td>
+                                                <td>
+                                                    {edit.active ? (
+                                                        <select
+                                                            aria-label="Edit user"
+                                                            value={edit.userId}
+                                                            onChange={e => handleFieldChange(tx.id, 'userId', e.target.value)}>
+                                                            {users.map(u => (
+                                                                <option key={u.id} value={String(u.id)}>
+                                                                    {u.fullName} ({u.username})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    ) : (
+                                                        tx.submittedByUsername
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {edit.active ? (
+                                                        <select
+                                                            aria-label="Edit medicine"
+                                                            value={edit.medicineId}
+                                                            onChange={e => handleFieldChange(tx.id, 'medicineId', e.target.value)}>
+                                                            {medicines.map(m => (
+                                                                <option key={m.id} value={String(m.id)}>
+                                                                    {m.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    ) : (
+                                                        <>{tx.medicineName}<br /><small>{specLabel(tx.medicineType, tx.specification?.toFixed(0))}</small></>
+                                                    )}
+                                                </td>
                                                 <td>
                                                     {edit.active ? (
                                                         <input

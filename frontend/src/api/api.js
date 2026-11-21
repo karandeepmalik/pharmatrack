@@ -117,12 +117,13 @@ export const deleteMyTransaction = (id)     => api.delete(`/transactions/my/${id
 /**
  * Admin edit of a past dispatch record. `notes` is always required — it's the audit trail
  * for a quantity/stock-type correction, since there's no separate adjustment-ledger entry
- * recorded for it. `quantity`/`medicineStockType`/`pricePerUnit`/`submittedDate`/`paymentStatus`
- * are optional (omit to leave unchanged); `screenshotFiles`, if provided non-empty, replaces the
- * existing screenshot set entirely. Unlike quantity/stock type, `paymentStatus` can be changed
- * regardless of the record's APPROVED/REJECTED status — payment is often settled afterward.
+ * recorded for it. `quantity`/`medicineStockType`/`pricePerUnit`/`submittedDate`/`paymentStatus`/
+ * `userId`/`medicineId` are all optional (omit to leave unchanged); `screenshotFiles`, if
+ * provided non-empty, replaces the existing screenshot set entirely. Unlike quantity/stock type,
+ * `paymentStatus` can be changed regardless of the record's APPROVED/REJECTED status — payment
+ * is often settled afterward.
  */
-export const updateTransaction  = (id, { notes, quantity, medicineStockType, pricePerUnit, submittedDate, screenshotFiles, paymentStatus }) => {
+export const updateTransaction  = (id, { notes, quantity, medicineStockType, pricePerUnit, submittedDate, screenshotFiles, paymentStatus, userId, medicineId }) => {
   const form = new FormData();
   form.append('notes', notes);
   if (quantity != null) form.append('quantity', String(quantity));
@@ -131,6 +132,8 @@ export const updateTransaction  = (id, { notes, quantity, medicineStockType, pri
   if (submittedDate) form.append('submittedDate', submittedDate);
   (screenshotFiles || []).forEach((file) => form.append('screenshots', file));
   if (paymentStatus) form.append('paymentStatus', paymentStatus);
+  if (userId != null) form.append('userId', String(userId));
+  if (medicineId != null) form.append('medicineId', String(medicineId));
   return api.patch(`/transactions/${id}`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
