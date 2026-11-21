@@ -769,7 +769,7 @@ class TransactionControllerTest {
         void updateTransaction_notesOnly_200() throws Exception {
             sampleResponse.setNotes("Updated dispatch note for this record");
             when(transactionService.updateTransaction(eq(1L), eq("Updated dispatch note for this record"),
-                    isNull(), isNull(), isNull(), isNull(), anyList(), any())).thenReturn(sampleResponse);
+                    isNull(), isNull(), isNull(), isNull(), anyList(), any(), any(), any())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Updated dispatch note for this record")
@@ -783,7 +783,7 @@ class TransactionControllerTest {
         @DisplayName("admin updates quantity and stock type — passes both through to the service")
         void updateTransaction_quantityAndStockType_200() throws Exception {
             when(transactionService.updateTransaction(eq(1L), eq("Correcting quantity and stock type"),
-                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), isNull(), anyList(), any())).thenReturn(sampleResponse);
+                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), isNull(), anyList(), any(), any(), any())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Correcting quantity and stock type")
@@ -793,7 +793,56 @@ class TransactionControllerTest {
                     .andExpect(status().isOk());
 
             verify(transactionService).updateTransaction(eq(1L), eq("Correcting quantity and stock type"),
-                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), isNull(), anyList(), any());
+                    eq(BigDecimal.valueOf(8)), eq("ADMIN_MEDICINE_STOCK"), isNull(), isNull(), anyList(), any(), any(), any());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("admin updates user and medicine — passes both through to the service")
+        void updateTransaction_userAndMedicine_200() throws Exception {
+            when(transactionService.updateTransaction(eq(1L), eq("Correcting the submitter and medicine"),
+                    isNull(), isNull(), isNull(), isNull(), anyList(), any(), eq(7L), eq(3L))).thenReturn(sampleResponse);
+
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "Correcting the submitter and medicine")
+                    .param("userId", "7")
+                    .param("medicineId", "3")
+                    .with(csrf()))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).updateTransaction(eq(1L), eq("Correcting the submitter and medicine"),
+                    isNull(), isNull(), isNull(), isNull(), anyList(), any(), eq(7L), eq(3L));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("omitting userId and medicineId passes nulls through to the service")
+        void updateTransaction_userAndMedicineOmitted_passesNulls() throws Exception {
+            when(transactionService.updateTransaction(eq(1L), eq("Notes-only edit"),
+                    isNull(), isNull(), isNull(), isNull(), anyList(), any(), isNull(), isNull())).thenReturn(sampleResponse);
+
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "Notes-only edit")
+                    .with(csrf()))
+                    .andExpect(status().isOk());
+
+            verify(transactionService).updateTransaction(eq(1L), eq("Notes-only edit"),
+                    isNull(), isNull(), isNull(), isNull(), anyList(), any(), isNull(), isNull());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("re-pointing to an admin user returns 400 from service validation")
+        void updateTransaction_userIdIsAdmin_400() throws Exception {
+            when(transactionService.updateTransaction(eq(1L), eq("Trying to re-point at an admin account"),
+                    isNull(), isNull(), isNull(), isNull(), anyList(), any(), eq(2L), any()))
+                    .thenThrow(new IllegalArgumentException("Admin user cannot hold medicine stock"));
+
+            mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
+                    .param("notes", "Trying to re-point at an admin account")
+                    .param("userId", "2")
+                    .with(csrf()))
+                    .andExpect(status().isBadRequest());
         }
 
         @Test
@@ -801,7 +850,7 @@ class TransactionControllerTest {
         @DisplayName("admin updates price per unit — passes it through to the service")
         void updateTransaction_pricePerUnit_200() throws Exception {
             when(transactionService.updateTransaction(eq(1L), eq("Correcting the recorded price"),
-                    isNull(), isNull(), eq(4500), isNull(), anyList(), any())).thenReturn(sampleResponse);
+                    isNull(), isNull(), eq(4500), isNull(), anyList(), any(), any(), any())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Correcting the recorded price")
@@ -810,7 +859,7 @@ class TransactionControllerTest {
                     .andExpect(status().isOk());
 
             verify(transactionService).updateTransaction(eq(1L), eq("Correcting the recorded price"),
-                    isNull(), isNull(), eq(4500), isNull(), anyList(), any());
+                    isNull(), isNull(), eq(4500), isNull(), anyList(), any(), any(), any());
         }
 
         @Test
@@ -818,7 +867,7 @@ class TransactionControllerTest {
         @DisplayName("admin updates the dispatch date — passes it through to the service")
         void updateTransaction_submittedDate_200() throws Exception {
             when(transactionService.updateTransaction(eq(1L), eq("Correcting the dispatch date"),
-                    isNull(), isNull(), isNull(), eq(LocalDate.of(2026, 1, 15)), anyList(), any())).thenReturn(sampleResponse);
+                    isNull(), isNull(), isNull(), eq(LocalDate.of(2026, 1, 15)), anyList(), any(), any(), any())).thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
                     .param("notes", "Correcting the dispatch date")
@@ -827,7 +876,7 @@ class TransactionControllerTest {
                     .andExpect(status().isOk());
 
             verify(transactionService).updateTransaction(eq(1L), eq("Correcting the dispatch date"),
-                    isNull(), isNull(), isNull(), eq(LocalDate.of(2026, 1, 15)), anyList(), any());
+                    isNull(), isNull(), isNull(), eq(LocalDate.of(2026, 1, 15)), anyList(), any(), any(), any());
         }
 
         @Test
@@ -842,7 +891,7 @@ class TransactionControllerTest {
             when(screenshotProcessor.encodeAll(any()))
                     .thenReturn(List.<String[]>of(new String[]{expectedB64, "image/png"}));
             when(transactionService.updateTransaction(eq(1L), eq("Replacing the wrong screenshot"),
-                    isNull(), isNull(), isNull(), isNull(), eq(List.<String[]>of(new String[]{expectedB64, "image/png"})), any()))
+                    isNull(), isNull(), isNull(), isNull(), eq(List.<String[]>of(new String[]{expectedB64, "image/png"})), any(), any(), any()))
                     .thenReturn(sampleResponse);
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")
@@ -866,7 +915,7 @@ class TransactionControllerTest {
         @WithMockUser(username = "admin", roles = "ADMIN")
         @DisplayName("invalid notes returns 400 from service validation")
         void updateTransaction_invalidNotes_400() throws Exception {
-            when(transactionService.updateTransaction(eq(1L), eq("Hi"), isNull(), isNull(), isNull(), isNull(), anyList(), any()))
+            when(transactionService.updateTransaction(eq(1L), eq("Hi"), isNull(), isNull(), isNull(), isNull(), anyList(), any(), any(), any()))
                     .thenThrow(new IllegalArgumentException("Note must be between 5 and 500 characters"));
 
             mockMvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/transactions/1")

@@ -1688,6 +1688,148 @@ async function run() {
     await apiDelete(`${API}/medicine-stock/adjustments/${adj.id}`, adminToken);
   });
 
+  // ── Admin Edit Dispatch — reassign user and medicine ─────────────────────
+  console.log('\n-- Admin Edit Dispatch — Reassign User & Medicine');
+
+  let janeId;
+  await test('[SETUP] Resolve jane.smith user id', async () => {
+    const r = await apiGet(`${API}/users`, adminToken);
+    const jane = r.data.find(u => u.username === 'jane.smith');
+    assert(jane, 'jane.smith not found');
+    janeId = jane.id;
+  });
+
+  let secondMedicineId;
+  await test('[SETUP] Resolve a second medicine id for reassignment tests', async () => {
+    const r = await apiGet(`${API}/medicines`, adminToken);
+    const other = r.data.find(m => m.id !== adjustMedicineId);
+    assert(other, 'Need at least two distinct medicines');
+    secondMedicineId = other.id;
+  });
+
+  let janeBaseline;
+  await test('[SETUP] Record jane\'s settled quantity for the second medicine before reassignment', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === janeId && i.medicineId === secondMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    janeBaseline = inv ? inv.quantity : 0;
+  });
+
+  await test('[SETUP] Allocate stock for john (original bucket) for reassignment test', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 5,
+      note: 'E2E setup — allocating stock for user/medicine reassignment test',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  let reassignTxId;
+  await test('User (john) submits a dispatch for the reassignment test', async () => {
+    const r = await apiPostForm(`${API}/transactions`, {
+      medicineId: String(adjustMedicineId),
+      quantity: '5',
+      notes: 'E2E reassignment test dispatch',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('Reassign')],
+    }, userToken);
+    assert(r.status === 201, `Submit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    reassignTxId = r.data.id;
+  });
+
+  await test('USER role cannot re-point a dispatch at another user/medicine (401/403)', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${reassignTxId}`, {
+      notes: 'Trying to reassign as a non-admin user',
+      userId: String(janeId),
+    }, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  await test('Setting userId to a non-existent user returns 404', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${reassignTxId}`, {
+      notes: 'Trying to re-point this at a ghost user',
+      userId: '999999',
+    }, adminToken);
+    assert(r.status === 404, `Expected 404, got ${r.status}`);
+  });
+
+  await test('Setting userId to the admin account is rejected with 400', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${reassignTxId}`, {
+      notes: 'Trying to re-point this at the admin account',
+      userId: String(adminUserId),
+    }, adminToken);
+    assert(r.status === 400, `Expected 400, got ${r.status}`);
+  });
+
+  await test('Setting medicineId to a non-existent medicine returns 404', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${reassignTxId}`, {
+      notes: 'Trying to re-point this at a ghost medicine',
+      medicineId: '999999',
+    }, adminToken);
+    assert(r.status === 404, `Expected 404, got ${r.status}`);
+  });
+
+  await test('Admin reassigns the dispatch to jane and a different medicine', async () => {
+    const r = await apiPatchForm(`${API}/transactions/${reassignTxId}`, {
+      notes: 'This was actually dispatched to jane for the other medicine',
+      userId: String(janeId),
+      medicineId: String(secondMedicineId),
+    }, adminToken);
+    assert(r.status === 200, `Edit failed: ${r.status} ${JSON.stringify(r.data)}`);
+    assert(Number(r.data.submittedById) === janeId, `Expected submittedById ${janeId}, got ${r.data.submittedById}`);
+    assert(Number(r.data.medicineId) === secondMedicineId, `Expected medicineId ${secondMedicineId}, got ${r.data.medicineId}`);
+  });
+
+  await test('Reassignment credits john\'s original bucket back in full', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    // quantityBeforeAdjust + 5 (setup allocation), fully restored since the dispatch moved away.
+    const expected = quantityBeforeAdjust + 5;
+    const actual = inv ? inv.quantity : 0;
+    assert(Math.abs(actual - expected) < 0.001, `Expected ${expected}, got ${actual}`);
+  });
+
+  await test('Reassignment debits jane\'s new bucket (creating it if it didn\'t already exist)', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === janeId && i.medicineId === secondMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const actual = inv ? inv.quantity : 0;
+    const expected = janeBaseline - 5;
+    assert(Math.abs(actual - expected) < 0.001, `Expected ${expected}, got ${actual}`);
+  });
+
+  await test('[TEARDOWN] Admin deletes the reassignment-test transaction (credits jane\'s bucket back)', async () => {
+    const r = await apiDelete(`${API}/transactions/${reassignTxId}`, adminToken);
+    assert(r.status === 204, `Delete failed: ${r.status}`);
+  });
+
+  await test('[TEARDOWN] Removes the leftover allocation from the reassignment test setup', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 5,
+      note: 'E2E teardown — removing allocation for reassignment test',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[VERIFY TEARDOWN] john\'s bucket restored and jane\'s bucket back to its pre-test baseline', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const johnInv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const johnQty = johnInv ? johnInv.quantity : 0;
+    assert(Math.abs(johnQty - quantityBeforeAdjust) < 0.001, `Expected ${quantityBeforeAdjust}, got ${johnQty}`);
+
+    const janeInv = r.data.find(i => i.userId === janeId && i.medicineId === secondMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const janeQty = janeInv ? janeInv.quantity : 0;
+    assert(Math.abs(janeQty - janeBaseline) < 0.001, `Expected ${janeBaseline}, got ${janeQty}`);
+  });
+
   // ── Multi-Screenshot Transactions ────────────────────────────────────
   console.log('\n-- Multi-Screenshot Transactions');
 
