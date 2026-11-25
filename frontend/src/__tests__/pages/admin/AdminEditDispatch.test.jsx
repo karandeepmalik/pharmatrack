@@ -87,6 +87,7 @@ describe('AdminEditDispatch — search', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
         undefined
       )
     );
@@ -151,7 +152,7 @@ describe('AdminEditDispatch — filters', () => {
     { id: 2, type: 'TABLET', specification: 25 },
   ];
 
-  test('renders User, Medicine Spec, Stock Type and Search Notes filter controls', async () => {
+  test('renders User, Medicine Spec, Stock Type, Payment Status and Search Notes filter controls', async () => {
     api.getUsers.mockResolvedValue({ data: users });
     api.getMedicines.mockResolvedValue({ data: medicines });
     renderPage();
@@ -159,7 +160,45 @@ describe('AdminEditDispatch — filters', () => {
     await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument());
     expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^stock type$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/payment status/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/search notes/i)).toBeInTheDocument();
+  });
+
+  test('Payment Status filter offers All, Paid, Unpaid and Partial Payment and defaults to All', async () => {
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/payment status/i));
+    const select = screen.getByLabelText(/payment status/i);
+    expect(select).toHaveValue('ALL');
+    expect(within(select).getByRole('option', { name: /^all$/i })).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /^paid$/i })).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /^unpaid$/i })).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /partial payment/i })).toBeInTheDocument();
+  });
+
+  test('leaving Payment Status at All omits the paymentStatus param (undefined)', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([]));
+    renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), 'ALL', 0, 1000,
+        undefined, undefined, undefined, undefined, undefined
+      )
+    );
+  });
+
+  test('changing Payment Status after a search hides the table until Search is pressed again', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/payment status/i));
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+    await waitFor(() => screen.getByRole('table'));
+
+    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'PAID');
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   test('excludes admin accounts from the User filter', async () => {
@@ -173,7 +212,7 @@ describe('AdminEditDispatch — filters', () => {
     expect(screen.getByText('John Doe (john.doe)')).toBeInTheDocument();
   });
 
-  test('passes user, medicine, stock type and notes filters to getTransactionHistory on Search', async () => {
+  test('passes user, medicine, stock type, payment status and notes filters to getTransactionHistory on Search', async () => {
     api.getUsers.mockResolvedValue({ data: users });
     api.getMedicines.mockResolvedValue({ data: medicines });
     api.getTransactionHistory.mockResolvedValue(mkPage([]));
@@ -183,13 +222,14 @@ describe('AdminEditDispatch — filters', () => {
     await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
     await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '2');
     await userEvent.selectOptions(screen.getByLabelText(/^stock type$/i), 'ADMIN_MEDICINE_STOCK');
+    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'UNPAID');
     await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
         expect.any(String), expect.any(String), 'ALL', 0, 1000,
-        'john.doe', '2', 'clinic', 'ADMIN_MEDICINE_STOCK'
+        'john.doe', '2', 'clinic', 'ADMIN_MEDICINE_STOCK', 'UNPAID'
       )
     );
   });
@@ -270,7 +310,7 @@ describe('AdminEditDispatch — payment status column', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
-    await waitFor(() => expect(screen.getByText('Paid')).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole('table')).getByText('Paid')).toBeInTheDocument());
   });
 
   test('shows Unpaid badge for an UNPAID dispatch', async () => {
@@ -279,7 +319,7 @@ describe('AdminEditDispatch — payment status column', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
-    await waitFor(() => expect(screen.getByText('Unpaid')).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole('table')).getByText('Unpaid')).toBeInTheDocument());
   });
 
   test('shows Partial Payment badge for a PARTIAL_PAYMENT dispatch', async () => {
@@ -288,7 +328,7 @@ describe('AdminEditDispatch — payment status column', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
-    await waitFor(() => expect(screen.getByText('Partial Payment')).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole('table')).getByText('Partial Payment')).toBeInTheDocument());
   });
 
   test('clicking Edit shows a payment status select prefilled with the current value', async () => {

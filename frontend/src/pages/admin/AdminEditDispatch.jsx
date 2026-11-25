@@ -64,6 +64,7 @@ export default function AdminEditDispatch() {
     const [userFilter, setUserFilter]             = useState('ALL');
     const [medicineFilter, setMedicineFilter]     = useState('ALL');
     const [stockTypeFilter, setStockTypeFilter]   = useState('ALL');
+    const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
     const [notesSearch, setNotesSearch]           = useState('');
 
     // Inline edit state: { [id]: { active, userId, medicineId, notes, quantity, medicineStockType, pricePerUnit, date, paymentStatus, screenshotFiles, saving, error } }
@@ -95,8 +96,9 @@ export default function AdminEditDispatch() {
             const username      = userFilter === 'ALL' ? undefined : userFilter;
             const medicineId    = medicineFilter === 'ALL' ? undefined : medicineFilter;
             const stockType     = stockTypeFilter === 'ALL' ? undefined : stockTypeFilter;
+            const paymentStatus = paymentStatusFilter === 'ALL' ? undefined : paymentStatusFilter;
             const notes         = notesSearch.trim() ? notesSearch.trim() : undefined;
-            const res = await api.getTransactionHistory(from, to, 'ALL', 0, 1000, username, medicineId, notes, stockType);
+            const res = await api.getTransactionHistory(from, to, 'ALL', 0, 1000, username, medicineId, notes, stockType, paymentStatus);
             setTransactions(res.data?.content ?? []);
             setSearched(true);
         } catch {
@@ -256,6 +258,18 @@ export default function AdminEditDispatch() {
                             <option value="ALL">All Stock Types</option>
                             <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
                             <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="payment-status-filter">Payment Status</label>
+                        <select
+                            id="payment-status-filter"
+                            value={paymentStatusFilter}
+                            onChange={e => { setPaymentStatusFilter(e.target.value); invalidateSearch(); }}>
+                            <option value="ALL">All</option>
+                            {PAYMENT_STATUSES.map(s => (
+                                <option key={s} value={s}>{paymentStatusLabel(s)}</option>
+                            ))}
                         </select>
                     </div>
                     <div className="form-group">
