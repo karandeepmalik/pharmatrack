@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
-import { medicineStockTypeLabel } from '../../constants';
+import { medicineStockTypeLabel, medicineOptionLabel } from '../../constants';
+import MultiSelectDropdown from '../../components/MultiSelectDropdown';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const weekAgoStr = () => {
@@ -13,11 +14,6 @@ const weekAgoStr = () => {
 const specLabel = (type, spec) =>
     type === 'VIAL' ? `${Math.round(spec)} ml` : `${Math.round(spec)} mg (10 Tablets)`;
 
-const medOptionLabel = (m) =>
-    m.type === 'VIAL'
-        ? `Vial ${m.specification} ml`
-        : `Tablet ${m.specification} mg (10 Tablets)`;
-
 export default function ViewMedicineStockAdjustments() {
     const [from, setFrom]             = useState(weekAgoStr());
     const [to, setTo]                 = useState(todayStr());
@@ -28,10 +24,11 @@ export default function ViewMedicineStockAdjustments() {
 
     const [medicines, setMedicines]   = useState([]);
 
-    // Client-side filters applied over fetched results
-    const [userFilter, setUserFilter]         = useState('ALL');
-    const [typeFilter, setTypeFilter]         = useState('ALL');
-    const [medicineFilter, setMedicineFilter] = useState('ALL');
+    // Client-side filters applied over fetched results — empty array means "no filter" (every
+    // page's existing "ALL" convention, applied to the multi-select equivalent).
+    const [userFilter, setUserFilter]         = useState([]);
+    const [typeFilter, setTypeFilter]         = useState([]);
+    const [medicineFilter, setMedicineFilter] = useState([]);
     const [notesSearch, setNotesSearch]       = useState('');
 
     // Per-row delete state: { [id]: { confirming, deleting, error } }
@@ -55,9 +52,9 @@ export default function ViewMedicineStockAdjustments() {
             const res = await api.getMedicineStockAdjustments(from, to);
             setAdjustments(res.data);
             setSearched(true);
-            setUserFilter('ALL');
-            setTypeFilter('ALL');
-            setMedicineFilter('ALL');
+            setUserFilter([]);
+            setTypeFilter([]);
+            setMedicineFilter([]);
             setNotesSearch('');
         } catch {
             setError('Failed to load adjustment records. Please try again.');
@@ -70,9 +67,9 @@ export default function ViewMedicineStockAdjustments() {
     const uniqueUsers = [...new Set(adjustments.map(a => a.username))].sort();
 
     const displayed = adjustments
-        .filter(a => userFilter === 'ALL' || a.username === userFilter)
-        .filter(a => typeFilter === 'ALL' || a.adjustmentType === typeFilter)
-        .filter(a => medicineFilter === 'ALL' || String(a.medicineId) === medicineFilter)
+        .filter(a => userFilter.length === 0 || userFilter.includes(a.username))
+        .filter(a => typeFilter.length === 0 || typeFilter.includes(a.adjustmentType))
+        .filter(a => medicineFilter.length === 0 || medicineFilter.includes(String(a.medicineId)))
         .filter(a => !notesSearch.trim() ||
             (a.note || '').toLowerCase().includes(notesSearch.trim().toLowerCase()));
 
@@ -196,43 +193,33 @@ export default function ViewMedicineStockAdjustments() {
                     ) : (
                         <div className="form-section" style={{ marginTop: '1.5rem' }}>
                             <div className="form-row" style={{ marginBottom: '1rem' }}>
-                                <div className="form-group">
-                                    <label htmlFor="user-filter">User</label>
-                                    <select
-                                        id="user-filter"
-                                        value={userFilter}
-                                        onChange={e => setUserFilter(e.target.value)}>
-                                        <option value="ALL">All Users</option>
-                                        {uniqueUsers.map(u => (
-                                            <option key={u} value={u}>{u}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label htmlFor="type-filter">Type</label>
-                                    <select
-                                        id="type-filter"
-                                        value={typeFilter}
-                                        onChange={e => setTypeFilter(e.target.value)}>
-                                        <option value="ALL">All Types</option>
-                                        <option value="ADD">ADD</option>
-                                        <option value="REDUCE">REDUCE</option>
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label htmlFor="medicine-filter">Medicine Spec</label>
-                                    <select
-                                        id="medicine-filter"
-                                        value={medicineFilter}
-                                        onChange={e => setMedicineFilter(e.target.value)}>
-                                        <option value="ALL">All Medicines</option>
-                                        {medicines.map(m => (
-                                            <option key={m.id} value={String(m.id)}>
-                                                {medOptionLabel(m)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <MultiSelectDropdown
+                                    id="user-filter"
+                                    label="User"
+                                    allLabel="All Users"
+                                    options={uniqueUsers.map(u => ({ value: u, label: u }))}
+                                    selected={userFilter}
+                                    onChange={setUserFilter}
+                                />
+                                <MultiSelectDropdown
+                                    id="type-filter"
+                                    label="Type"
+                                    allLabel="All Types"
+                                    options={[
+                                        { value: 'ADD', label: 'ADD' },
+                                        { value: 'REDUCE', label: 'REDUCE' },
+                                    ]}
+                                    selected={typeFilter}
+                                    onChange={setTypeFilter}
+                                />
+                                <MultiSelectDropdown
+                                    id="medicine-filter"
+                                    label="Medicine Spec"
+                                    allLabel="All Medicines"
+                                    options={medicines.map(m => ({ value: String(m.id), label: medicineOptionLabel(m) }))}
+                                    selected={medicineFilter}
+                                    onChange={setMedicineFilter}
+                                />
                                 <div className="form-group">
                                     <label htmlFor="notes-search">Search Notes</label>
                                     <input

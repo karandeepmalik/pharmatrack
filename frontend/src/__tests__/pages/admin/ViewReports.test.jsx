@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import ViewReports from '../../../pages/admin/ViewReports';
@@ -26,8 +26,8 @@ const USERS = [
 ];
 
 const MEDICINES = [
-  { id: 10, name: 'Shield FX Vial 10 ml', type: 'VIAL', specification: 10, price: 4000 },
-  { id: 20, name: 'Shield FX Tablet 25 mg (10 Tablets)', type: 'TABLET', specification: 25, price: 4000 },
+  { id: 10, name: 'Shield FX Vial 10 ml', type: 'VIAL', specification: 10, price: 4000, pharmaCompany: { id: 1, name: 'Cipla' } },
+  { id: 20, name: 'Shield FX Tablet 25 mg (10 Tablets)', type: 'TABLET', specification: 25, price: 4000, pharmaCompany: { id: 1, name: 'Cipla' } },
 ];
 
 beforeEach(() => {
@@ -267,45 +267,58 @@ describe("ViewReports — today's sales report", () => {
     expect(screen.queryByLabelText(/to date/i)).not.toBeInTheDocument();
   });
 
+  // Opens a MultiSelectDropdown (by its toggle button's data-testid) and clicks the checkbox
+  // matching optionName within its panel (found by the dropdown's `label` prop).
+  const pickFilterOption = async (toggleTestId, panelName, optionName) => {
+    await userEvent.click(screen.getByTestId(toggleTestId));
+    const panel = screen.getByRole('listbox', { name: panelName });
+    await userEvent.click(within(panel).getByRole('checkbox', { name: optionName }));
+  };
+
   test("shows User and Medicine Spec filter dropdowns when today-sales is selected", async () => {
     renderPage();
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
-    await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument());
-    expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('sales-user-filter-toggle')).toBeInTheDocument());
+    expect(screen.getByTestId('sales-medicine-filter-toggle')).toBeInTheDocument();
   });
 
   test("User and Medicine Spec dropdowns default to All", async () => {
     renderPage();
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
-    await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toHaveValue('ALL'));
-    expect(screen.getByLabelText(/medicine spec/i)).toHaveValue('ALL');
+    await waitFor(() => expect(screen.getByTestId('sales-user-filter-toggle')).toHaveTextContent('All Users'));
+    expect(screen.getByTestId('sales-medicine-filter-toggle')).toHaveTextContent('All Medicines');
   });
 
   test("User and Medicine Spec dropdowns are populated from the API", async () => {
     renderPage();
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /john doe \(john\.doe\)/i })).toBeInTheDocument()
-    );
-    expect(screen.getByRole('option', { name: /jane smith \(jane\.smith\)/i })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /admin.*admin/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /vial 10 ml/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /tablet 25 mg/i })).toBeInTheDocument();
+    await waitFor(() => screen.getByTestId('sales-user-filter-toggle'));
+
+    await userEvent.click(screen.getByTestId('sales-user-filter-toggle'));
+    const userPanel = screen.getByRole('listbox', { name: 'User' });
+    expect(within(userPanel).getByRole('checkbox', { name: /john doe \(john\.doe\)/i })).toBeInTheDocument();
+    expect(within(userPanel).getByRole('checkbox', { name: /jane smith \(jane\.smith\)/i })).toBeInTheDocument();
+    expect(within(userPanel).queryByRole('checkbox', { name: /admin.*admin/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('sales-medicine-filter-toggle'));
+    const medPanel = screen.getByRole('listbox', { name: 'Medicine Spec' });
+    expect(within(medPanel).getByRole('checkbox', { name: /cipla vial 10 ml/i })).toBeInTheDocument();
+    expect(within(medPanel).getByRole('checkbox', { name: /cipla tablet 25 mg/i })).toBeInTheDocument();
   });
 
-  test("selecting a user and medicine and generating sends them as query params", async () => {
+  test("selecting a user and medicine and generating sends them as one-element arrays", async () => {
     api.getReportTodaySales.mockResolvedValue(sampleReport('TODAY_SALES', 'TOTAL: Rs 0'));
     renderPage();
 
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
-    await waitFor(() => screen.getByRole('option', { name: /john doe \(john\.doe\)/i }));
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await waitFor(() => screen.getByTestId('sales-user-filter-toggle'));
+    await pickFilterOption('sales-user-filter-toggle', 'User', /john doe \(john\.doe\)/i);
+    await pickFilterOption('sales-medicine-filter-toggle', 'Medicine Spec', /cipla vial 10 ml/i);
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
 
     await waitFor(() =>
       expect(api.getReportTodaySales).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), 'john.doe', '10'
+        expect.any(String), expect.any(String), ['john.doe'], ['10']
       )
     );
   });
@@ -315,11 +328,11 @@ describe("ViewReports — today's sales report", () => {
     renderPage();
 
     await userEvent.selectOptions(screen.getByLabelText(/select report/i), 'today-sales');
-    await waitFor(() => screen.getByRole('option', { name: /john doe \(john\.doe\)/i }));
+    await waitFor(() => screen.getByTestId('sales-user-filter-toggle'));
     await userEvent.click(screen.getByRole('button', { name: /generate report/i }));
     await waitFor(() => expect(screen.getByText(/total: rs 0/i)).toBeInTheDocument());
 
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+    await pickFilterOption('sales-user-filter-toggle', 'User', /john doe \(john\.doe\)/i);
 
     expect(screen.queryByText(/total: rs 0/i)).not.toBeInTheDocument();
   });

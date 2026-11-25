@@ -82,7 +82,7 @@ public class TransactionController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "ALL") String status,
-            @RequestParam(required = false) Long medicineId,
+            @RequestParam(required = false) List<Long> medicineId,
             @RequestParam(required = false) String notes,
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(PagedResponse.of(
@@ -93,30 +93,32 @@ public class TransactionController {
      * Admin endpoint to browse transaction history by date range, with optional filters.
      * All filters are applied server-side so they're correct regardless of pagination —
      * a filter that only matched against whatever page happened to be loaded client-side would
-     * silently miss real results.
+     * silently miss real results. Every filter accepts zero or more values (repeated query
+     * params, e.g. {@code ?username=alice&username=bob}) — an empty/omitted list means "no
+     * filter on this field", matching the previous single-value "ALL" convention.
      *
      * @param from       start date inclusive (YYYY-MM-DD)
      * @param to         end date inclusive (YYYY-MM-DD)
-     * @param status     ALL | APPROVED | REJECTED  (default ALL)
-     * @param username   optional exact submittedBy username filter
-     * @param medicineId optional exact medicine filter
+     * @param status     zero or more of APPROVED | REJECTED  (empty = all)
+     * @param username   zero or more exact submittedBy username filters
+     * @param medicineId zero or more exact medicine filters
      * @param notes      optional case-insensitive notes substring filter
-     * @param medicineStockType optional exact REGULAR_MEDICINE_STOCK/ADMIN_MEDICINE_STOCK filter
-     * @param paymentStatus optional exact PAID/UNPAID/PARTIAL_PAYMENT filter
+     * @param medicineStockType zero or more of REGULAR_MEDICINE_STOCK/ADMIN_MEDICINE_STOCK
+     * @param paymentStatus zero or more of PAID/UNPAID/PARTIAL_PAYMENT
      */
     @GetMapping("/history")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PagedResponse<TransactionResponse>> getHistory(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(defaultValue = "ALL") String status,
+            @RequestParam(required = false) List<String> status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String username,
-            @RequestParam(required = false) Long medicineId,
+            @RequestParam(required = false) List<String> username,
+            @RequestParam(required = false) List<Long> medicineId,
             @RequestParam(required = false) String notes,
-            @RequestParam(required = false) String medicineStockType,
-            @RequestParam(required = false) String paymentStatus) {
+            @RequestParam(required = false) List<String> medicineStockType,
+            @RequestParam(required = false) List<String> paymentStatus) {
         Page<TransactionResponse> result = transactionService.getHistory(from, to, status, page, size, username, medicineId, notes, medicineStockType, paymentStatus);
         BigDecimal totalQuantity = transactionService.getHistoryTotalQuantity(from, to, status, username, medicineId, notes, medicineStockType, paymentStatus);
         return ResponseEntity.ok(PagedResponse.of(result, totalQuantity));

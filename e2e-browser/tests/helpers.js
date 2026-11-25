@@ -61,7 +61,34 @@ async function rejectCard(page, card) {
   await decideCard(page, card, false);
 }
 
+/**
+ * Opens a MultiSelectDropdown filter (by the id passed to its `id` prop, e.g. "user-filter"),
+ * checks the checkbox matching optionName, then closes the panel (Escape) — MultiSelectDropdown
+ * .jsx's checkbox-panel replacement for every FILTER-purpose <select> in the app (native
+ * <select multiple> was rejected: it needs ctrl/cmd-click to pick more than one option and has
+ * poor touch support). Closing afterward matters, not just for test hygiene: the panel is
+ * absolutely positioned and overlaps whatever sits below it (e.g. a Search button in a
+ * one-row form), so a still-open panel genuinely blocks clicks there — exactly what a real user
+ * would also need to dismiss first. To select more than one option from the same dropdown
+ * before closing it, open it directly (`page.locator('#id-toggle').click()`) and `.check()`
+ * each checkbox in its panel before pressing Escape.
+ */
+async function pickMultiSelectOption(page, filterId, optionName) {
+  await page.locator(`#${filterId}-toggle`).click();
+  const panel = page.getByRole('listbox').filter({ has: page.getByRole('checkbox', { name: optionName }) });
+  await panel.getByRole('checkbox', { name: optionName }).check();
+  await page.keyboard.press('Escape');
+}
+
+/** Clicks the "All ..." checkbox in a MultiSelectDropdown filter's panel, clearing its selection, then closes it. */
+async function clearMultiSelect(page, filterId, allLabel = /^all/i) {
+  await page.locator(`#${filterId}-toggle`).click();
+  const panel = page.getByRole('listbox').filter({ has: page.getByRole('checkbox', { name: allLabel }) });
+  await panel.getByRole('checkbox', { name: allLabel }).check();
+  await page.keyboard.press('Escape');
+}
+
 module.exports = {
   CREDENTIALS, PAYMENT_SCREENSHOT, login, loginAsAdmin, loginAsUser, scrollUntilVisible,
-  approveCard, rejectCard,
+  approveCard, rejectCard, pickMultiSelectOption, clearMultiSelect,
 };

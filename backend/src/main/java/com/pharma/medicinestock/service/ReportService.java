@@ -307,26 +307,29 @@ public class ReportService {
     public ReportResponse todaySales() { return todaySales(todayIST(), todayIST(), null, null); }
 
     /**
-     * @param username   optional exact submittedBy username filter (null/blank/"ALL" = no filter)
-     * @param medicineId optional exact medicine filter
+     * @param usernames   zero or more exact submittedBy username filters (null/empty = no filter)
+     * @param medicineIds zero or more exact medicine filters (null/empty = no filter)
      */
     @Timed(value = "pharmatrack.report.today_sales", description = "Time to build sales report")
     @Transactional(readOnly = true)
-    public ReportResponse todaySales(LocalDate from, LocalDate to, String username, Long medicineId) {
+    public ReportResponse todaySales(LocalDate from, LocalDate to, List<String> usernames, List<Long> medicineIds) {
         LocalDate effectiveFrom = from != null ? from : todayIST();
         LocalDate effectiveTo   = to   != null ? to   : todayIST();
 
         LocalDateTime start = effectiveFrom.atStartOfDay();
         LocalDateTime end   = effectiveTo.plusDays(1).atStartOfDay();
 
-        boolean hasUsernameFilter = username != null && !username.isBlank() && !"ALL".equalsIgnoreCase(username);
+        List<String> usernameFilter = (usernames == null) ? List.of() : usernames.stream()
+                .filter(u -> u != null && !u.isBlank() && !"ALL".equalsIgnoreCase(u))
+                .toList();
+        List<Long> medicineIdFilter = (medicineIds == null) ? List.of() : medicineIds;
 
         List<Transaction> txList = transactionRepository.findApprovedBetween(
                 Transaction.TransactionStatus.APPROVED, start, end)
                 .stream()
                 .filter(tx -> tx.getMedicineStockType() != MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK)
-                .filter(tx -> !hasUsernameFilter || tx.getSubmittedBy().getUsername().equals(username))
-                .filter(tx -> medicineId == null || tx.getMedicine().getId().equals(medicineId))
+                .filter(tx -> usernameFilter.isEmpty() || usernameFilter.contains(tx.getSubmittedBy().getUsername()))
+                .filter(tx -> medicineIdFilter.isEmpty() || medicineIdFilter.contains(tx.getMedicine().getId()))
                 .toList();
 
         StringBuilder sb = new StringBuilder();

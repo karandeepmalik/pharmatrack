@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible, approveCard } = require('./helpers');
+const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible, approveCard, pickMultiSelectOption } = require('./helpers');
 
 // Submits a dispatch only — does NOT approve it. /admin/past-transactions' ALL status filter
 // includes every status (its "ALL" branch has no status predicate server-side), so a PENDING
@@ -42,7 +42,7 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     await page.goto('/admin/past-transactions');
 
     await page.locator('#from-date').fill('2020-01-01');
-    await page.getByRole('combobox', { name: /^status$/i }).selectOption('ALL');
+    await pickMultiSelectOption(page, 'status-filter', /^all$/i);
     await page.getByRole('button', { name: /^search$/i }).click();
 
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10000 });
@@ -71,7 +71,7 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByText(/^results \(\d+\)$/i)).toBeVisible({ timeout: 10000 });
 
-    await page.getByRole('combobox', { name: /^status$/i }).selectOption('REJECTED');
+    await pickMultiSelectOption(page, 'status-filter', /^rejected$/i);
     await page.getByRole('button', { name: /^search$/i }).click();
     // Either a (possibly different-count) results table, or the empty state — never a crash.
     await expect(
@@ -110,7 +110,7 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     await page.goto('/admin/past-transactions');
     await page.locator('#from-date').fill(dispatchDate);
     await page.locator('#to-date').fill(dispatchDate);
-    await page.getByRole('combobox', { name: /^status$/i }).selectOption('ALL');
+    await pickMultiSelectOption(page, 'status-filter', /^all$/i);
     await page.getByRole('button', { name: /^search$/i }).click();
 
     // "Results (N)" reflects the total matching count from the server (totalElements),
@@ -187,7 +187,7 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
       await page.goto('/admin/past-transactions');
       await page.locator('#from-date').fill(targetDate);
       await page.locator('#to-date').fill(noiseDate);
-      await page.getByRole('combobox', { name: /^status$/i }).selectOption('ALL');
+      await pickMultiSelectOption(page, 'status-filter', /^all$/i);
       await page.locator('#notes-search').fill(uniqueTag);
       await page.getByRole('button', { name: /^search$/i }).click();
 
@@ -222,8 +222,8 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
       await page.goto('/admin/past-transactions');
       await page.locator('#from-date').fill(targetDate);
       await page.locator('#to-date').fill(noiseDate);
-      await page.getByRole('combobox', { name: /^status$/i }).selectOption('ALL');
-      await page.getByRole('combobox', { name: /^user$/i }).selectOption('jane.smith');
+      await pickMultiSelectOption(page, 'status-filter', /^all$/i);
+      await pickMultiSelectOption(page, 'user-filter', 'jane.smith');
       await page.getByRole('button', { name: /^search$/i }).click();
 
       await expect(page.getByText(new RegExp(`target by jane ${runId}`, 'i'))).toBeVisible({ timeout: 15000 });
@@ -240,7 +240,7 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     await loginAsAdmin(page);
     await page.goto('/admin/past-transactions');
     await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
-    await page.getByRole('combobox', { name: /^status$/i }).selectOption('ALL');
+    await pickMultiSelectOption(page, 'status-filter', /^all$/i);
     await page.getByRole('button', { name: /^search$/i }).click();
 
     const row = page.locator('tr', { hasText: note });
@@ -257,7 +257,7 @@ test.describe('View Past Medicine Dispatches (admin history browser)', () => {
     await loginAsAdmin(page);
     await page.goto('/admin/past-transactions');
     await page.locator('#from-date').fill('2020-01-01');
-    await page.getByRole('combobox', { name: /^status$/i }).selectOption('ALL');
+    await pickMultiSelectOption(page, 'status-filter', /^all$/i);
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByText(/^results \(\d+\)$/i)).toBeVisible({ timeout: 10000 });
 

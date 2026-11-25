@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
 import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
-import { medicineStockTypeLabel } from '../../constants';
+import MultiSelectDropdown from '../../components/MultiSelectDropdown';
+import { medicineStockTypeLabel, medicineOptionLabel } from '../../constants';
 
 const PAGE_SIZE = 10;
 
@@ -14,15 +15,13 @@ const specLabel = (tx) => tx.medicineType === 'VIAL'
   ? `${tx.concentrationMgPerMl ?? tx.specification ?? '?'} mg/ml`
   : `${tx.specification ?? '?'} mg`;
 
-const specLabelForMedicine = (m) => m.type === 'VIAL'
-  ? `${m.concentrationMgPerMl ?? m.specification ?? '?'} mg/ml`
-  : `${m.specification ?? '?'} mg`;
-
 export default function MyTransactions() {
   const [allTxs, setAllTxs]         = useState([]);
   const [hasMore, setHasMore]       = useState(false);
   const [filter, setFilter]         = useState('ALL');
-  const [specFilter, setSpecFilter] = useState('ALL');
+  // Empty array means "no filter" (every page's existing "ALL" convention, applied to the
+  // multi-select equivalent).
+  const [specFilter, setSpecFilter] = useState([]);
   const [notesSearch, setNotesSearch] = useState('');
   const [medicines, setMedicines]   = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -54,7 +53,7 @@ export default function MyTransactions() {
       setLoadingMore(true);
     }
 
-    const medicineId = params.specFilter === 'ALL' ? undefined : params.specFilter;
+    const medicineId = params.specFilter.length ? params.specFilter : undefined;
     const notes      = params.notesSearch.trim() ? params.notesSearch.trim() : undefined;
 
     api.getMyTransactions(pg, PAGE_SIZE, params.filter, medicineId, notes)
@@ -133,7 +132,7 @@ export default function MyTransactions() {
   // only ever holds the current filtered result set. Matches the convention used by the
   // equivalent admin filter dropdowns (ViewPastTransactions, ViewMedicineStockAdjustments).
   const specOptions = medicines
-    .map((m) => ({ id: m.id, label: `${m.name} — ${specLabelForMedicine(m)}` }))
+    .map((m) => ({ id: m.id, label: medicineOptionLabel(m) }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
   if (loading) return <div className="loading">Loading…</div>;
@@ -158,18 +157,14 @@ export default function MyTransactions() {
       </div>
 
       <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="spec-filter">Medicine Spec</label>
-          <select
-            id="spec-filter"
-            value={specFilter}
-            onChange={(e) => setSpecFilter(e.target.value)}>
-            <option value="ALL">All Medicines</option>
-            {specOptions.map((o) => (
-              <option key={o.id} value={String(o.id)}>{o.label}</option>
-            ))}
-          </select>
-        </div>
+        <MultiSelectDropdown
+          id="spec-filter"
+          label="Medicine Spec"
+          allLabel="All Medicines"
+          options={specOptions.map((o) => ({ value: String(o.id), label: o.label }))}
+          selected={specFilter}
+          onChange={setSpecFilter}
+        />
         <div className="form-group">
           <label htmlFor="notes-search">Search Notes</label>
           <input

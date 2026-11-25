@@ -27,6 +27,16 @@ const renderPage = () =>
     </MemoryRouter>
   );
 
+// Opens a MultiSelectDropdown (by its toggle button's data-testid, e.g. "user-filter-toggle")
+// and clicks the checkbox matching optionName within its panel (found by the dropdown's
+// `label` prop, which is also its listbox's aria-label) — the panel stays open afterward so
+// callers can select more than one option before moving on.
+const pickFilterOption = async (toggleTestId, panelName, optionName) => {
+  await userEvent.click(screen.getByTestId(toggleTestId));
+  const panel = screen.getByRole('listbox', { name: panelName });
+  await userEvent.click(within(panel).getByRole('checkbox', { name: optionName }));
+};
+
 const makeTx = (overrides = {}) => ({
   id: 1,
   submittedByUsername: 'john.doe',
@@ -59,9 +69,9 @@ const USERS = [
 ];
 
 const MEDICINES = [
-  { id: 10, name: 'Shield FX Vial 10 ml', type: 'VIAL',   specification: 10, price: 4000 },
-  { id: 20, name: 'Shield FX Vial 5 ml',  type: 'VIAL',   specification: 5,  price: 2000 },
-  { id: 30, name: 'Shield FX Tablet 25 mg (10 Tablets)', type: 'TABLET', specification: 25, price: 4000 },
+  { id: 10, name: 'Shield FX Vial 10 ml', type: 'VIAL',   specification: 10, price: 4000, pharmaCompany: { id: 1, name: 'Cipla' } },
+  { id: 20, name: 'Shield FX Vial 5 ml',  type: 'VIAL',   specification: 5,  price: 2000, pharmaCompany: { id: 1, name: 'Cipla' } },
+  { id: 30, name: 'Shield FX Tablet 25 mg (10 Tablets)', type: 'TABLET', specification: 25, price: 4000, pharmaCompany: { id: 1, name: 'Cipla' } },
 ];
 
 beforeEach(() => {
@@ -89,28 +99,28 @@ describe('ViewPastTransactions — render', () => {
     expect(screen.getByLabelText(/to date/i)).toBeInTheDocument();
   });
 
-  test('renders status filter with ALL, APPROVED, REJECTED options', () => {
+  test('renders status filter with All, Approved, Rejected options', async () => {
     renderPage();
-    const statusSelect = screen.getByLabelText('Status');
-    expect(statusSelect).toBeInTheDocument();
-    expect(within(statusSelect).getByRole('option', { name: /^all$/i })).toBeInTheDocument();
-    expect(within(statusSelect).getByRole('option', { name: /^approved$/i })).toBeInTheDocument();
-    expect(within(statusSelect).getByRole('option', { name: /^rejected$/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('status-filter-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'Status' });
+    expect(within(panel).getByRole('checkbox', { name: /^all$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /^approved$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /^rejected$/i })).toBeInTheDocument();
   });
 
   test('defaults to APPROVED status', () => {
     renderPage();
-    expect(screen.getByLabelText('Status')).toHaveValue('APPROVED');
+    expect(screen.getByTestId('status-filter-toggle')).toHaveTextContent('Approved');
   });
 
   test('renders User filter dropdown', () => {
     renderPage();
-    expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument();
+    expect(screen.getByTestId('user-filter-toggle')).toBeInTheDocument();
   });
 
   test('renders Medicine Spec filter dropdown', () => {
     renderPage();
-    expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
+    expect(screen.getByTestId('medicine-filter-toggle')).toBeInTheDocument();
   });
 
   test('renders Search Notes text input', () => {
@@ -125,12 +135,12 @@ describe('ViewPastTransactions — render', () => {
 
   test('User filter defaults to All Users', () => {
     renderPage();
-    expect(screen.getByLabelText(/^user$/i)).toHaveValue('ALL');
+    expect(screen.getByTestId('user-filter-toggle')).toHaveTextContent('All Users');
   });
 
   test('Medicine Spec filter defaults to All Medicines', () => {
     renderPage();
-    expect(screen.getByLabelText(/medicine spec/i)).toHaveValue('ALL');
+    expect(screen.getByTestId('medicine-filter-toggle')).toHaveTextContent('All Medicines');
   });
 
   test('renders Search button', () => {
@@ -149,21 +159,21 @@ describe('ViewPastTransactions — render', () => {
 describe('ViewPastTransactions — dropdown population', () => {
   test('loads non-admin users into User dropdown', async () => {
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /john doe \(john\.doe\)/i })).toBeInTheDocument()
-    );
-    expect(screen.getByRole('option', { name: /jane smith \(jane\.smith\)/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('user-filter-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'User' });
+    expect(within(panel).getByRole('checkbox', { name: /john doe \(john\.doe\)/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /jane smith \(jane\.smith\)/i })).toBeInTheDocument();
     // Admin should be excluded
-    expect(screen.queryByRole('option', { name: /admin.*admin/i })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole('checkbox', { name: /admin.*admin/i })).not.toBeInTheDocument();
   });
 
-  test('loads medicines into Medicine Spec dropdown', async () => {
+  test('loads brand-inclusive medicines into Medicine Spec dropdown', async () => {
     renderPage();
-    await waitFor(() =>
-      expect(screen.getByRole('option', { name: /vial 10 ml/i })).toBeInTheDocument()
-    );
-    expect(screen.getByRole('option', { name: /vial 5 ml/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /tablet 25 mg/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('medicine-filter-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'Medicine Spec' });
+    expect(within(panel).getByRole('checkbox', { name: /cipla vial 10 ml/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /cipla vial 5 ml/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /cipla tablet 25 mg/i })).toBeInTheDocument();
   });
 
   test('calls getUsers and getMedicines on mount', () => {
@@ -233,7 +243,7 @@ describe('ViewPastTransactions — search', () => {
     );
   });
 
-  test('calls API with APPROVED by default on first search', async () => {
+  test('calls API with ["APPROVED"] by default on first search', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
@@ -243,7 +253,7 @@ describe('ViewPastTransactions — search', () => {
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
-        'APPROVED',
+        ['APPROVED'],
         0,
         10,
         undefined,
@@ -255,18 +265,18 @@ describe('ViewPastTransactions — search', () => {
     );
   });
 
-  test('calls API with ALL when status changed to All', async () => {
+  test('calls API with status omitted when the All checkbox is checked', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
-    await userEvent.selectOptions(screen.getByLabelText('Status'), 'ALL');
+    await pickFilterOption('status-filter-toggle', 'Status', /^all$/i);
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(String),
-        'ALL',
+        undefined,
         0,
         10,
         undefined,
@@ -312,7 +322,7 @@ describe('ViewPastTransactions — pagination', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, undefined, undefined, undefined,
         undefined,
         undefined
       )
@@ -332,7 +342,7 @@ describe('ViewPastTransactions — pagination', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 1, 10, undefined, undefined, undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 1, 10, undefined, undefined, undefined,
         undefined,
         undefined
       )
@@ -513,24 +523,24 @@ describe('ViewPastTransactions — user filter', () => {
   const johnTx  = makeTx({ id: 1, submittedByUsername: 'john.doe',   notes: 'John note' });
   const janeTx  = makeTx({ id: 2, submittedByUsername: 'jane.smith', notes: 'Jane note' });
 
-  test('selecting a user and searching sends it as the username query param', async () => {
+  test('selecting a user and searching sends it as a one-element username array', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([johnTx]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/^user$/i));
+    await waitFor(() => screen.getByTestId('user-filter-toggle'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+    await pickFilterOption('user-filter-toggle', 'User', /john doe \(john\.doe\)/i);
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, 'john.doe', undefined, undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, ['john.doe'], undefined, undefined,
         undefined,
         undefined
       )
     );
   });
 
-  test('All Users omits the username param (undefined)', async () => {
+  test('All Users (no selection) omits the username param (undefined)', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([johnTx, janeTx]));
     renderPage();
 
@@ -538,7 +548,25 @@ describe('ViewPastTransactions — user filter', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, undefined, undefined, undefined,
+        undefined,
+        undefined
+      )
+    );
+  });
+
+  test('selecting two users sends both as the username array', async () => {
+    api.getTransactionHistory.mockResolvedValue(mkPage([johnTx, janeTx]));
+    renderPage();
+    await waitFor(() => screen.getByTestId('user-filter-toggle'));
+
+    await pickFilterOption('user-filter-toggle', 'User', /john doe \(john\.doe\)/i);
+    await userEvent.click(within(screen.getByRole('listbox', { name: 'User' })).getByRole('checkbox', { name: /jane smith \(jane\.smith\)/i }));
+    await userEvent.click(screen.getByRole('button', { name: /search/i }));
+
+    await waitFor(() =>
+      expect(api.getTransactionHistory).toHaveBeenCalledWith(
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, ['john.doe', 'jane.smith'], undefined, undefined,
         undefined,
         undefined
       )
@@ -551,7 +579,7 @@ describe('ViewPastTransactions — user filter', () => {
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByText('John note'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+    await pickFilterOption('user-filter-toggle', 'User', /john doe \(john\.doe\)/i);
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(api.getTransactionHistory).toHaveBeenCalledTimes(1);
@@ -569,7 +597,7 @@ describe('ViewPastTransactions — user filter', () => {
     // Now filter by jane.smith and search again — the backend (not the browser) does the
     // filtering, so it can return janeTx even though it was never in loaded state.
     api.getTransactionHistory.mockResolvedValueOnce(mkPage([janeTx], { last: true }));
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'jane.smith');
+    await pickFilterOption('user-filter-toggle', 'User', /jane smith \(jane\.smith\)/i);
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() => expect(screen.getByText('Jane note')).toBeInTheDocument());
@@ -582,24 +610,24 @@ describe('ViewPastTransactions — user filter', () => {
 describe('ViewPastTransactions — medicine filter', () => {
   const vial10Tx = makeTx({ id: 1, medicineId: 10, medicineName: 'Vial 10 ml', medicineType: 'VIAL', specification: 10, notes: 'Vial 10 note' });
 
-  test('selecting a medicine and searching sends it as the medicineId query param', async () => {
+  test('selecting a medicine and searching sends it as a one-element medicineId array', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([vial10Tx]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/medicine spec/i));
+    await waitFor(() => screen.getByTestId('medicine-filter-toggle'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await pickFilterOption('medicine-filter-toggle', 'Medicine Spec', /cipla vial 10 ml/i);
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, '10', undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, undefined, ['10'], undefined,
         undefined,
         undefined
       )
     );
   });
 
-  test('All Medicines omits the medicineId param (undefined)', async () => {
+  test('All Medicines (no selection) omits the medicineId param (undefined)', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([vial10Tx]));
     renderPage();
 
@@ -607,7 +635,7 @@ describe('ViewPastTransactions — medicine filter', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, undefined, undefined, undefined,
         undefined,
         undefined
       )
@@ -620,7 +648,7 @@ describe('ViewPastTransactions — medicine filter', () => {
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByText('Vial 10 note'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await pickFilterOption('medicine-filter-toggle', 'Medicine Spec', /cipla vial 10 ml/i);
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -641,7 +669,7 @@ describe('ViewPastTransactions — notes search', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, 'clinic',
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, undefined, undefined, 'clinic',
         undefined,
         undefined
       )
@@ -656,7 +684,7 @@ describe('ViewPastTransactions — notes search', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, undefined, undefined, undefined,
         undefined,
         undefined
       )
@@ -682,37 +710,37 @@ describe('ViewPastTransactions — payment status filter', () => {
 
   test('renders Payment Status filter with All, Paid, Unpaid and Partial Payment options', async () => {
     renderPage();
-    const select = screen.getByLabelText(/payment status/i);
-    expect(select).toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: /^all$/i })).toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: /^paid$/i })).toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: /^unpaid$/i })).toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: /partial payment/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('payment-status-filter-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'Payment Status' });
+    expect(within(panel).getByRole('checkbox', { name: /^all$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /^paid$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /^unpaid$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /partial payment/i })).toBeInTheDocument();
   });
 
   test('defaults to All', () => {
     renderPage();
-    expect(screen.getByLabelText(/payment status/i)).toHaveValue('ALL');
+    expect(screen.getByTestId('payment-status-filter-toggle')).toHaveTextContent('All');
   });
 
-  test('selecting Unpaid and searching sends it as the paymentStatus query param', async () => {
+  test('selecting Unpaid and searching sends it as a one-element paymentStatus array', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([unpaidTx]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/payment status/i));
+    await waitFor(() => screen.getByTestId('payment-status-filter-toggle'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'UNPAID');
+    await pickFilterOption('payment-status-filter-toggle', 'Payment Status', /^unpaid$/i);
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, undefined, undefined, undefined,
         undefined,
-        'UNPAID'
+        ['UNPAID']
       )
     );
   });
 
-  test('All omits the paymentStatus param (undefined)', async () => {
+  test('All (no selection) omits the paymentStatus param (undefined)', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([unpaidTx]));
     renderPage();
 
@@ -720,7 +748,7 @@ describe('ViewPastTransactions — payment status filter', () => {
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, undefined, undefined, undefined,
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, undefined, undefined, undefined,
         undefined,
         undefined
       )
@@ -733,7 +761,7 @@ describe('ViewPastTransactions — payment status filter', () => {
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByText('Unpaid dispatch note'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'UNPAID');
+    await pickFilterOption('payment-status-filter-toggle', 'Payment Status', /^unpaid$/i);
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -781,16 +809,16 @@ describe('ViewPastTransactions — combined filters', () => {
       makeTx({ id: 1, submittedByUsername: 'john.doe', medicineId: 10, notes: 'Clinic B note' }),
     ]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/^user$/i));
+    await waitFor(() => screen.getByTestId('user-filter-toggle'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await pickFilterOption('user-filter-toggle', 'User', /john doe \(john\.doe\)/i);
+    await pickFilterOption('medicine-filter-toggle', 'Medicine Spec', /cipla vial 10 ml/i);
     await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic b');
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
-        expect.any(String), expect.any(String), expect.any(String), 0, 10, 'john.doe', '10', 'clinic b',
+        expect.any(String), expect.any(String), expect.any(Array), 0, 10, ['john.doe'], ['10'], 'clinic b',
         undefined,
         undefined
       )

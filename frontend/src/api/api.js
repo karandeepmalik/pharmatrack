@@ -4,6 +4,14 @@ import { redirectTo } from '../navigation';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
+  // Axios's default array serialization is "key[]=a&key[]=b" (bracket/indexed notation), which
+  // Spring's @RequestParam List<T> binding does not recognize — it only matches the exact param
+  // name, so a bracketed key silently fails to bind (no error, filter just never applies). This
+  // affected every array-valued filter param already in this app (e.g. inventory-projection's
+  // "cities", added before this was caught) wherever more than a single value was selected.
+  // {indexes: null} serializes arrays as repeated plain "key=a&key=b" instead, which is what
+  // Spring actually binds a List<T> @RequestParam from.
+  paramsSerializer: { indexes: null },
 });
 
 // Auth is via the Authorization header, populated from the token in the login response body.
@@ -76,7 +84,7 @@ export const submitTransaction = ({ medicineId, quantity, notes, screenshotFiles
 };
 
 export const getMyTransactions  = (page = 0, size = 20, status = 'ALL', medicineId, notes) =>
-  api.get('/transactions/my', { params: { page, size, status, medicineId, notes } });
+  api.get('/transactions/my', { params: { page, size, status, medicineId, notes } }); // medicineId may be an array — axios repeats the key
 export const getAllTransactions  = (page = 0, size = 20, status = 'ALL') => api.get('/transactions',     { params: { page, size, status } });
 export const approveTransaction  = (id, data)  => api.post(`/transactions/${id}/approve`, data);
 
@@ -99,14 +107,15 @@ export const approveTransactionsBulk = (items, approved = true) =>
  * username/medicineId/notes here is safe to combine with pagination.
  * @param {string} from       ISO date string YYYY-MM-DD (inclusive)
  * @param {string} to         ISO date string YYYY-MM-DD (inclusive)
- * @param {string} status     ALL | APPROVED | REJECTED  (default ALL)
+ * @param {string|string[]} status     'ALL', or one or more of APPROVED | REJECTED (default ALL)
  * @param {number} page       zero-based page number (default 0)
  * @param {number} size       page size (default 10)
- * @param {string} [username]   optional exact submittedBy username filter
- * @param {number} [medicineId] optional exact medicine filter
+ * @param {string[]} [username]   zero or more exact submittedBy username filters — axios repeats
+ *                                the query param per array entry, which Spring binds to a List
+ * @param {number[]} [medicineId] zero or more exact medicine filters
  * @param {string} [notes]      optional case-insensitive notes substring filter
- * @param {string} [medicineStockType] optional exact REGULAR_MEDICINE_STOCK/ADMIN_MEDICINE_STOCK filter
- * @param {string} [paymentStatus] optional exact PAID/UNPAID/PARTIAL_PAYMENT filter
+ * @param {string[]} [medicineStockType] zero or more of REGULAR_MEDICINE_STOCK/ADMIN_MEDICINE_STOCK
+ * @param {string[]} [paymentStatus] zero or more of PAID/UNPAID/PARTIAL_PAYMENT
  */
 export const getTransactionHistory = (from, to, status = 'ALL', page = 0, size = 10, username, medicineId, notes, medicineStockType, paymentStatus) =>
   api.get('/transactions/history', { params: { from, to, status, page, size, username, medicineId, notes, medicineStockType, paymentStatus } });

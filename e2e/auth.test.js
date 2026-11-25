@@ -2191,6 +2191,27 @@ async function run() {
       `medicineStockType=ALL (${explicitAll.data.totalElements}) should match no filter (${unfiltered.data.totalElements})`);
   });
 
+  // Multi-select filters (ViewPastTransactions/AdminEditDispatch's "Medicine Spec"/"Stock Type"/
+  // "Payment Status" filters) send the same query param repeated once per selected value, which
+  // Spring binds to a List and the repository matches via an IN clause. This is exercised here
+  // against real Postgres, not just H2 (see TransactionRepository.searchHistory's Javadoc on
+  // why Postgres-specific JDBC behavior around bind parameters has bitten this app before).
+  await test('GET /transactions/history supports repeated medicineStockType params (multi-select)', async () => {
+    const today = istDateString(new Date());
+    const unfiltered = await apiGet(`${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100`, adminToken);
+    const r = await apiGet(
+      `${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100`
+      + `&medicineStockType=ADMIN_MEDICINE_STOCK&medicineStockType=REGULAR_MEDICINE_STOCK`,
+      adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(r.data.totalElements === unfiltered.data.totalElements,
+      `Selecting both real stock types (${r.data.totalElements}) should match no filter (${unfiltered.data.totalElements})`);
+    assert(r.data.content.some(t => t.id === adminStockTxId),
+      `Admin-stock transaction #${adminStockTxId} missing from multi-select result`);
+    assert(r.data.content.some(t => t.id === regularStockTxId),
+      `Regular-stock transaction #${regularStockTxId} missing from multi-select result`);
+  });
+
   // ── GET /transactions/history — paymentStatus filter ────────────────────
 
   let paymentStatusFilterTxId;
@@ -2227,6 +2248,19 @@ async function run() {
     assert(r.status === 200, `Expected 200, got ${r.status}`);
     assert(!r.data.content.some(t => t.id === paymentStatusFilterTxId),
       `UNPAID transaction #${paymentStatusFilterTxId} should be excluded when filtering by paymentStatus=PAID`);
+  });
+
+  await test('GET /transactions/history supports repeated paymentStatus params (multi-select)', async () => {
+    const today = istDateString(new Date());
+    const r = await apiGet(
+      `${API}/transactions/history?from=${today}&to=${today}&status=PENDING&size=100`
+      + `&paymentStatus=UNPAID&paymentStatus=PAID`,
+      adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}`);
+    assert(r.data.content.some(t => t.id === paymentStatusFilterTxId),
+      'UNPAID transaction should be included when UNPAID is one of several selected paymentStatus values');
+    assert(r.data.content.every(t => t.paymentStatus === 'UNPAID' || t.paymentStatus === 'PAID'),
+      'Every returned record must have one of the selected paymentStatus values');
   });
 
   await test('GET /transactions/history paymentStatus=ALL matches the unfiltered result', async () => {

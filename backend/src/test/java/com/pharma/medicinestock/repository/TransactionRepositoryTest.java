@@ -191,7 +191,7 @@ class TransactionRepositoryTest {
         @Test
         @DisplayName("filters to user1 transactions only")
         void filtersUser1() {
-            Page<Transaction> page = repo.searchMyHistory(user1, null, null, null, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user1, null, true, List.of(), null, PageRequest.of(0, 20));
             assertThat(page.getTotalElements()).isEqualTo(2);
             assertThat(page.getContent()).extracting(Transaction::getId)
                     .containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
@@ -200,7 +200,7 @@ class TransactionRepositoryTest {
         @Test
         @DisplayName("filters to user2 transactions only")
         void filtersUser2() {
-            Page<Transaction> page = repo.searchMyHistory(user2, null, null, null, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user2, null, true, List.of(), null, PageRequest.of(0, 20));
             assertThat(page.getTotalElements()).isEqualTo(1);
             assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx3.getId());
         }
@@ -212,7 +212,7 @@ class TransactionRepositoryTest {
             em.persist(user3);
             em.flush();
 
-            Page<Transaction> page = repo.searchMyHistory(user3, null, null, null, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user3, null, true, List.of(), null, PageRequest.of(0, 20));
             assertThat(page.getTotalElements()).isZero();
             assertThat(page.getContent()).isEmpty();
         }
@@ -220,7 +220,7 @@ class TransactionRepositoryTest {
         @Test
         @DisplayName("user1 results are in DESC submittedAt order")
         void user1InDescOrder() {
-            Page<Transaction> page = repo.searchMyHistory(user1, null, null, null, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user1, null, true, List.of(), null, PageRequest.of(0, 20));
             assertThat(page.getContent()).extracting(Transaction::getId)
                     .containsExactly(tx2.getId(), tx1.getId());
         }
@@ -229,14 +229,14 @@ class TransactionRepositoryTest {
         @DisplayName("filters by status within a user's own transactions")
         void filtersByStatus() {
             Page<Transaction> page = repo.searchMyHistory(
-                    user1, Transaction.TransactionStatus.APPROVED, null, null, PageRequest.of(0, 20));
+                    user1, Transaction.TransactionStatus.APPROVED, true, List.of(), null, PageRequest.of(0, 20));
             assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
         }
 
         @Test
         @DisplayName("filters by exact medicineId within a user's own transactions")
         void filtersByMedicineId() {
-            Page<Transaction> page = repo.searchMyHistory(user1, null, medicine2.getId(), null, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user1, null, false, List.of(medicine2.getId()), null, PageRequest.of(0, 20));
             assertThat(page.getContent()).isEmpty();
         }
 
@@ -246,14 +246,14 @@ class TransactionRepositoryTest {
             // notesPattern arrives as a complete, already-lowercased LIKE pattern (built by the
             // service layer) — see searchHistory's Javadoc for why the query itself does no
             // LOWER()/CONCAT() on the bind parameter.
-            Page<Transaction> page = repo.searchMyHistory(user1, null, null, "%approved%", PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user1, null, true, List.of(), "%approved%", PageRequest.of(0, 20));
             assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
         }
 
         @Test
         @DisplayName("never returns another user's transactions regardless of filters")
         void neverLeaksOtherUsersTransactions() {
-            Page<Transaction> page = repo.searchMyHistory(user1, null, null, null, PageRequest.of(0, 20));
+            Page<Transaction> page = repo.searchMyHistory(user1, null, true, List.of(), null, PageRequest.of(0, 20));
             assertThat(page.getContent()).noneMatch(t -> t.getId().equals(tx3.getId()));
         }
 
@@ -265,7 +265,7 @@ class TransactionRepositoryTest {
             // PENDING (only matches tx1, the older one) still finds it even at a page size that
             // would otherwise paginate it out.
             Page<Transaction> page = repo.searchMyHistory(
-                    user1, Transaction.TransactionStatus.PENDING, null, null, PageRequest.of(0, 1));
+                    user1, Transaction.TransactionStatus.PENDING, true, List.of(), null, PageRequest.of(0, 1));
             assertThat(page.getContent()).extracting(Transaction::getId).containsExactly(tx1.getId());
             assertThat(page.getTotalElements()).isEqualTo(1);
         }
@@ -283,8 +283,8 @@ class TransactionRepositoryTest {
 
             // user1 has 5 matching transactions total (tx1, tx2, tied1-3) — page size 3 covers
             // all of them across exactly two pages.
-            Page<Transaction> page0 = repo.searchMyHistory(user1, null, null, null, PageRequest.of(0, 3));
-            Page<Transaction> page1 = repo.searchMyHistory(user1, null, null, null, PageRequest.of(1, 3));
+            Page<Transaction> page0 = repo.searchMyHistory(user1, null, true, List.of(), null, PageRequest.of(0, 3));
+            Page<Transaction> page1 = repo.searchMyHistory(user1, null, true, List.of(), null, PageRequest.of(1, 3));
 
             List<Long> page0Ids = page0.getContent().stream().map(Transaction::getId).toList();
             List<Long> page1Ids = page1.getContent().stream().map(Transaction::getId).toList();
@@ -402,7 +402,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 3, 0, 0),
-                    null, null, null, null, null, null,
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactlyInAnyOrder(tx1.getId(), tx2.getId());
@@ -413,7 +413,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 3, 0, 0),
-                    null, null, null, null, null, null,
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).noneMatch(t -> t.getId().equals(tx3.getId()));
         }
@@ -423,7 +423,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, null, null, null, null, null,
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactly(tx3.getId(), tx2.getId(), tx1.getId());
@@ -434,7 +434,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, null, null, null, null, null,
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 2));
             assertThat(result.getContent()).hasSize(2);
             assertThat(result.getTotalElements()).isEqualTo(3);
@@ -446,7 +446,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING, null, null, null, null, null,
+                    false, List.of(Transaction.TransactionStatus.PENDING), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId)
                     .containsExactlyInAnyOrder(tx1.getId(), tx3.getId());
@@ -457,7 +457,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING, null, null, null, null, null,
+                    false, List.of(Transaction.TransactionStatus.PENDING), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).noneMatch(t -> t.getStatus() == Transaction.TransactionStatus.APPROVED);
         }
@@ -467,7 +467,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2025, 1, 1, 0, 0),
                     LocalDateTime.of(2025, 2, 1, 0, 0),
-                    Transaction.TransactionStatus.PENDING, null, null, null, null, null,
+                    false, List.of(Transaction.TransactionStatus.PENDING), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).isEmpty();
         }
@@ -477,7 +477,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, "bob", null, null, null, null,
+                    true, List.of(), false, List.of("bob"), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx3.getId());
         }
@@ -487,7 +487,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, null, medicine2.getId(), null, null, null,
+                    true, List.of(), true, List.of(), false, List.of(medicine2.getId()), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx3.getId());
         }
@@ -502,7 +502,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, null, null, MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK, null, null,
+                    true, List.of(), true, List.of(), true, List.of(), false, List.of(MedicineStock.MedicineStockType.ADMIN_MEDICINE_STOCK), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx1.getId());
         }
@@ -516,7 +516,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, null, null, null, null, "%approved%",
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), "%approved%",
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
         }
@@ -531,7 +531,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, null, null, null, Transaction.PaymentStatus.UNPAID, null,
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), false, List.of(Transaction.PaymentStatus.UNPAID), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx1.getId());
         }
@@ -541,7 +541,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING, "alice", null, null, null, null,
+                    false, List.of(Transaction.TransactionStatus.PENDING), false, List.of("alice"), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx1.getId());
         }
@@ -556,7 +556,7 @@ class TransactionRepositoryTest {
             Page<Transaction> result = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, "alice", null, null, null, null,
+                    true, List.of(), false, List.of("alice"), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 1));
             assertThat(result.getContent()).extracting(Transaction::getId).containsExactly(tx2.getId());
             assertThat(result.getTotalElements()).isEqualTo(2); // tx1 + tx2, both alice
@@ -577,9 +577,9 @@ class TransactionRepositoryTest {
             em.flush();
 
             Page<Transaction> page0 = repo.searchHistory(
-                    sameInstant, sameInstant.plusDays(1), null, null, null, null, null, null, PageRequest.of(0, 2));
+                    sameInstant, sameInstant.plusDays(1), true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null, PageRequest.of(0, 2));
             Page<Transaction> page1 = repo.searchHistory(
-                    sameInstant, sameInstant.plusDays(1), null, null, null, null, null, null, PageRequest.of(1, 2));
+                    sameInstant, sameInstant.plusDays(1), true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null, PageRequest.of(1, 2));
 
             List<Long> page0Ids = page0.getContent().stream().map(Transaction::getId).toList();
             List<Long> page1Ids = page1.getContent().stream().map(Transaction::getId).toList();
@@ -603,7 +603,7 @@ class TransactionRepositoryTest {
             BigDecimal result = repo.sumQuantityForHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 3, 0, 0),
-                    null, null, null, null, null, null);
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null);
             assertThat(result).isEqualByComparingTo("20");
         }
 
@@ -612,7 +612,7 @@ class TransactionRepositoryTest {
             Page<Transaction> page = repo.searchHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING, null, null, null, null, null,
+                    false, List.of(Transaction.TransactionStatus.PENDING), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null,
                     PageRequest.of(0, 20));
             BigDecimal expected = page.getContent().stream()
                     .map(Transaction::getQuantity)
@@ -621,7 +621,7 @@ class TransactionRepositoryTest {
             BigDecimal result = repo.sumQuantityForHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    Transaction.TransactionStatus.PENDING, null, null, null, null, null);
+                    false, List.of(Transaction.TransactionStatus.PENDING), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null);
 
             assertThat(result).isEqualByComparingTo(expected);
         }
@@ -631,7 +631,7 @@ class TransactionRepositoryTest {
             BigDecimal result = repo.sumQuantityForHistory(
                     LocalDateTime.of(2025, 1, 1, 0, 0),
                     LocalDateTime.of(2025, 2, 1, 0, 0),
-                    null, null, null, null, null, null);
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), true, List.of(), null);
             assertThat(result).isEqualByComparingTo(BigDecimal.ZERO);
         }
 
@@ -641,7 +641,7 @@ class TransactionRepositoryTest {
             BigDecimal result = repo.sumQuantityForHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, "bob", null, null, null, null);
+                    true, List.of(), false, List.of("bob"), true, List.of(), true, List.of(), true, List.of(), null);
             assertThat(result).isEqualByComparingTo("10");
         }
 
@@ -655,7 +655,7 @@ class TransactionRepositoryTest {
             BigDecimal result = repo.sumQuantityForHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, null, null, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK, null, null);
+                    true, List.of(), true, List.of(), true, List.of(), false, List.of(MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK), true, List.of(), null);
             assertThat(result).isEqualByComparingTo("20"); // tx2 + tx3
         }
 
@@ -669,7 +669,7 @@ class TransactionRepositoryTest {
             BigDecimal result = repo.sumQuantityForHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, null, null, null, Transaction.PaymentStatus.PARTIAL_PAYMENT, null);
+                    true, List.of(), true, List.of(), true, List.of(), true, List.of(), false, List.of(Transaction.PaymentStatus.PARTIAL_PAYMENT), null);
             assertThat(result).isEqualByComparingTo("20"); // tx2 + tx3
         }
 
@@ -680,7 +680,7 @@ class TransactionRepositoryTest {
             BigDecimal result = repo.sumQuantityForHistory(
                     LocalDateTime.of(2024, 1, 1, 0, 0),
                     LocalDateTime.of(2024, 1, 4, 0, 0),
-                    null, "alice", null, null, null, null);
+                    true, List.of(), false, List.of("alice"), true, List.of(), true, List.of(), true, List.of(), null);
             assertThat(result).isEqualByComparingTo("20");
         }
     }
