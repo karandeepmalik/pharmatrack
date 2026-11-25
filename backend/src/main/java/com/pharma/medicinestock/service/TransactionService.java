@@ -146,7 +146,7 @@ public class TransactionService {
 
     @Transactional(readOnly = true)
     public Page<TransactionResponse> getByUserPaged(String username, int page, int size,
-                                                      String status, Long medicineId, String notes) {
+                                                      String status, List<Long> medicineIds, String notes) {
         User user = findUserByUsername(username);
         PageRequest pageable = PageRequest.of(page, size);
 
@@ -157,8 +157,10 @@ public class TransactionService {
         // Postgres.
         String notesPattern = (notes == null || notes.isBlank())
                 ? null : "%" + notes.trim().toLowerCase() + "%";
+        List<Long> ids = medicineIds == null ? List.of() : medicineIds;
 
-        Page<Transaction> txPage = transactionRepository.searchMyHistory(user, txStatus, medicineId, notesPattern, pageable);
+        Page<Transaction> txPage = transactionRepository.searchMyHistory(
+                user, txStatus, ids.isEmpty(), ids, notesPattern, pageable);
         return txPage.map(transactionMapper::toResponse);
     }
 
@@ -176,47 +178,75 @@ public class TransactionService {
 
     /** Shared status/username/stockType/paymentStatus/notes normalization for getHistory and
      *  getHistoryTotalQuantity — both must filter identically or the displayed total quantity
-     *  would silently disagree with what the results table actually shows. */
-    private record HistoryFilters(TransactionStatus status, String username,
-                                   MedicineStock.MedicineStockType stockType,
-                                   Transaction.PaymentStatus paymentStatus, String notesPattern) {}
+     *  would silently disagree with what the results table actually shows. Every list is
+     *  normalized to non-null (possibly empty) — never null — to match the empty-flag/list-pair
+     *  convention searchHistory's Javadoc explains (Hibernate can't bind null to an IN-clause
+     *  List parameter the way it can a scalar one). "ALL"/blank/missing entries are dropped
+     *  rather than causing the whole list to mean "no filter", so a multi-select that mixes a
+     *  stray blank with real values still filters correctly. */
+    private record HistoryFilters(List<TransactionStatus> statuses, List<String> usernames,
+                                   List<MedicineStock.MedicineStockType> stockTypes,
+                                   List<Transaction.PaymentStatus> paymentStatuses, String notesPattern) {}
 
-    private HistoryFilters normalizeHistoryFilters(String status, String username, String medicineStockType,
-                                                    String paymentStatus, String notes) {
-        TransactionStatus txStatus = (status == null || "ALL".equalsIgnoreCase(status))
-                ? null : TransactionStatus.valueOf(status.toUpperCase());
-        String usernameFilter = (username == null || username.isBlank() || "ALL".equalsIgnoreCase(username))
-                ? null : username;
+    private HistoryFilters normalizeHistoryFilters(List<String> statuses, List<String> usernames,
+                                                    List<String> medicineStockTypes,
+                                                    List<String> paymentStatuses, String notes) {
+        List<TransactionStatus> txStatuses = normalizeEnumList(statuses, TransactionStatus::valueOf);
+        List<String> usernameFilters = normalizeStringList(usernames);
         // Unlike resolveMedicineStockType() (used at submission time, where a bucket is always
-        // implied), a blank/ALL filter here means "don't filter by stock type at all" — it must
+        // implied), an empty filter here means "don't filter by stock type at all" — it must
         // never silently default to REGULAR_MEDICINE_STOCK, or admin-bucket records would vanish
         // from an unfiltered search.
-        MedicineStock.MedicineStockType stockTypeFilter = (medicineStockType == null || medicineStockType.isBlank()
-                || "ALL".equalsIgnoreCase(medicineStockType))
-                ? null : MedicineStock.MedicineStockType.valueOf(medicineStockType.toUpperCase());
-        // Same "blank/ALL means no filter" rule as stock type above — must never silently default
+        List<MedicineStock.MedicineStockType> stockTypeFilters =
+                normalizeEnumList(medicineStockTypes, MedicineStock.MedicineStockType::valueOf);
+        // Same "empty means no filter" rule as stock type above — must never silently default
         // to PAID, or UNPAID/PARTIAL_PAYMENT records would vanish from an unfiltered search.
-        Transaction.PaymentStatus paymentStatusFilter = (paymentStatus == null || paymentStatus.isBlank()
-                || "ALL".equalsIgnoreCase(paymentStatus))
-                ? null : Transaction.PaymentStatus.valueOf(paymentStatus.toUpperCase());
+        List<Transaction.PaymentStatus> paymentStatusFilters =
+                normalizeEnumList(paymentStatuses, Transaction.PaymentStatus::valueOf);
         // Built as a complete LIKE pattern here, not passed raw — see searchHistory's Javadoc for
         // why binding a raw substring through LOWER(CONCAT(...)) at the SQL level breaks on Postgres.
         String notesPattern = (notes == null || notes.isBlank())
                 ? null : "%" + notes.trim().toLowerCase() + "%";
-        return new HistoryFilters(txStatus, usernameFilter, stockTypeFilter, paymentStatusFilter, notesPattern);
+        return new HistoryFilters(txStatuses, usernameFilters, stockTypeFilters, paymentStatusFilters, notesPattern);
+    }
+
+    private List<String> normalizeStringList(List<String> values) {
+        if (values == null) return List.of();
+        return values.stream()
+                .filter(v -> v != null && !v.isBlank() && !"ALL".equalsIgnoreCase(v))
+                .toList();
+    }
+
+    private <E> List<E> normalizeEnumList(List<String> values, java.util.function.Function<String, E> parse) {
+        if (values == null) return List.of();
+        return values.stream()
+                .filter(v -> v != null && !v.isBlank() && !"ALL".equalsIgnoreCase(v))
+                .map(v -> parse.apply(v.toUpperCase()))
+                .toList();
+    }
+
+    private List<Long> normalizeIdList(List<Long> values) {
+        return values == null ? List.of() : values;
     }
 
     @Transactional(readOnly = true)
-    public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, String status, int page, int size,
-                                                 String username, Long medicineId, String notes, String medicineStockType,
-                                                 String paymentStatus) {
+    public Page<TransactionResponse> getHistory(LocalDate from, LocalDate to, List<String> status, int page, int size,
+                                                 List<String> username, List<Long> medicineId, String notes,
+                                                 List<String> medicineStockType, List<String> paymentStatus) {
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end   = to.plusDays(1).atStartOfDay();
         PageRequest pageable = PageRequest.of(page, size);
         HistoryFilters f = normalizeHistoryFilters(status, username, medicineStockType, paymentStatus, notes);
+        List<Long> medicineIds = normalizeIdList(medicineId);
 
         Page<Transaction> txPage = transactionRepository.searchHistory(
-                start, end, f.status(), f.username(), medicineId, f.stockType(), f.paymentStatus(), f.notesPattern(), pageable);
+                start, end,
+                f.statuses().isEmpty(), f.statuses(),
+                f.usernames().isEmpty(), f.usernames(),
+                medicineIds.isEmpty(), medicineIds,
+                f.stockTypes().isEmpty(), f.stockTypes(),
+                f.paymentStatuses().isEmpty(), f.paymentStatuses(),
+                f.notesPattern(), pageable);
         return txPage.map(transactionMapper::toResponse);
     }
 
@@ -224,15 +254,22 @@ public class TransactionService {
      *  just whatever page has been scroll-loaded. Backs the "Total Quantity" figure on View Past
      *  Medicine Dispatches. */
     @Transactional(readOnly = true)
-    public BigDecimal getHistoryTotalQuantity(LocalDate from, LocalDate to, String status,
-                                               String username, Long medicineId, String notes, String medicineStockType,
-                                               String paymentStatus) {
+    public BigDecimal getHistoryTotalQuantity(LocalDate from, LocalDate to, List<String> status,
+                                               List<String> username, List<Long> medicineId, String notes,
+                                               List<String> medicineStockType, List<String> paymentStatus) {
         LocalDateTime start = from.atStartOfDay();
         LocalDateTime end   = to.plusDays(1).atStartOfDay();
         HistoryFilters f = normalizeHistoryFilters(status, username, medicineStockType, paymentStatus, notes);
+        List<Long> medicineIds = normalizeIdList(medicineId);
 
         return transactionRepository.sumQuantityForHistory(
-                start, end, f.status(), f.username(), medicineId, f.stockType(), f.paymentStatus(), f.notesPattern());
+                start, end,
+                f.statuses().isEmpty(), f.statuses(),
+                f.usernames().isEmpty(), f.usernames(),
+                medicineIds.isEmpty(), medicineIds,
+                f.stockTypes().isEmpty(), f.stockTypes(),
+                f.paymentStatuses().isEmpty(), f.paymentStatuses(),
+                f.notesPattern());
     }
 
     @Transactional

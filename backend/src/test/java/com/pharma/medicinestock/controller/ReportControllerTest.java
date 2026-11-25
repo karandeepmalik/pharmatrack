@@ -139,7 +139,7 @@ class ReportControllerTest {
         @Test @WithMockUser(roles = "ADMIN")
         void adminCanFilterSalesByUsernameAndMedicineId() throws Exception {
             when(reportService.todaySales(ArgumentMatchers.any(LocalDate.class), ArgumentMatchers.any(LocalDate.class),
-                    ArgumentMatchers.eq("john.doe"), ArgumentMatchers.eq(5L)))
+                    ArgumentMatchers.eq(java.util.List.of("john.doe")), ArgumentMatchers.eq(java.util.List.of(5L))))
                     .thenReturn(sampleReport("TODAY_SALES"));
             mockMvc.perform(get("/api/reports/today-sales")
                             .param("from", "2026-05-01")

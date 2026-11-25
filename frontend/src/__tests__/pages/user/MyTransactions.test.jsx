@@ -42,9 +42,9 @@ const mkPage = (items, { last = true } = {}) => ({
 });
 
 const MEDICINES = [
-  { id: 10, name: 'Shield FX Vial 10 ml', type: 'VIAL', concentrationMgPerMl: 20, specification: 10 },
-  { id: 20, name: 'Shield FX Vial 5 ml', type: 'VIAL', concentrationMgPerMl: 20, specification: 5 },
-  { id: 30, name: 'Shield FX Tablet 25 mg', type: 'TABLET', specification: 25, concentrationMgPerMl: null },
+  { id: 10, name: 'Shield FX Vial 10 ml', type: 'VIAL', concentrationMgPerMl: 20, specification: 10, pharmaCompany: { id: 1, name: 'Cipla' } },
+  { id: 20, name: 'Shield FX Vial 5 ml', type: 'VIAL', concentrationMgPerMl: 20, specification: 5, pharmaCompany: { id: 1, name: 'Cipla' } },
+  { id: 30, name: 'Shield FX Tablet 25 mg', type: 'TABLET', specification: 25, concentrationMgPerMl: null, pharmaCompany: { id: 1, name: 'Cipla' } },
 ];
 
 const renderPage = () =>
@@ -104,14 +104,16 @@ describe('MyTransactions — page structure', () => {
     expect(screen.getByRole('button', { name: /^rejected$/i })).toBeInTheDocument();
   });
 
-  test('renders Medicine Spec filter dropdown populated from the medicine catalog', async () => {
+  test('renders Medicine Spec filter dropdown populated from the medicine catalog, brand-inclusive', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
     await waitFor(() =>
-      expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument()
+      expect(screen.getByTestId('spec-filter-toggle')).toBeInTheDocument()
     );
-    expect(screen.getByRole('option', { name: /shield fx vial 10 ml/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /shield fx tablet 25 mg/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('spec-filter-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'Medicine Spec' });
+    expect(within(panel).getByRole('checkbox', { name: /cipla vial 10 ml/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /cipla tablet 25 mg/i })).toBeInTheDocument();
   });
 
   test('renders Search Notes text input', async () => {
@@ -442,29 +444,36 @@ describe('MyTransactions — filter tabs', () => {
 // ── Medicine spec filter ──────────────────────────────────────────────────
 
 describe('MyTransactions — medicine spec filter', () => {
-  test('selecting a medicine re-queries the server with the medicineId param', async () => {
+  // Opens the Medicine Spec MultiSelectDropdown and clicks the checkbox matching optionName.
+  const pickSpecOption = async (optionName) => {
+    await userEvent.click(screen.getByTestId('spec-filter-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'Medicine Spec' });
+    await userEvent.click(within(panel).getByRole('checkbox', { name: optionName }));
+  };
+
+  test('selecting a medicine re-queries the server with the medicineId param as a one-element array', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/medicine spec/i));
+    await waitFor(() => screen.getByTestId('spec-filter-toggle'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await pickSpecOption(/cipla vial 10 ml/i);
 
     await waitFor(() =>
-      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', '10', undefined)
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', ['10'], undefined)
     );
   });
 
   test('switching back to All Medicines omits the medicineId param', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/medicine spec/i));
+    await waitFor(() => screen.getByTestId('spec-filter-toggle'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await pickSpecOption(/cipla vial 10 ml/i);
     await waitFor(() =>
-      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', '10', undefined)
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', ['10'], undefined)
     );
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), 'ALL');
+    await userEvent.click(within(screen.getByRole('listbox', { name: 'Medicine Spec' })).getByRole('checkbox', { name: /^all medicines$/i }));
     await waitFor(() =>
       expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'ALL', undefined, undefined)
     );
@@ -473,13 +482,13 @@ describe('MyTransactions — medicine spec filter', () => {
   test('spec filter combines with the status tab in the same query', async () => {
     api.getMyTransactions.mockResolvedValue(mkPage([]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/medicine spec/i));
+    await waitFor(() => screen.getByTestId('spec-filter-toggle'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '10');
+    await pickSpecOption(/cipla vial 10 ml/i);
     await userEvent.click(screen.getByRole('button', { name: /^pending$/i }));
 
     await waitFor(() =>
-      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'PENDING', '10', undefined)
+      expect(api.getMyTransactions).toHaveBeenCalledWith(0, 10, 'PENDING', ['10'], undefined)
     );
   });
 });

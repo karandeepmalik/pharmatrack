@@ -222,11 +222,19 @@ describe('AdminMedicineStock — filters', () => {
   const vial   = makeRegular({ id: 1, medicineName: 'Shield FX Vial 10 ml',   username: 'john.doe',   quantity: 5 });
   const tablet = makeRegular({ id: 2, medicineName: 'Shield FX Tablet 25 mg', username: 'jane.smith', quantity: 3 });
 
+  // Opens a MultiSelectDropdown (by its toggle button's data-testid) and clicks the checkbox
+  // matching optionName within its panel (found by the dropdown's `label` prop).
+  const pickFilterOption = async (toggleTestId, panelName, optionName) => {
+    await userEvent.click(screen.getByTestId(toggleTestId));
+    const panel = screen.getByRole('listbox', { name: panelName });
+    await userEvent.click(within(panel).getByRole('checkbox', { name: optionName }));
+  };
+
   test('renders "Filter by Medicine" dropdown', async () => {
     api.getAdminMedicineStock.mockResolvedValue({ data: [vial] });
     renderPage();
     await waitFor(() =>
-      expect(screen.getByLabelText(/filter by medicine/i)).toBeInTheDocument()
+      expect(screen.getByTestId('spec-filter-select-toggle')).toBeInTheDocument()
     );
   });
 
@@ -234,7 +242,7 @@ describe('AdminMedicineStock — filters', () => {
     api.getAdminMedicineStock.mockResolvedValue({ data: [vial] });
     renderPage();
     await waitFor(() =>
-      expect(screen.getByLabelText(/filter by user/i)).toBeInTheDocument()
+      expect(screen.getByTestId('user-filter-select-toggle')).toBeInTheDocument()
     );
   });
 
@@ -243,10 +251,7 @@ describe('AdminMedicineStock — filters', () => {
     renderPage();
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.selectOptions(
-      screen.getByLabelText(/filter by medicine/i),
-      'Shield FX Vial 10 ml'
-    );
+    await pickFilterOption('spec-filter-select-toggle', 'Filter by Medicine', 'Shield FX Vial 10 ml');
 
     const regularSection = screen.getByRole('heading', { name: /regular stock/i }).closest('section');
     expect(within(regularSection).getByText('Shield FX Vial 10 ml')).toBeInTheDocument();
@@ -258,7 +263,7 @@ describe('AdminMedicineStock — filters', () => {
     renderPage();
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/filter by user/i), 'jane.smith');
+    await pickFilterOption('user-filter-select-toggle', 'Filter by User', 'jane.smith');
 
     const regularSection = screen.getByRole('heading', { name: /regular stock/i }).closest('section');
     expect(within(regularSection).queryByText('john.doe')).not.toBeInTheDocument();
@@ -275,10 +280,10 @@ describe('AdminMedicineStock — filters', () => {
     renderPage();
     await waitFor(() => screen.getAllByRole('table'));
 
-    const userSelect = screen.getByLabelText(/filter by user/i);
-    const options = Array.from(userSelect.options).map(o => o.value);
-    expect(options).toContain('john.doe');
-    expect(options).not.toContain('admin'); // admin only holds ADMIN_MEDICINE_STOCK
+    await userEvent.click(screen.getByTestId('user-filter-select-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'Filter by User' });
+    expect(within(panel).getByRole('checkbox', { name: 'john.doe' })).toBeInTheDocument();
+    expect(within(panel).queryByRole('checkbox', { name: 'admin' })).not.toBeInTheDocument(); // admin only holds ADMIN_MEDICINE_STOCK
   });
 
   test('clearing medicine filter restores all rows', async () => {
@@ -286,8 +291,8 @@ describe('AdminMedicineStock — filters', () => {
     renderPage();
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/filter by medicine/i), 'Shield FX Vial 10 ml');
-    await userEvent.selectOptions(screen.getByLabelText(/filter by medicine/i), '');
+    await pickFilterOption('spec-filter-select-toggle', 'Filter by Medicine', 'Shield FX Vial 10 ml');
+    await userEvent.click(within(screen.getByRole('listbox', { name: 'Filter by Medicine' })).getByRole('checkbox', { name: /^all medicines$/i }));
 
     const regularSection = screen.getByRole('heading', { name: /regular stock/i }).closest('section');
     expect(within(regularSection).getByText('Shield FX Vial 10 ml')).toBeInTheDocument();

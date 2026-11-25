@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible, approveCard } = require('./helpers');
+const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, scrollUntilVisible, approveCard, pickMultiSelectOption } = require('./helpers');
 
 async function submitAndApprove(page, who, note) {
   await loginAsUser(page, who);
@@ -114,10 +114,10 @@ test.describe('View Reports', () => {
 
   test('shows User and Medicine Spec filter dropdowns for the Sales Report', async ({ page }) => {
     await page.locator('#report-select').selectOption('today-sales');
-    await expect(page.getByLabel(/^user$/i)).toBeVisible();
-    await expect(page.getByLabel(/medicine spec/i)).toBeVisible();
-    await expect(page.getByLabel(/^user$/i)).toHaveValue('ALL');
-    await expect(page.getByLabel(/medicine spec/i)).toHaveValue('ALL');
+    await expect(page.locator('#sales-user-filter-toggle')).toBeVisible();
+    await expect(page.locator('#sales-medicine-filter-toggle')).toBeVisible();
+    await expect(page.locator('#sales-user-filter-toggle')).toHaveText('All Users');
+    await expect(page.locator('#sales-medicine-filter-toggle')).toHaveText('All Medicines');
   });
 
   test('filtering the Sales Report by user narrows it to only that user\'s sales', async ({ page }) => {
@@ -132,7 +132,7 @@ test.describe('View Reports', () => {
     const today = new Date().toISOString().slice(0, 10);
     await page.locator('#sales-from-input').fill(today);
     await page.locator('#sales-to-input').fill(today);
-    await page.getByLabel(/^user$/i).selectOption('jane.smith');
+    await pickMultiSelectOption(page, 'sales-user-filter', 'jane.smith');
     await page.getByRole('button', { name: /generate report/i }).click();
 
     await expect(page.locator('pre.report-content')).toContainText('Jane Smith', { timeout: 10000 });
@@ -146,17 +146,20 @@ test.describe('View Reports', () => {
     // they're populated from different endpoints) so this test is robust regardless of seed
     // data ordering or accumulated Playwright test medicines from earlier runs.
     await page.locator('#report-select').selectOption('today-sales');
-    const specSelect = page.getByLabel(/medicine spec/i);
-    const label1 = await specSelect.locator('option').nth(1).innerText();
-    const label2 = await specSelect.locator('option').nth(2).innerText();
+    await page.locator('#sales-medicine-filter-toggle').click();
+    const specPanel = page.getByRole('listbox', { name: 'Medicine Spec' });
+    // index 0 is the "All Medicines" checkbox; 1 and 2 are the first two real options.
+    const label1 = await specPanel.getByRole('checkbox').nth(1).evaluate(el => el.parentElement.textContent.trim());
+    const label2 = await specPanel.getByRole('checkbox').nth(2).evaluate(el => el.parentElement.textContent.trim());
+    await page.keyboard.press('Escape');
 
-    // Labels are "Vial N ml" or "Tablet N mg (10 Tablets)" — parse type + spec number back out
-    // so SubmitTransaction's #type-select (VIAL/TABLET) and #spec-select (matching label) can be
-    // driven directly from this page's own data.
+    // Labels are brand-inclusive, e.g. "Cipla Vial N ml" or "Cipla Tablet N mg (10 Tablets)" —
+    // parse type + spec number back out so SubmitTransaction's #type-select (VIAL/TABLET) and
+    // #spec-select (matching label) can be driven directly from this page's own data.
     const parseLabel = (label) => {
-      const vial = label.match(/^Vial (\d+) ml$/i);
+      const vial = label.match(/Vial (\d+) ml$/i);
       if (vial) return { type: 'VIAL', specLabel: `${vial[1]} ml` };
-      const tablet = label.match(/^Tablet (\d+) mg/i);
+      const tablet = label.match(/Tablet (\d+) mg/i);
       return { type: 'TABLET', specLabel: `${tablet[1]} mg (10 Tablets)` };
     };
     const target = parseLabel(label1);
@@ -193,7 +196,7 @@ test.describe('View Reports', () => {
     const today = new Date().toISOString().slice(0, 10);
     await page.locator('#sales-from-input').fill(today);
     await page.locator('#sales-to-input').fill(today);
-    await page.getByLabel(/medicine spec/i).selectOption({ label: label1 });
+    await pickMultiSelectOption(page, 'sales-medicine-filter', label1);
     await page.getByRole('button', { name: /generate report/i }).click();
 
     await expect(page.locator('pre.report-content')).toContainText(targetNote, { timeout: 10000 });

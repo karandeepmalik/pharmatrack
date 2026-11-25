@@ -74,18 +74,19 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "LEFT JOIN FETCH t.approvedBy " +
            "WHERE t.submittedBy = :user " +
            "AND (:status IS NULL OR t.status = :status) " +
-           "AND (:medicineId IS NULL OR m.id = :medicineId) " +
+           "AND (:medicineIdsEmpty = true OR m.id IN :medicineIds) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern) " +
            "ORDER BY t.submittedAt DESC, t.id DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t " +
            "WHERE t.submittedBy = :user " +
            "AND (:status IS NULL OR t.status = :status) " +
-           "AND (:medicineId IS NULL OR t.medicine.id = :medicineId) " +
+           "AND (:medicineIdsEmpty = true OR t.medicine.id IN :medicineIds) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern)")
     Page<Transaction> searchMyHistory(
             @Param("user") User user,
             @Param("status") Transaction.TransactionStatus status,
-            @Param("medicineId") Long medicineId,
+            @Param("medicineIdsEmpty") boolean medicineIdsEmpty,
+            @Param("medicineIds") List<Long> medicineIds,
             @Param("notesPattern") String notesPattern,
             Pageable pageable);
 
@@ -110,12 +111,18 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
     /**
      * All transactions submitted in a date range, with optional status/username/medicine/notes
      * filters — backs the paginated admin history endpoint ("View Past Medicine Dispatches").
-     * Every filter param is nullable: passing null for a param makes its "(:param IS NULL OR ...)"
-     * clause always true, so the caller only needs one method regardless of which filters are
-     * actually in use. Filtering happens here (server-side, against the full matching set) rather
-     * than being left to the frontend to apply against whatever page happens to be loaded —
-     * without this, a wide date range with more results than one page would silently hide
-     * real matches that just hadn't been scrolled into view yet.
+     * Every list filter is a pair of params: "<x>Empty" (true means "no filter on x", always
+     * evaluates the OR true) plus "<x>" itself (always a real, possibly-empty List — never bound
+     * null). This two-param shape is required, not stylistic: binding the *same* named parameter
+     * both to an "IS NULL" scalar check and to an "IN :param" collection expansion makes Hibernate
+     * infer a single scalar type for it from the first usage, so the IN usage then fails to bind a
+     * List at all ("Parameter value did not match expected type") — confirmed empirically against
+     * this exact JPQL shape. Splitting into an explicit boolean flag plus an always-non-null list
+     * sidesteps that inference entirely, and was verified to produce correct results for String-,
+     * enum-, and Long-typed IN columns alike. Filtering happens here (server-side, against the
+     * full matching set) rather than being left to the frontend to apply against whatever page
+     * happens to be loaded — without this, a wide date range with more results than one page
+     * would silently hide real matches that just hadn't been scrolled into view yet.
      *
      * notesPattern must arrive pre-built as a full lowercased LIKE pattern (e.g. "%clinic%"), not
      * as a raw substring wrapped in LOWER(CONCAT(...)) here: Postgres's JDBC driver can't infer a
@@ -136,55 +143,65 @@ public interface TransactionRepository extends JpaRepository<Transaction,Long> {
            "JOIN FETCH t.submittedBy u JOIN FETCH t.medicine m JOIN FETCH m.pharmaCompany " +
            "LEFT JOIN FETCH t.approvedBy " +
            "WHERE t.submittedAt >= :start AND t.submittedAt < :end " +
-           "AND (:status IS NULL OR t.status = :status) " +
-           "AND (:username IS NULL OR u.username = :username) " +
-           "AND (:medicineId IS NULL OR m.id = :medicineId) " +
-           "AND (:medicineStockType IS NULL OR t.medicineStockType = :medicineStockType) " +
-           "AND (:paymentStatus IS NULL OR t.paymentStatus = :paymentStatus) " +
+           "AND (:statusesEmpty = true OR t.status IN :statuses) " +
+           "AND (:usernamesEmpty = true OR u.username IN :usernames) " +
+           "AND (:medicineIdsEmpty = true OR m.id IN :medicineIds) " +
+           "AND (:medicineStockTypesEmpty = true OR t.medicineStockType IN :medicineStockTypes) " +
+           "AND (:paymentStatusesEmpty = true OR t.paymentStatus IN :paymentStatuses) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern) " +
            "ORDER BY t.submittedAt DESC, t.id DESC",
            countQuery = "SELECT COUNT(t) FROM Transaction t " +
            "WHERE t.submittedAt >= :start AND t.submittedAt < :end " +
-           "AND (:status IS NULL OR t.status = :status) " +
-           "AND (:username IS NULL OR t.submittedBy.username = :username) " +
-           "AND (:medicineId IS NULL OR t.medicine.id = :medicineId) " +
-           "AND (:medicineStockType IS NULL OR t.medicineStockType = :medicineStockType) " +
-           "AND (:paymentStatus IS NULL OR t.paymentStatus = :paymentStatus) " +
+           "AND (:statusesEmpty = true OR t.status IN :statuses) " +
+           "AND (:usernamesEmpty = true OR t.submittedBy.username IN :usernames) " +
+           "AND (:medicineIdsEmpty = true OR t.medicine.id IN :medicineIds) " +
+           "AND (:medicineStockTypesEmpty = true OR t.medicineStockType IN :medicineStockTypes) " +
+           "AND (:paymentStatusesEmpty = true OR t.paymentStatus IN :paymentStatuses) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern)")
     Page<Transaction> searchHistory(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
-            @Param("status") Transaction.TransactionStatus status,
-            @Param("username") String username,
-            @Param("medicineId") Long medicineId,
-            @Param("medicineStockType") MedicineStock.MedicineStockType medicineStockType,
-            @Param("paymentStatus") Transaction.PaymentStatus paymentStatus,
+            @Param("statusesEmpty") boolean statusesEmpty,
+            @Param("statuses") List<Transaction.TransactionStatus> statuses,
+            @Param("usernamesEmpty") boolean usernamesEmpty,
+            @Param("usernames") List<String> usernames,
+            @Param("medicineIdsEmpty") boolean medicineIdsEmpty,
+            @Param("medicineIds") List<Long> medicineIds,
+            @Param("medicineStockTypesEmpty") boolean medicineStockTypesEmpty,
+            @Param("medicineStockTypes") List<MedicineStock.MedicineStockType> medicineStockTypes,
+            @Param("paymentStatusesEmpty") boolean paymentStatusesEmpty,
+            @Param("paymentStatuses") List<Transaction.PaymentStatus> paymentStatuses,
             @Param("notesPattern") String notesPattern,
             Pageable pageable);
 
     /**
      * Sum of quantity across the *entire* server-side matching set for searchHistory's filters
      * (not just whatever page has been scroll-loaded) — backs the "Total Quantity" figure on
-     * View Past Medicine Dispatches. Same nullable-predicate pattern, so it always matches
+     * View Past Medicine Dispatches. Same empty-flag/list-pair pattern, so it always matches
      * exactly what searchHistory itself would return. COALESCE guards against SQL's SUM
      * returning NULL (not zero) when no rows match.
      */
     @Query("SELECT COALESCE(SUM(t.quantity), 0) FROM Transaction t " +
            "WHERE t.submittedAt >= :start AND t.submittedAt < :end " +
-           "AND (:status IS NULL OR t.status = :status) " +
-           "AND (:username IS NULL OR t.submittedBy.username = :username) " +
-           "AND (:medicineId IS NULL OR t.medicine.id = :medicineId) " +
-           "AND (:medicineStockType IS NULL OR t.medicineStockType = :medicineStockType) " +
-           "AND (:paymentStatus IS NULL OR t.paymentStatus = :paymentStatus) " +
+           "AND (:statusesEmpty = true OR t.status IN :statuses) " +
+           "AND (:usernamesEmpty = true OR t.submittedBy.username IN :usernames) " +
+           "AND (:medicineIdsEmpty = true OR t.medicine.id IN :medicineIds) " +
+           "AND (:medicineStockTypesEmpty = true OR t.medicineStockType IN :medicineStockTypes) " +
+           "AND (:paymentStatusesEmpty = true OR t.paymentStatus IN :paymentStatuses) " +
            "AND (:notesPattern IS NULL OR LOWER(t.notes) LIKE :notesPattern)")
     BigDecimal sumQuantityForHistory(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end,
-            @Param("status") Transaction.TransactionStatus status,
-            @Param("username") String username,
-            @Param("medicineId") Long medicineId,
-            @Param("medicineStockType") MedicineStock.MedicineStockType medicineStockType,
-            @Param("paymentStatus") Transaction.PaymentStatus paymentStatus,
+            @Param("statusesEmpty") boolean statusesEmpty,
+            @Param("statuses") List<Transaction.TransactionStatus> statuses,
+            @Param("usernamesEmpty") boolean usernamesEmpty,
+            @Param("usernames") List<String> usernames,
+            @Param("medicineIdsEmpty") boolean medicineIdsEmpty,
+            @Param("medicineIds") List<Long> medicineIds,
+            @Param("medicineStockTypesEmpty") boolean medicineStockTypesEmpty,
+            @Param("medicineStockTypes") List<MedicineStock.MedicineStockType> medicineStockTypes,
+            @Param("paymentStatusesEmpty") boolean paymentStatusesEmpty,
+            @Param("paymentStatuses") List<Transaction.PaymentStatus> paymentStatuses,
             @Param("notesPattern") String notesPattern);
 
     /**

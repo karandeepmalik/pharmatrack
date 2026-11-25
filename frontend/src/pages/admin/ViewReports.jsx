@@ -4,11 +4,8 @@ import * as api from '../../api/api';
 import SalesGraphReport from './SalesGraphReport';
 import InventoryProjectionReport from './InventoryProjectionReport';
 import StockRunwayReport from './StockRunwayReport';
-
-const medOptionLabel = (m) =>
-    m.type === 'VIAL'
-        ? `Vial ${m.specification} ml`
-        : `Tablet ${m.specification} mg (10 Tablets)`;
+import MultiSelectDropdown from '../../components/MultiSelectDropdown';
+import { medicineOptionLabel } from '../../constants';
 
 const REPORTS = [
     { value: '', label: '-- Select a Report --' },
@@ -30,8 +27,10 @@ export default function ViewReports() {
     const [valuationDate, setValuationDate] = useState(todayStr());
     const [salesFrom, setSalesFrom] = useState(todayStr());
     const [salesTo, setSalesTo] = useState(todayStr());
-    const [salesUserFilter, setSalesUserFilter] = useState('ALL');
-    const [salesMedicineFilter, setSalesMedicineFilter] = useState('ALL');
+    // Empty array means "no filter" (every page's existing "ALL" convention, applied to the
+    // multi-select equivalent).
+    const [salesUserFilter, setSalesUserFilter] = useState([]);
+    const [salesMedicineFilter, setSalesMedicineFilter] = useState([]);
     const [users, setUsers] = useState([]);
     const [medicines, setMedicines] = useState([]);
     const [content, setContent] = useState('');
@@ -56,8 +55,8 @@ export default function ViewReports() {
             else if (selected === 'medicine-stock-valuation') res = await api.getReportMedicineStockValuation(valuationDate || null);
             else if (selected === 'today-sales') res = await api.getReportTodaySales(
                 salesFrom, salesTo,
-                salesUserFilter === 'ALL' ? undefined : salesUserFilter,
-                salesMedicineFilter === 'ALL' ? undefined : salesMedicineFilter
+                salesUserFilter.length ? salesUserFilter : undefined,
+                salesMedicineFilter.length ? salesMedicineFilter : undefined
             );
             else if (selected === 'daily') res = await api.getReportDaily(dailyDate || null);
             setContent(res.data.content);
@@ -145,34 +144,22 @@ export default function ViewReports() {
 
                         {selected === 'today-sales' && (
                             <div className="form-row">
-                                <div className="form-group">
-                                    <label htmlFor="sales-user-filter">User</label>
-                                    <select
-                                        id="sales-user-filter"
-                                        value={salesUserFilter}
-                                        onChange={e => { setSalesUserFilter(e.target.value); setContent(''); }}>
-                                        <option value="ALL">All Users</option>
-                                        {users.map(u => (
-                                            <option key={u.id} value={u.username}>
-                                                {u.fullName} ({u.username})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label htmlFor="sales-medicine-filter">Medicine Spec</label>
-                                    <select
-                                        id="sales-medicine-filter"
-                                        value={salesMedicineFilter}
-                                        onChange={e => { setSalesMedicineFilter(e.target.value); setContent(''); }}>
-                                        <option value="ALL">All Medicines</option>
-                                        {medicines.map(m => (
-                                            <option key={m.id} value={String(m.id)}>
-                                                {medOptionLabel(m)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <MultiSelectDropdown
+                                    id="sales-user-filter"
+                                    label="User"
+                                    allLabel="All Users"
+                                    options={users.map(u => ({ value: u.username, label: `${u.fullName} (${u.username})` }))}
+                                    selected={salesUserFilter}
+                                    onChange={v => { setSalesUserFilter(v); setContent(''); }}
+                                />
+                                <MultiSelectDropdown
+                                    id="sales-medicine-filter"
+                                    label="Medicine Spec"
+                                    allLabel="All Medicines"
+                                    options={medicines.map(m => ({ value: String(m.id), label: medicineOptionLabel(m) }))}
+                                    selected={salesMedicineFilter}
+                                    onChange={v => { setSalesMedicineFilter(v); setContent(''); }}
+                                />
                             </div>
                         )}
 

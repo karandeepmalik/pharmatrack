@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
+import MultiSelectDropdown from '../../components/MultiSelectDropdown';
 
 const specDisplay = (item) =>
     item.medicineType === 'VIAL'
@@ -47,8 +48,10 @@ export default function AdminMedicineStock() {
     const [medicineStock, setMedicineStock] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [specFilter, setSpecFilter] = useState('');
-    const [userFilter, setUserFilter] = useState('');
+    // Empty array means "no filter" (every page's existing "ALL" convention, applied to the
+    // multi-select equivalent).
+    const [specFilter, setSpecFilter] = useState([]);
+    const [userFilter, setUserFilter] = useState([]);
 
     useEffect(() => {
         api.getAdminMedicineStock()
@@ -67,8 +70,8 @@ export default function AdminMedicineStock() {
 
     const applyFilters = (list) =>
         list
-            .filter(item => !specFilter || item.medicineName === specFilter)
-            .filter(item => !userFilter || item.username === userFilter)
+            .filter(item => specFilter.length === 0 || specFilter.includes(item.medicineName))
+            .filter(item => userFilter.length === 0 || userFilter.includes(item.username))
             .sort((a, b) =>
                 a.medicineName.localeCompare(b.medicineName) ||
                 a.username.localeCompare(b.username));
@@ -86,30 +89,22 @@ export default function AdminMedicineStock() {
 
             <div className="form-card">
                 <div className="form-row">
-                    <div className="form-group">
-                        <label htmlFor="spec-filter-select">Filter by Medicine</label>
-                        <select
-                            id="spec-filter-select"
-                            value={specFilter}
-                            onChange={e => setSpecFilter(e.target.value)}>
-                            <option value="">All Medicines</option>
-                            {specOptions.map(s => (
-                                <option key={s} value={s}>{s}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="user-filter-select">Filter by User</label>
-                        <select
-                            id="user-filter-select"
-                            value={userFilter}
-                            onChange={e => setUserFilter(e.target.value)}>
-                            <option value="">All Users</option>
-                            {userOptions.map(u => (
-                                <option key={u} value={u}>{u}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        id="spec-filter-select"
+                        label="Filter by Medicine"
+                        allLabel="All Medicines"
+                        options={specOptions.map(s => ({ value: s, label: s }))}
+                        selected={specFilter}
+                        onChange={setSpecFilter}
+                    />
+                    <MultiSelectDropdown
+                        id="user-filter-select"
+                        label="Filter by User"
+                        allLabel="All Users"
+                        options={userOptions.map(u => ({ value: u, label: u }))}
+                        selected={userFilter}
+                        onChange={setUserFilter}
+                    />
                 </div>
             </div>
 

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
-import { medicineStockTypeLabel, PAYMENT_STATUSES, paymentStatusLabel } from '../../constants';
+import { medicineStockTypeLabel, PAYMENT_STATUSES, paymentStatusLabel, medicineOptionLabel } from '../../constants';
 import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
 import ScreenshotUpload from '../../components/ScreenshotUpload';
 import useScreenshot from '../../hooks/useScreenshot';
+import MultiSelectDropdown from '../../components/MultiSelectDropdown';
 
 // One instance per edit row — a raw <input type="file" multiple> relied on the browser's own
 // multi-select gesture (easy to miss, and offered no preview/remove), so admins effectively
@@ -46,11 +47,6 @@ const weekAgoStr = () => {
 const specLabel = (type, spec) =>
     type === 'VIAL' ? `${spec} ml` : `${spec} mg (10 Tablets)`;
 
-const medOptionLabel = (m) =>
-    m.type === 'VIAL'
-        ? `Vial ${m.specification} ml`
-        : `Tablet ${m.specification} mg (10 Tablets)`;
-
 export default function AdminEditDispatch() {
     const [from, setFrom]               = useState(weekAgoStr());
     const [to, setTo]                   = useState(todayStr());
@@ -61,10 +57,12 @@ export default function AdminEditDispatch() {
 
     const [users, setUsers]                       = useState([]);
     const [medicines, setMedicines]               = useState([]);
-    const [userFilter, setUserFilter]             = useState('ALL');
-    const [medicineFilter, setMedicineFilter]     = useState('ALL');
-    const [stockTypeFilter, setStockTypeFilter]   = useState('ALL');
-    const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
+    // Empty array means "no filter" (every page's existing "ALL" convention, applied to the
+    // multi-select equivalent).
+    const [userFilter, setUserFilter]             = useState([]);
+    const [medicineFilter, setMedicineFilter]     = useState([]);
+    const [stockTypeFilter, setStockTypeFilter]   = useState([]);
+    const [paymentStatusFilter, setPaymentStatusFilter] = useState([]);
     const [notesSearch, setNotesSearch]           = useState('');
 
     // Inline edit state: { [id]: { active, userId, medicineId, notes, quantity, medicineStockType, pricePerUnit, date, paymentStatus, screenshotFiles, saving, error } }
@@ -93,10 +91,10 @@ export default function AdminEditDispatch() {
         setEditState({});
         setDeleteState({});
         try {
-            const username      = userFilter === 'ALL' ? undefined : userFilter;
-            const medicineId    = medicineFilter === 'ALL' ? undefined : medicineFilter;
-            const stockType     = stockTypeFilter === 'ALL' ? undefined : stockTypeFilter;
-            const paymentStatus = paymentStatusFilter === 'ALL' ? undefined : paymentStatusFilter;
+            const username      = userFilter.length ? userFilter : undefined;
+            const medicineId    = medicineFilter.length ? medicineFilter : undefined;
+            const stockType     = stockTypeFilter.length ? stockTypeFilter : undefined;
+            const paymentStatus = paymentStatusFilter.length ? paymentStatusFilter : undefined;
             const notes         = notesSearch.trim() ? notesSearch.trim() : undefined;
             const res = await api.getTransactionHistory(from, to, 'ALL', 0, 1000, username, medicineId, notes, stockType, paymentStatus);
             setTransactions(res.data?.content ?? []);
@@ -221,57 +219,41 @@ export default function AdminEditDispatch() {
                 </div>
 
                 <div className="form-row">
-                    <div className="form-group">
-                        <label htmlFor="user-filter">User</label>
-                        <select
-                            id="user-filter"
-                            value={userFilter}
-                            onChange={e => { setUserFilter(e.target.value); invalidateSearch(); }}>
-                            <option value="ALL">All Users</option>
-                            {users.map(u => (
-                                <option key={u.id} value={u.username}>
-                                    {u.fullName} ({u.username})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="medicine-filter">Medicine Spec</label>
-                        <select
-                            id="medicine-filter"
-                            value={medicineFilter}
-                            onChange={e => { setMedicineFilter(e.target.value); invalidateSearch(); }}>
-                            <option value="ALL">All Medicines</option>
-                            {medicines.map(m => (
-                                <option key={m.id} value={String(m.id)}>
-                                    {medOptionLabel(m)}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="stock-type-filter">Stock Type</label>
-                        <select
-                            id="stock-type-filter"
-                            value={stockTypeFilter}
-                            onChange={e => { setStockTypeFilter(e.target.value); invalidateSearch(); }}>
-                            <option value="ALL">All Stock Types</option>
-                            <option value="REGULAR_MEDICINE_STOCK">Regular Medicine Stock</option>
-                            <option value="ADMIN_MEDICINE_STOCK">Admin Medicine Stock</option>
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="payment-status-filter">Payment Status</label>
-                        <select
-                            id="payment-status-filter"
-                            value={paymentStatusFilter}
-                            onChange={e => { setPaymentStatusFilter(e.target.value); invalidateSearch(); }}>
-                            <option value="ALL">All</option>
-                            {PAYMENT_STATUSES.map(s => (
-                                <option key={s} value={s}>{paymentStatusLabel(s)}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        id="user-filter"
+                        label="User"
+                        allLabel="All Users"
+                        options={users.map(u => ({ value: u.username, label: `${u.fullName} (${u.username})` }))}
+                        selected={userFilter}
+                        onChange={v => { setUserFilter(v); invalidateSearch(); }}
+                    />
+                    <MultiSelectDropdown
+                        id="medicine-filter"
+                        label="Medicine Spec"
+                        allLabel="All Medicines"
+                        options={medicines.map(m => ({ value: String(m.id), label: medicineOptionLabel(m) }))}
+                        selected={medicineFilter}
+                        onChange={v => { setMedicineFilter(v); invalidateSearch(); }}
+                    />
+                    <MultiSelectDropdown
+                        id="stock-type-filter"
+                        label="Stock Type"
+                        allLabel="All Stock Types"
+                        options={[
+                            { value: 'REGULAR_MEDICINE_STOCK', label: 'Regular Medicine Stock' },
+                            { value: 'ADMIN_MEDICINE_STOCK', label: 'Admin Medicine Stock' },
+                        ]}
+                        selected={stockTypeFilter}
+                        onChange={v => { setStockTypeFilter(v); invalidateSearch(); }}
+                    />
+                    <MultiSelectDropdown
+                        id="payment-status-filter"
+                        label="Payment Status"
+                        allLabel="All"
+                        options={PAYMENT_STATUSES.map(s => ({ value: s, label: paymentStatusLabel(s) }))}
+                        selected={paymentStatusFilter}
+                        onChange={v => { setPaymentStatusFilter(v); invalidateSearch(); }}
+                    />
                     <div className="form-group">
                         <label htmlFor="notes-search">Search Notes</label>
                         <input

@@ -250,19 +250,28 @@ describe('ViewMedicineStockAdjustments — filters', () => {
         await waitFor(() => screen.getByRole('table'));
     });
 
+    // Opens a MultiSelectDropdown (by its toggle button's data-testid) and clicks the checkbox
+    // matching optionName within its panel (found by the dropdown's `label` prop).
+    const pickFilterOption = async (toggleTestId, panelName, optionName) => {
+        await userEvent.click(screen.getByTestId(toggleTestId));
+        const panel = screen.getByRole('listbox', { name: panelName });
+        await userEvent.click(within(panel).getByRole('checkbox', { name: optionName }));
+    };
+
     test('shows User and Type dropdowns after search', () => {
-        expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument();
-        expect(screen.getByLabelText(/^type$/i)).toBeInTheDocument();
+        expect(screen.getByTestId('user-filter-toggle')).toBeInTheDocument();
+        expect(screen.getByTestId('type-filter-toggle')).toBeInTheDocument();
     });
 
-    test('user dropdown lists unique usernames from results', () => {
-        const select = screen.getByLabelText(/^user$/i);
-        expect(within(select).getByRole('option', { name: 'john.doe' })).toBeInTheDocument();
-        expect(within(select).getByRole('option', { name: 'jane.smith' })).toBeInTheDocument();
+    test('user dropdown lists unique usernames from results', async () => {
+        await userEvent.click(screen.getByTestId('user-filter-toggle'));
+        const panel = screen.getByRole('listbox', { name: 'User' });
+        expect(within(panel).getByRole('checkbox', { name: 'john.doe' })).toBeInTheDocument();
+        expect(within(panel).getByRole('checkbox', { name: 'jane.smith' })).toBeInTheDocument();
     });
 
     test('filtering by user shows only that user\'s records', async () => {
-        await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+        await pickFilterOption('user-filter-toggle', 'User', 'john.doe');
         expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
         const table = screen.getByRole('table');
         expect(within(table).getByText('john.doe')).toBeInTheDocument();
@@ -270,7 +279,7 @@ describe('ViewMedicineStockAdjustments — filters', () => {
     });
 
     test('filtering by ADD type shows only ADD records', async () => {
-        await userEvent.selectOptions(screen.getByLabelText(/^type$/i), 'ADD');
+        await pickFilterOption('type-filter-toggle', 'Type', 'ADD');
         expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
         const table = screen.getByRole('table');
         expect(within(table).getByText('ADD')).toBeInTheDocument();
@@ -278,7 +287,7 @@ describe('ViewMedicineStockAdjustments — filters', () => {
     });
 
     test('filtering by REDUCE type shows only REDUCE records', async () => {
-        await userEvent.selectOptions(screen.getByLabelText(/^type$/i), 'REDUCE');
+        await pickFilterOption('type-filter-toggle', 'Type', 'REDUCE');
         expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
         const table = screen.getByRole('table');
         expect(within(table).getByText('REDUCE')).toBeInTheDocument();
@@ -286,15 +295,15 @@ describe('ViewMedicineStockAdjustments — filters', () => {
     });
 
     test('combined user and type filter narrows results', async () => {
-        await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-        await userEvent.selectOptions(screen.getByLabelText(/^type$/i), 'REDUCE');
+        await pickFilterOption('user-filter-toggle', 'User', 'john.doe');
+        await pickFilterOption('type-filter-toggle', 'Type', 'REDUCE');
         // john.doe only has ADD, so REDUCE filter produces 0
         expect(screen.getByText(/results \(0\)/i)).toBeInTheDocument();
     });
 
     test('resetting user filter back to All Users restores all rows', async () => {
-        await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-        await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'ALL');
+        await pickFilterOption('user-filter-toggle', 'User', 'john.doe');
+        await userEvent.click(within(screen.getByRole('listbox', { name: 'User' })).getByRole('checkbox', { name: /^all users$/i }));
         expect(screen.getByText(/results \(2\)/i)).toBeInTheDocument();
     });
 });
@@ -344,18 +353,25 @@ describe('ViewMedicineStockAdjustments — medicine spec filter', () => {
         await waitFor(() => screen.getByRole('table'));
     });
 
+    const pickFilterOption = async (toggleTestId, panelName, optionName) => {
+        await userEvent.click(screen.getByTestId(toggleTestId));
+        const panel = screen.getByRole('listbox', { name: panelName });
+        await userEvent.click(within(panel).getByRole('checkbox', { name: optionName }));
+    };
+
     test('renders Medicine Spec filter dropdown after search', () => {
-        expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
+        expect(screen.getByTestId('medicine-filter-toggle')).toBeInTheDocument();
     });
 
-    test('medicine dropdown lists medicines fetched on mount', () => {
-        const select = screen.getByLabelText(/medicine spec/i);
-        expect(within(select).getByRole('option', { name: /vial 10 ml/i })).toBeInTheDocument();
-        expect(within(select).getByRole('option', { name: /tablet 25 mg/i })).toBeInTheDocument();
+    test('medicine dropdown lists medicines fetched on mount', async () => {
+        await userEvent.click(screen.getByTestId('medicine-filter-toggle'));
+        const panel = screen.getByRole('listbox', { name: 'Medicine Spec' });
+        expect(within(panel).getByRole('checkbox', { name: /vial 10 ml/i })).toBeInTheDocument();
+        expect(within(panel).getByRole('checkbox', { name: /tablet 25 mg/i })).toBeInTheDocument();
     });
 
     test('filtering by a specific medicine hides other medicines\' records', async () => {
-        await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '1');
+        await pickFilterOption('medicine-filter-toggle', 'Medicine Spec', /vial 10 ml/i);
         expect(screen.getByText(/results \(1\)/i)).toBeInTheDocument();
         const table = screen.getByRole('table');
         expect(within(table).getByText('Vial 10 note')).toBeInTheDocument();
@@ -363,13 +379,13 @@ describe('ViewMedicineStockAdjustments — medicine spec filter', () => {
     });
 
     test('resetting medicine filter to All Medicines restores all rows', async () => {
-        await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '1');
-        await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), 'ALL');
+        await pickFilterOption('medicine-filter-toggle', 'Medicine Spec', /vial 10 ml/i);
+        await userEvent.click(within(screen.getByRole('listbox', { name: 'Medicine Spec' })).getByRole('checkbox', { name: /^all medicines$/i }));
         expect(screen.getByText(/results \(2\)/i)).toBeInTheDocument();
     });
 
     test('medicine filter does not trigger a new API call', async () => {
-        await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '1');
+        await pickFilterOption('medicine-filter-toggle', 'Medicine Spec', /vial 10 ml/i);
         expect(api.getMedicineStockAdjustments).toHaveBeenCalledTimes(1);
     });
 });

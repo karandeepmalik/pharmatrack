@@ -68,12 +68,15 @@ test.describe('Medicine Dispatch History (user)', () => {
 
   test('the medicine spec filter narrows the list to the selected medicine', async ({ page }) => {
     await page.goto('/user/transactions');
-    await expect(page.locator('#spec-filter')).toBeVisible();
-    const optionCount = await page.locator('#spec-filter option').count();
+    await expect(page.locator('#spec-filter-toggle')).toBeVisible();
+
+    await page.locator('#spec-filter-toggle').click();
+    const panel = page.getByRole('listbox', { name: 'Medicine Spec' });
+    const optionCount = await panel.getByRole('checkbox').count();
     // "All Medicines" plus at least one real medicine from the catalog.
     expect(optionCount).toBeGreaterThan(1);
 
-    await page.locator('#spec-filter').selectOption({ index: 1 });
+    await panel.getByRole('checkbox').nth(1).check();
     // A real re-query happens (not a client-side re-filter of already-rendered cards) — just
     // confirm it doesn't error out and either shows matching cards or the empty state.
     await expect(

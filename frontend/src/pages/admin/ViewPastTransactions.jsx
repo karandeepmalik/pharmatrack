@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../../api/api';
-import { medicineStockTypeLabel, PAYMENT_STATUSES, paymentStatusLabel } from '../../constants';
+import { medicineStockTypeLabel, PAYMENT_STATUSES, paymentStatusLabel, medicineOptionLabel } from '../../constants';
 import PaymentScreenshotViewer from '../../components/PaymentScreenshotViewer';
+import MultiSelectDropdown from '../../components/MultiSelectDropdown';
 
 const PAGE_SIZE = 10;
 
@@ -15,7 +16,6 @@ const weekAgoStr = () => {
 };
 
 const STATUS_OPTIONS = [
-    { value: 'ALL',      label: 'All' },
     { value: 'APPROVED', label: 'Approved' },
     { value: 'REJECTED', label: 'Rejected' },
 ];
@@ -23,15 +23,12 @@ const STATUS_OPTIONS = [
 const specLabel = (type, spec) =>
     type === 'VIAL' ? `${spec} ml` : `${spec} mg (10 Tablets)`;
 
-const medOptionLabel = (m) =>
-    m.type === 'VIAL'
-        ? `Vial ${m.specification} ml`
-        : `Tablet ${m.specification} mg (10 Tablets)`;
-
 export default function ViewPastTransactions() {
     const [from, setFrom]             = useState(weekAgoStr());
     const [to, setTo]                 = useState(todayStr());
-    const [status, setStatus]         = useState('APPROVED');
+    // Empty array means "no filter" (every status) — the multi-select equivalent of the old
+    // single-value 'ALL'. Defaults to ['APPROVED'] to match the page's previous default.
+    const [statusFilter, setStatusFilter] = useState(['APPROVED']);
     const [transactions, setTransactions] = useState([]);
     const [totalCount, setTotalCount] = useState(0);
     const [totalQuantity, setTotalQuantity] = useState(0);
@@ -43,10 +40,10 @@ export default function ViewPastTransactions() {
 
     const [users, setUsers]           = useState([]);
     const [medicines, setMedicines]   = useState([]);
-    const [userFilter, setUserFilter] = useState('ALL');
-    const [medicineFilter, setMedicineFilter] = useState('ALL');
+    const [userFilter, setUserFilter] = useState([]);
+    const [medicineFilter, setMedicineFilter] = useState([]);
     const [notesSearch, setNotesSearch] = useState('');
-    const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
+    const [paymentStatusFilter, setPaymentStatusFilter] = useState([]);
 
     const sentinelRef = useRef(null);
     const pageRef      = useRef(0);
@@ -54,7 +51,7 @@ export default function ViewPastTransactions() {
     // The exact filters a page-0 search was run with — scroll-triggered loads of subsequent
     // pages must keep using these, not whatever the form currently shows (the admin may have
     // changed a filter without pressing Search again yet).
-    const searchParamsRef = useRef({ from, to, status, userFilter, medicineFilter, notesSearch, paymentStatusFilter });
+    const searchParamsRef = useRef({ from, to, statusFilter, userFilter, medicineFilter, notesSearch, paymentStatusFilter });
 
     useEffect(() => {
         api.getUsers().then(r => setUsers(
@@ -77,12 +74,13 @@ export default function ViewPastTransactions() {
             setLoadingMore(true);
         }
 
-        const username      = params.userFilter === 'ALL' ? undefined : params.userFilter;
-        const medicineId    = params.medicineFilter === 'ALL' ? undefined : params.medicineFilter;
-        const notes         = params.notesSearch.trim() ? params.notesSearch.trim() : undefined;
-        const paymentStatus = params.paymentStatusFilter === 'ALL' ? undefined : params.paymentStatusFilter;
+        const status         = params.statusFilter.length ? params.statusFilter : undefined;
+        const username       = params.userFilter.length ? params.userFilter : undefined;
+        const medicineId     = params.medicineFilter.length ? params.medicineFilter : undefined;
+        const notes          = params.notesSearch.trim() ? params.notesSearch.trim() : undefined;
+        const paymentStatus  = params.paymentStatusFilter.length ? params.paymentStatusFilter : undefined;
 
-        api.getTransactionHistory(params.from, params.to, params.status, pg, PAGE_SIZE, username, medicineId, notes, undefined, paymentStatus)
+        api.getTransactionHistory(params.from, params.to, status, pg, PAGE_SIZE, username, medicineId, notes, undefined, paymentStatus)
             .then((r) => {
                 const content = r.data?.content;
                 const last    = r.data?.last ?? true;
@@ -107,7 +105,7 @@ export default function ViewPastTransactions() {
 
     const handleSearch = () => {
         if (!isValid) return;
-        const params = { from, to, status, userFilter, medicineFilter, notesSearch, paymentStatusFilter };
+        const params = { from, to, statusFilter, userFilter, medicineFilter, notesSearch, paymentStatusFilter };
         searchParamsRef.current = params;
         pageRef.current = 0;
         setSearched(true);
@@ -167,48 +165,33 @@ export default function ViewPastTransactions() {
                             onChange={e => { setTo(e.target.value); invalidateSearch(); }}
                         />
                     </div>
-                    <div className="form-group">
-                        <label htmlFor="status-filter">Status</label>
-                        <select
-                            id="status-filter"
-                            value={status}
-                            onChange={e => { setStatus(e.target.value); invalidateSearch(); }}>
-                            {STATUS_OPTIONS.map(o => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        id="status-filter"
+                        label="Status"
+                        allLabel="All"
+                        options={STATUS_OPTIONS}
+                        selected={statusFilter}
+                        onChange={v => { setStatusFilter(v); invalidateSearch(); }}
+                    />
                 </div>
 
                 <div className="form-row">
-                    <div className="form-group">
-                        <label htmlFor="user-filter">User</label>
-                        <select
-                            id="user-filter"
-                            value={userFilter}
-                            onChange={e => { setUserFilter(e.target.value); invalidateSearch(); }}>
-                            <option value="ALL">All Users</option>
-                            {users.map(u => (
-                                <option key={u.id} value={u.username}>
-                                    {u.fullName} ({u.username})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="medicine-filter">Medicine Spec</label>
-                        <select
-                            id="medicine-filter"
-                            value={medicineFilter}
-                            onChange={e => { setMedicineFilter(e.target.value); invalidateSearch(); }}>
-                            <option value="ALL">All Medicines</option>
-                            {medicines.map(m => (
-                                <option key={m.id} value={String(m.id)}>
-                                    {medOptionLabel(m)}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        id="user-filter"
+                        label="User"
+                        allLabel="All Users"
+                        options={users.map(u => ({ value: u.username, label: `${u.fullName} (${u.username})` }))}
+                        selected={userFilter}
+                        onChange={v => { setUserFilter(v); invalidateSearch(); }}
+                    />
+                    <MultiSelectDropdown
+                        id="medicine-filter"
+                        label="Medicine Spec"
+                        allLabel="All Medicines"
+                        options={medicines.map(m => ({ value: String(m.id), label: medicineOptionLabel(m) }))}
+                        selected={medicineFilter}
+                        onChange={v => { setMedicineFilter(v); invalidateSearch(); }}
+                    />
                     <div className="form-group">
                         <label htmlFor="notes-search">Search Notes</label>
                         <input
@@ -219,18 +202,14 @@ export default function ViewPastTransactions() {
                             onChange={e => { setNotesSearch(e.target.value); invalidateSearch(); }}
                         />
                     </div>
-                    <div className="form-group">
-                        <label htmlFor="payment-status-filter">Payment Status</label>
-                        <select
-                            id="payment-status-filter"
-                            value={paymentStatusFilter}
-                            onChange={e => { setPaymentStatusFilter(e.target.value); invalidateSearch(); }}>
-                            <option value="ALL">All</option>
-                            {PAYMENT_STATUSES.map(s => (
-                                <option key={s} value={s}>{paymentStatusLabel(s)}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <MultiSelectDropdown
+                        id="payment-status-filter"
+                        label="Payment Status"
+                        allLabel="All"
+                        options={PAYMENT_STATUSES.map(s => ({ value: s, label: paymentStatusLabel(s) }))}
+                        selected={paymentStatusFilter}
+                        onChange={v => { setPaymentStatusFilter(v); invalidateSearch(); }}
+                    />
                 </div>
 
                 {from > to && (

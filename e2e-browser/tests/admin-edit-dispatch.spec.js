@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT } = require('./helpers');
+const { loginAsAdmin, loginAsUser, PAYMENT_SCREENSHOT, pickMultiSelectOption, clearMultiSelect } = require('./helpers');
 
 // This page ("Modify or Delete a Medicine Dispatch Record", /admin/dispatch-records) is exactly
 // the page that regressed when /transactions/history's response shape changed from a bare array
@@ -126,11 +126,12 @@ test.describe('Modify or Delete a Medicine Dispatch Record', () => {
     await page.goto('/admin/dispatch-records');
     await page.locator('#from-date').fill(new Date().toISOString().slice(0, 10));
     await page.locator('#notes-search').fill(note);
-    await page.locator('#stock-type-filter').selectOption('REGULAR_MEDICINE_STOCK');
+    await pickMultiSelectOption(page, 'stock-type-filter', 'Regular Medicine Stock');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByText(/no dispatch records found/i)).toBeVisible({ timeout: 10000 });
 
-    await page.locator('#stock-type-filter').selectOption('ADMIN_MEDICINE_STOCK');
+    await clearMultiSelect(page, 'stock-type-filter');
+    await pickMultiSelectOption(page, 'stock-type-filter', 'Admin Medicine Stock');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByText(note)).toBeVisible({ timeout: 10000 });
   });

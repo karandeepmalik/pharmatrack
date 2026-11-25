@@ -152,27 +152,37 @@ describe('AdminEditDispatch — filters', () => {
     { id: 2, type: 'TABLET', specification: 25 },
   ];
 
+  // Opens a MultiSelectDropdown (by its toggle button's data-testid, e.g. "user-filter-toggle")
+  // and clicks the checkbox matching optionName within its panel (found by the dropdown's
+  // `label` prop, which is also its listbox's aria-label).
+  const pickFilterOption = async (toggleTestId, panelName, optionName) => {
+    await userEvent.click(screen.getByTestId(toggleTestId));
+    const panel = screen.getByRole('listbox', { name: panelName });
+    await userEvent.click(within(panel).getByRole('checkbox', { name: optionName }));
+  };
+
   test('renders User, Medicine Spec, Stock Type, Payment Status and Search Notes filter controls', async () => {
     api.getUsers.mockResolvedValue({ data: users });
     api.getMedicines.mockResolvedValue({ data: medicines });
     renderPage();
 
-    await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument());
-    expect(screen.getByLabelText(/medicine spec/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^stock type$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/payment status/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('user-filter-toggle')).toBeInTheDocument());
+    expect(screen.getByTestId('medicine-filter-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('stock-type-filter-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('payment-status-filter-toggle')).toBeInTheDocument();
     expect(screen.getByLabelText(/search notes/i)).toBeInTheDocument();
   });
 
   test('Payment Status filter offers All, Paid, Unpaid and Partial Payment and defaults to All', async () => {
     renderPage();
-    await waitFor(() => screen.getByLabelText(/payment status/i));
-    const select = screen.getByLabelText(/payment status/i);
-    expect(select).toHaveValue('ALL');
-    expect(within(select).getByRole('option', { name: /^all$/i })).toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: /^paid$/i })).toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: /^unpaid$/i })).toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: /partial payment/i })).toBeInTheDocument();
+    await waitFor(() => screen.getByTestId('payment-status-filter-toggle'));
+    expect(screen.getByTestId('payment-status-filter-toggle')).toHaveTextContent('All');
+    await userEvent.click(screen.getByTestId('payment-status-filter-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'Payment Status' });
+    expect(within(panel).getByRole('checkbox', { name: /^all$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /^paid$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /^unpaid$/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: /partial payment/i })).toBeInTheDocument();
   });
 
   test('leaving Payment Status at All omits the paymentStatus param (undefined)', async () => {
@@ -192,11 +202,11 @@ describe('AdminEditDispatch — filters', () => {
   test('changing Payment Status after a search hides the table until Search is pressed again', async () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/payment status/i));
+    await waitFor(() => screen.getByTestId('payment-status-filter-toggle'));
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'PAID');
+    await pickFilterOption('payment-status-filter-toggle', 'Payment Status', /^paid$/i);
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -207,9 +217,11 @@ describe('AdminEditDispatch — filters', () => {
     });
     renderPage();
 
-    await waitFor(() => expect(screen.getByLabelText(/^user$/i)).toBeInTheDocument());
-    expect(screen.queryByText('Admin User (admin)')).not.toBeInTheDocument();
-    expect(screen.getByText('John Doe (john.doe)')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('user-filter-toggle')).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('user-filter-toggle'));
+    const panel = screen.getByRole('listbox', { name: 'User' });
+    expect(within(panel).queryByRole('checkbox', { name: 'Admin User (admin)' })).not.toBeInTheDocument();
+    expect(within(panel).getByRole('checkbox', { name: 'John Doe (john.doe)' })).toBeInTheDocument();
   });
 
   test('passes user, medicine, stock type, payment status and notes filters to getTransactionHistory on Search', async () => {
@@ -218,18 +230,18 @@ describe('AdminEditDispatch — filters', () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([]));
     renderPage();
 
-    await waitFor(() => screen.getByLabelText(/^user$/i));
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
-    await userEvent.selectOptions(screen.getByLabelText(/medicine spec/i), '2');
-    await userEvent.selectOptions(screen.getByLabelText(/^stock type$/i), 'ADMIN_MEDICINE_STOCK');
-    await userEvent.selectOptions(screen.getByLabelText(/payment status/i), 'UNPAID');
+    await waitFor(() => screen.getByTestId('user-filter-toggle'));
+    await pickFilterOption('user-filter-toggle', 'User', /john doe \(john\.doe\)/i);
+    await pickFilterOption('medicine-filter-toggle', 'Medicine Spec', /tablet 25 mg/i);
+    await pickFilterOption('stock-type-filter-toggle', 'Stock Type', /^admin medicine stock$/i);
+    await pickFilterOption('payment-status-filter-toggle', 'Payment Status', /^unpaid$/i);
     await userEvent.type(screen.getByLabelText(/search notes/i), 'clinic');
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
 
     await waitFor(() =>
       expect(api.getTransactionHistory).toHaveBeenCalledWith(
         expect.any(String), expect.any(String), 'ALL', 0, 1000,
-        'john.doe', '2', 'clinic', 'ADMIN_MEDICINE_STOCK', 'UNPAID'
+        ['john.doe'], ['2'], 'clinic', ['ADMIN_MEDICINE_STOCK'], ['UNPAID']
       )
     );
   });
@@ -239,11 +251,11 @@ describe('AdminEditDispatch — filters', () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx()]));
     renderPage();
 
-    await waitFor(() => screen.getByLabelText(/^user$/i));
+    await waitFor(() => screen.getByTestId('user-filter-toggle'));
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));
 
-    await userEvent.selectOptions(screen.getByLabelText(/^user$/i), 'john.doe');
+    await pickFilterOption('user-filter-toggle', 'User', /john doe \(john\.doe\)/i);
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -683,7 +695,7 @@ describe('AdminEditDispatch — edit', () => {
     api.getMedicines.mockResolvedValue({ data: editMedicines });
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ submittedById: 2, medicineId: 1 })]));
     renderPage();
-    await waitFor(() => screen.getByLabelText(/^user$/i));
+    await waitFor(() => screen.getByTestId('user-filter-toggle'));
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));
@@ -699,7 +711,7 @@ describe('AdminEditDispatch — edit', () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ submittedById: 2, medicineId: 1 })]));
     api.updateTransaction.mockResolvedValue({ data: makeTx({ submittedByUsername: 'jane.smith' }) });
     renderPage();
-    await waitFor(() => screen.getByLabelText(/^user$/i));
+    await waitFor(() => screen.getByTestId('user-filter-toggle'));
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));
@@ -726,7 +738,7 @@ describe('AdminEditDispatch — edit', () => {
     api.getTransactionHistory.mockResolvedValue(mkPage([makeTx({ submittedById: 2, medicineId: 1 })]));
     api.updateTransaction.mockResolvedValue({ data: makeTx() });
     renderPage();
-    await waitFor(() => screen.getByLabelText(/^user$/i));
+    await waitFor(() => screen.getByTestId('user-filter-toggle'));
 
     await userEvent.click(screen.getByRole('button', { name: /search/i }));
     await waitFor(() => screen.getByRole('table'));

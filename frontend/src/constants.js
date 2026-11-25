@@ -36,6 +36,22 @@ export const TRANSACTION_STATUSES = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 export const medicineStockTypeLabel = (type) =>
   type === 'ADMIN_MEDICINE_STOCK' ? 'Admin Stock' : 'Regular Stock';
 
+// ── Medicine option labels (filter dropdowns) ───────────────────────────────
+
+/**
+ * Brand-inclusive label for a medicine in a filter dropdown — "<Pharma Company> Vial <spec> ml"
+ * or "<Pharma Company> Tablet <spec> mg (10 Tablets)". Centralised here so every "Medicine Spec"
+ * filter across the app (ViewPastTransactions, AdminEditDispatch, ViewMedicineStockAdjustments,
+ * MyTransactions, ViewReports) shows the same brand-qualified label instead of each page
+ * formatting its own type+spec-only variant.
+ */
+export const medicineOptionLabel = (m) => {
+  const brand = m.pharmaCompany?.name ? `${m.pharmaCompany.name} ` : '';
+  return m.type === 'VIAL'
+    ? `${brand}Vial ${m.specification} ml`
+    : `${brand}Tablet ${m.specification} mg (10 Tablets)`;
+};
+
 // ── Payment status ──────────────────────────────────────────────────────
 
 /** Selectable payment status options, in display order. PAID is the default on submission. */

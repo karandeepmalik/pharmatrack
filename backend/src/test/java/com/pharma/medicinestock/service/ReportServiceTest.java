@@ -1056,7 +1056,7 @@ class ReportServiceTest {
             when(transactionRepository.findApprovedBetween(any(), any(), any()))
                     .thenReturn(List.of(johnTx, janeTx));
 
-            ReportResponse r = reportService.todaySales(null, null, "john.doe", null);
+            ReportResponse r = reportService.todaySales(null, null, List.of("john.doe"), null);
 
             assertThat(r.getContent()).contains("John Doe");
             assertThat(r.getContent()).doesNotContain("Jane Smith");
@@ -1071,8 +1071,8 @@ class ReportServiceTest {
             when(transactionRepository.findApprovedBetween(any(), any(), any()))
                     .thenReturn(List.of(johnTx, janeTx));
 
-            ReportResponse all = reportService.todaySales(null, null, "ALL", null);
-            ReportResponse blank = reportService.todaySales(null, null, "  ", null);
+            ReportResponse all = reportService.todaySales(null, null, List.of("ALL"), null);
+            ReportResponse blank = reportService.todaySales(null, null, List.of("  "), null);
 
             assertThat(all.getContent()).contains("John Doe").contains("Jane Smith");
             assertThat(blank.getContent()).contains("John Doe").contains("Jane Smith");
@@ -1087,7 +1087,7 @@ class ReportServiceTest {
             when(transactionRepository.findApprovedBetween(any(), any(), any()))
                     .thenReturn(List.of(vialTx, tabletTx));
 
-            ReportResponse r = reportService.todaySales(null, null, null, vial.getId());
+            ReportResponse r = reportService.todaySales(null, null, null, List.of(vial.getId()));
 
             assertThat(r.getContent()).contains("10 ml");
             assertThat(r.getContent()).doesNotContain("25 mg");
@@ -1104,7 +1104,7 @@ class ReportServiceTest {
             when(transactionRepository.findApprovedBetween(any(), any(), any()))
                     .thenReturn(List.of(johnVial, johnTablet, janeVial));
 
-            ReportResponse r = reportService.todaySales(null, null, "john.doe", vial.getId());
+            ReportResponse r = reportService.todaySales(null, null, List.of("john.doe"), List.of(vial.getId()));
 
             assertThat(r.getContent()).contains("john vial");
             assertThat(r.getContent()).doesNotContain("john tablet");
@@ -1118,7 +1118,7 @@ class ReportServiceTest {
             when(transactionRepository.findApprovedBetween(any(), any(), any()))
                     .thenReturn(List.of(johnTx));
 
-            ReportResponse r = reportService.todaySales(null, null, "jane.smith", null);
+            ReportResponse r = reportService.todaySales(null, null, List.of("jane.smith"), null);
 
             assertThat(r.getContent()).contains("No sales recorded today");
         }
