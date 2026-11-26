@@ -13,6 +13,10 @@ on:
       - "backend/**"
       - "frontend/**"
       - ".github/workflows/ci-cd.yml"
+  # Lets security-scan.yml explicitly re-run this pipeline after it merges a fix: a push/merge
+  # authored by the default GITHUB_TOKEN does not cascade-trigger other workflows (a GitHub
+  # anti-recursion rule), so the push trigger above never fires for that merge on its own.
+  workflow_dispatch: {}
 
 env:
   PROJECT_ID: project-35eb97fa-dede-4ae8-ba6
