@@ -1,0 +1,53 @@
+{
+  "//": "Permission policy for the unattended Claude Code run in security-scan.yml ONLY — passed explicitly via `claude --settings .github/security-scan-permissions.json`, deliberately NOT named .claude/settings.json, which Claude Code auto-discovers for every session in this repo (an earlier version of this file lived there and briefly locked an interactive session out of .github/** and .claude/** before being moved here). There is no human to answer a permission prompt in the unattended run, so this scopes exactly what can run without one, command-by-command (not whole-binary wildcards) — anything not explicitly listed is denied outright rather than bypassed. Edit/Write on .github/** and .claude/** itself are explicitly denied so the automation can never loosen its own guardrails or rewrite the deploy pipeline. The repo owner separately confirmed allowing `gh workflow run ci-cd.yml --ref main` specifically, since that triggers an unattended production deploy.",
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Grep(**)",
+      "Glob(**)",
+      "Edit(backend/**)",
+      "Write(backend/**)",
+      "Edit(frontend/**)",
+      "Write(frontend/**)",
+      "Edit(e2e/**)",
+      "Write(e2e/**)",
+      "Edit(e2e-browser/**)",
+      "Write(e2e-browser/**)",
+      "Bash(git checkout -b *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge --squash *)",
+      "Bash(gh pr view *)",
+      "Bash(gh run list *)",
+      "Bash(gh run view *)",
+      "Bash(gh workflow run ci-cd.yml --ref main)",
+      "Bash(make test-backend)",
+      "Bash(make test-frontend)",
+      "Bash(make up)",
+      "Bash(make down)",
+      "Bash(make down-v)",
+      "Bash(make test-e2e-browser)",
+      "Bash(mvn test *)",
+      "Bash(mvn verify *)",
+      "Bash(mvn clean test-compile *)",
+      "Bash(npm install)",
+      "Bash(npm test *)",
+      "Bash(npm run build)",
+      "Bash(npm run test:unit *)",
+      "Bash(curl *actuator/health*)",
+      "Bash(npx playwright test *)"
+    ],
+    "deny": [
+      "Edit(.github/**)",
+      "Write(.github/**)",
+      "Edit(.claude/**)",
+      "Write(.claude/**)"
+    ],
+    "defaultMode": "default"
+  }
+}

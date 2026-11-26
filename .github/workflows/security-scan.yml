@@ -1,0 +1,161 @@
+name: Scheduled Security Scan & Fix
+
+# Runs on the 20th of every month at 03:00 UTC — monthly security analysis (Semgrep SAST) +
+# pentest-style DAST (OWASP ZAP baseline) against the live production URLs, then Claude Code
+# (authenticated via a Claude subscription token, not a metered API key — see
+# CLAUDE_CODE_OAUTH_TOKEN below) reviews the findings, fixes real issues, and merges via this
+# repo's standing CLAUDE.md workflow (feature branch -> tests green -> squash-merge -> verify
+# prod health).
+on:
+  schedule:
+    - cron: "0 3 20 * *"
+  workflow_dispatch: {}
+
+env:
+  FRONTEND_URL: https://pharmatrack-frontend-558147403401.asia-south1.run.app
+  BACKEND_URL: https://pharmatrack-backend-558147403401.asia-south1.run.app
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════
+  # JOB 1 — Semgrep static analysis (source code, not live traffic)
+  # ════════════════════════════════════════════════════════════════════
+  semgrep-scan:
+    name: Semgrep — Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep (security + OWASP Top 10 rulesets)
+        # --json and --text are mutually-exclusive output-format flags, so this runs twice
+        # (same rules, same findings) rather than passing both in one invocation. Semgrep
+        # exits non-zero when it has findings — expected, not a scan failure — so neither
+        # invocation should fail the job; the whole point is to hand findings to the fix job.
+        run: |
+          SEMGREP_CONFIGS="--config=p/security-audit --config=p/owasp-top-ten --config=p/java --config=p/javascript"
+          semgrep scan $SEMGREP_CONFIGS --json --output=semgrep-results.json . || true
+          semgrep scan $SEMGREP_CONFIGS --text --output=semgrep-results.txt . || true
+
+      - name: Upload Semgrep results
+        uses: actions/upload-artifact@v6
+        with:
+          name: semgrep-results
+          path: semgrep-results.*
+          retention-days: 30
+
+  # ════════════════════════════════════════════════════════════════════
+  # JOB 2 — OWASP ZAP baseline scan (live, passive DAST against prod)
+  # ════════════════════════════════════════════════════════════════════
+  zap-scan:
+    name: OWASP ZAP — Baseline Pentest
+    runs-on: ubuntu-latest
+    steps:
+      - name: ZAP baseline — frontend
+        run: |
+          mkdir -p zap-reports
+          docker run --rm -v "$(pwd)/zap-reports:/zap/wrk/:rw" \
+            -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+            -t "${{ env.FRONTEND_URL }}" \
+            -r zap-frontend-report.html -J zap-frontend-report.json \
+            || true
+
+      - name: ZAP baseline — backend
+        run: |
+          docker run --rm -v "$(pwd)/zap-reports:/zap/wrk/:rw" \
+            -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+            -t "${{ env.BACKEND_URL }}/actuator/health" \
+            -r zap-backend-report.html -J zap-backend-report.json \
+            || true
+
+      - name: Upload ZAP reports
+        uses: actions/upload-artifact@v6
+        with:
+          name: zap-reports
+          path: zap-reports/
+          retention-days: 30
+
+  # ════════════════════════════════════════════════════════════════════
+  # JOB 3 — Claude Code reviews findings, fixes real issues, merges
+  # ════════════════════════════════════════════════════════════════════
+  claude-fix:
+    name: Claude Code — Review & Fix
+    runs-on: ubuntu-latest
+    needs: [semgrep-scan, zap-scan]
+    if: always()
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: semgrep-results
+          path: scan-reports/semgrep
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: zap-reports
+          path: scan-reports/zap
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Configure git identity for commits
+        run: |
+          git config user.name "pharmatrack-security-bot"
+          git config user.email "malikshopping@gmail.com"
+
+      - name: Review findings and fix real issues
+        run: |
+          claude -p "$(cat <<'PROMPT'
+          You are running as a scheduled, unattended security pass over this repository —
+          no human is watching this run in real time.
+
+          Scan reports from this run are at:
+            - scan-reports/semgrep/semgrep-results.json (and .txt) — static analysis findings
+            - scan-reports/zap/zap-frontend-report.json (and .html) — DAST baseline against the
+              live frontend at https://pharmatrack-frontend-558147403401.asia-south1.run.app
+            - scan-reports/zap/zap-backend-report.json (and .html) — DAST baseline against the
+              live backend at https://pharmatrack-backend-558147403401.asia-south1.run.app
+
+          Task:
+          1. Read every finding in all four reports. Both tools produce false positives —
+             triage each one against this app's actual code and architecture before acting.
+             Skip anything that isn't a real, exploitable issue; do not "fix" something that
+             is already correct just because a scanner flagged it.
+          2. For every finding you confirm is real, fix it directly in the code.
+          3. Follow this repo's CLAUDE.md exactly for everything else: branch naming, which
+             test commands are required before merging (backend + frontend unit tests are
+             mandatory; also run the e2e suite if your fix touches auth, rate limiting, or
+             any other area e2e/auth.test.js or e2e-browser covers, when this sandbox lets you
+             — if you can't start the Docker stack here, say so explicitly in the PR body
+             instead of silently skipping), commit message style, and the squash-merge-once-
+             green workflow.
+          4. If NOTHING real is found across all four reports, do not open a branch or PR —
+             just end the run. Don't invent work.
+          5. After merging (if you merged anything), run:
+               gh workflow run ci-cd.yml --ref main
+             This re-triggers the deploy pipeline — a merge authored by the CI token does not
+             auto-trigger it the normal way. Then wait about 90 seconds and curl
+             https://pharmatrack-backend-558147403401.asia-south1.run.app/actuator/health to
+             confirm the deploy is healthy, exactly as CLAUDE.md's post-merge step requires.
+          6. Write a short summary of what you found, what you fixed (or why you fixed
+             nothing), and the health-check result to the GitHub Actions step summary by
+             appending it to the file path in the GITHUB_STEP_SUMMARY environment variable.
+          PROMPT
+          )" --settings .github/security-scan-permissions.json
