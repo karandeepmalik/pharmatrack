@@ -117,6 +117,13 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: maven
+
       - name: Install Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code
 
@@ -144,13 +151,16 @@ jobs:
              Skip anything that isn't a real, exploitable issue; do not "fix" something that
              is already correct just because a scanner flagged it.
           2. For every finding you confirm is real, fix it directly in the code.
-          3. Follow this repo's CLAUDE.md exactly for everything else: branch naming, which
-             test commands are required before merging (backend + frontend unit tests are
-             mandatory; also run the e2e suite if your fix touches auth, rate limiting, or
-             any other area e2e/auth.test.js or e2e-browser covers, when this sandbox lets you
-             — if you can't start the Docker stack here, say so explicitly in the PR body
-             instead of silently skipping), commit message style, and the squash-merge-once-
-             green workflow.
+          3. Follow this repo's CLAUDE.md exactly for everything else: branch naming, commit
+             message style, and the squash-merge-once-green workflow. For backend tests,
+             run `mvn verify -P test -q` directly (Java 17 is already set up in this job,
+             JAVA_HOME is already correct) — do NOT use `make test-backend`, which hardcodes
+             a macOS-specific JAVA_HOME path that doesn't exist on this Linux runner. For
+             frontend, `cd frontend && npm install && npm run test:unit`. Also run the e2e
+             suite if your fix touches auth, rate limiting, or any other area
+             e2e/auth.test.js or e2e-browser covers, when this sandbox lets you — if you
+             can't start the Docker stack here, say so explicitly in the PR body instead of
+             silently skipping.
           4. If NOTHING real is found across all four reports, do not open a branch or PR —
              just end the run. Don't invent work.
           5. After merging (if you merged anything), run:
