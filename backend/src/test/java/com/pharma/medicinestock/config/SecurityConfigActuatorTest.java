@@ -10,7 +10,9 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -73,6 +75,29 @@ class SecurityConfigActuatorTest {
             // Stackdriver micrometer registry, not the Prometheus one. If that dependency is
             // ever added, this becomes a real 200 without any SecurityConfig change needed.
             mockMvc.perform(get("/actuator/prometheus")).andExpect(status().isNotFound());
+        }
+    }
+
+    @Nested @DisplayName("Security headers")
+    class SecurityHeaders {
+
+        @Test @DisplayName("HSTS is sent when the request arrives via X-Forwarded-Proto: https — "
+                + "the real production shape, since Cloud Run terminates TLS upstream and proxies "
+                + "plain HTTP, which would otherwise make request.isSecure() false and silently "
+                + "suppress Spring Security's HSTS header writer")
+        void hstsSentBehindForwardedProto() throws Exception {
+            mockMvc.perform(get("/actuator/health").header("X-Forwarded-Proto", "https"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Strict-Transport-Security", containsString("max-age=31536000")))
+                    .andExpect(header().string("Strict-Transport-Security", containsString("includeSubDomains")));
+        }
+
+        @Test @DisplayName("CSP includes form-action 'none' — it has no fallback to default-src, "
+                + "so it must be set explicitly or form submissions are left unrestricted")
+        void cspIncludesFormAction() throws Exception {
+            mockMvc.perform(get("/actuator/health"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Content-Security-Policy", containsString("form-action 'none'")));
         }
     }
 }
