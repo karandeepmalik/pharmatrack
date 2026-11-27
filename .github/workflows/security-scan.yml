@@ -54,7 +54,12 @@ jobs:
     steps:
       - name: ZAP baseline — frontend
         run: |
+          # chmod 777: the zaproxy image runs as a non-root internal user whose uid doesn't
+          # match the runner's — without this the container can't write zap.yaml or the report
+          # files into the bind-mounted dir (AccessDeniedException), even though the scan itself
+          # completes fine. Ephemeral CI runner, not a security concern.
           mkdir -p zap-reports
+          chmod 777 zap-reports
           docker run --rm -v "$(pwd)/zap-reports:/zap/wrk/:rw" \
             -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
             -t "${{ env.FRONTEND_URL }}" \
