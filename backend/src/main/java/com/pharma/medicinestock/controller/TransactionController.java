@@ -67,6 +67,35 @@ public class TransactionController {
                 .body(transactionService.submit(req, userDetails.getUsername()));
     }
 
+    /**
+     * Admin "Add User Dispatches" — same multipart shape as the regular submit endpoint, plus
+     * a required userId identifying which registered (non-admin) user this dispatch is for.
+     * Deducts from that user's own stock and shows up in their own dispatch history, exactly
+     * as if they'd submitted it themselves — see TransactionService.submitForUser.
+     */
+    @PostMapping(value = "/admin", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<TransactionResponse> submitForUser(
+            @RequestParam("userId") Long userId,
+            @RequestParam("medicineId") Long medicineId,
+            @RequestParam("quantity") BigDecimal quantity,
+            @RequestParam("notes") String notes,
+            @RequestParam(value = "screenshots", required = false) List<MultipartFile> screenshots,
+            @RequestParam(value = "pricePerUnit", required = false) Integer pricePerUnit,
+            @RequestParam(value = "medicineStockType", required = false) String medicineStockType,
+            @RequestParam(value = "submittedDate", required = false)
+                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedDate,
+            @RequestParam(value = "idempotencyKey", required = false) String idempotencyKey,
+            @RequestParam(value = "paymentStatus", required = false) String paymentStatus) throws IOException {
+
+        TransactionRequest req = buildRequest(medicineId, quantity, notes, screenshots, pricePerUnit, medicineStockType);
+        req.setSubmittedDate(submittedDate);
+        req.setIdempotencyKey(idempotencyKey);
+        req.setPaymentStatus(paymentStatus);
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(transactionService.submitForUser(req, userId));
+    }
+
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PagedResponse<TransactionResponse>> getAll(

@@ -248,6 +248,98 @@ class TransactionControllerTest {
         }
     }
 
+    // ── POST /api/transactions/admin (multipart) — Admin "Add User Dispatches" ──
+
+    @Nested
+    @DisplayName("POST /api/transactions/admin — admin submits on behalf of a selected user")
+    class AdminSubmitForUser {
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("submits for the given userId and returns 201")
+        void submitForUser_valid_201() throws Exception {
+            MockMultipartFile screenshot = new MockMultipartFile(
+                    "screenshots", "pay.png", "image/png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.<String[]>of(new String[]{"anY=", "image/png"}));
+            when(transactionService.submitForUser(any(), eq(2L))).thenReturn(sampleResponse);
+
+            mockMvc.perform(multipart("/api/transactions/admin")
+                    .file(screenshot)
+                    .param("userId", "2")
+                    .param("medicineId", "1")
+                    .param("quantity", "10")
+                    .param("notes", "Dispatched to clinic B for FIP treatment")
+                    .with(csrf()))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.submittedByUsername").value("john.doe"));
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("missing userId returns 400")
+        void submitForUser_missingUserId_400() throws Exception {
+            MockMultipartFile screenshot = new MockMultipartFile(
+                    "screenshots", "pay.png", "image/png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.<String[]>of(new String[]{"anY=", "image/png"}));
+
+            mockMvc.perform(multipart("/api/transactions/admin")
+                    .file(screenshot)
+                    .param("medicineId", "1")
+                    .param("quantity", "10")
+                    .param("notes", "Dispatched to clinic B for FIP treatment")
+                    .with(csrf()))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @WithMockUser(username = "admin", roles = "ADMIN")
+        @DisplayName("targeting an admin user returns 400")
+        void submitForUser_targetIsAdmin_400() throws Exception {
+            MockMultipartFile screenshot = new MockMultipartFile(
+                    "screenshots", "pay.png", "image/png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47});
+            when(screenshotProcessor.encodeAll(any()))
+                    .thenReturn(List.<String[]>of(new String[]{"anY=", "image/png"}));
+            when(transactionService.submitForUser(any(), eq(1L)))
+                    .thenThrow(new IllegalArgumentException("Admin user cannot hold medicine stock"));
+
+            mockMvc.perform(multipart("/api/transactions/admin")
+                    .file(screenshot)
+                    .param("userId", "1")
+                    .param("medicineId", "1")
+                    .param("quantity", "10")
+                    .param("notes", "Dispatched to clinic B for FIP treatment")
+                    .with(csrf()))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @WithMockUser(username = "john.doe", roles = "USER")
+        @DisplayName("USER role cannot access the admin submit endpoint")
+        void submitForUser_userRole_403() throws Exception {
+            mockMvc.perform(multipart("/api/transactions/admin")
+                    .param("userId", "2")
+                    .param("medicineId", "1")
+                    .param("quantity", "10")
+                    .param("notes", "A regular user trying to use the admin endpoint")
+                    .with(csrf()))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("unauthenticated request returns 401")
+        void submitForUser_noAuth_401() throws Exception {
+            mockMvc.perform(multipart("/api/transactions/admin")
+                    .param("userId", "2")
+                    .param("medicineId", "1")
+                    .param("quantity", "10")
+                    .param("notes", "Unauthorized admin-submit attempt")
+                    .with(csrf()))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
     // ── GET /api/transactions (admin) ──────────────────────────────────
 
     @Nested

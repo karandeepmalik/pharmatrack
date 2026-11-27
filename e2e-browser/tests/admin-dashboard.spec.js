@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 test.describe('Admin Dashboard', () => {
   test('renders nav cards in the requested sequence', async ({ page }) => {
     const links = page.locator('.nav-card');
-    await expect(links).toHaveCount(9);
+    await expect(links).toHaveCount(10);
 
     const hrefs = await links.evaluateAll(els => els.map(el => el.getAttribute('href')));
     expect(hrefs).toEqual([
@@ -17,6 +17,7 @@ test.describe('Admin Dashboard', () => {
       '/admin/past-transactions',
       '/admin/dispatch-records',
       '/admin/modify-medicine-stock',
+      '/admin/add-user-dispatch',
       '/admin/medicine-stock-adjustments',
       '/admin/users',
       '/admin/medicine-stock',
@@ -28,6 +29,12 @@ test.describe('Admin Dashboard', () => {
     await page.getByRole('link', { name: /review adjustments/i }).click();
     await expect(page).toHaveURL(/\/admin\/transactions/);
     await expect(page.getByRole('heading', { name: /review adjustments/i })).toBeVisible();
+  });
+
+  test('clicking Add User Dispatches navigates to the admin on-behalf-of submission page', async ({ page }) => {
+    await page.getByRole('link', { name: /add user dispatches/i }).click();
+    await expect(page).toHaveURL(/\/admin\/add-user-dispatch/);
+    await expect(page.getByRole('heading', { name: /add user dispatches/i })).toBeVisible();
   });
 
   test('clicking View Past Medicine Dispatches navigates to the history browser', async ({ page }) => {

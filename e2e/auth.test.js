@@ -2835,6 +2835,127 @@ async function run() {
     assert(Math.abs(current - bulkRejectRegularBefore) < 0.001, `Expected ${bulkRejectRegularBefore}, got ${current}`);
   });
 
+  // ── Admin: Add User Dispatches ───────────────────────────────────────
+  console.log('\n-- Admin: Add User Dispatches');
+
+  await test('Non-admin cannot fetch another user\'s available medicineStock (401/403)', async () => {
+    const r = await apiGet(`${API}/medicine-stock/available/${johnId}`, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  await test('Admin can fetch john.doe\'s available medicineStock via /available/{userId}', async () => {
+    const r = await apiGet(`${API}/medicine-stock/available/${johnId}`, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(Array.isArray(r.data), 'Expected array');
+  });
+
+  let addUserDispatchRegularBefore;
+  await test('[SETUP] Record john.doe REGULAR_MEDICINE_STOCK baseline before admin-add-user-dispatch test', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    addUserDispatchRegularBefore = inv ? inv.quantity : 0;
+    assert(addUserDispatchRegularBefore >= 0, 'Expected non-negative baseline');
+  });
+
+  await test('[SETUP] Allocate stock for admin-add-user-dispatch test', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'ADD',
+      quantity: 4,
+      note: 'E2E setup — allocating stock for admin-add-user-dispatch test',
+    }, adminToken);
+    assert(r.status === 200, `Setup allocation failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('Non-admin cannot submit a dispatch on behalf of another user (401/403)', async () => {
+    const r = await apiPostForm(`${API}/transactions/admin`, {
+      userId: String(johnId),
+      medicineId: String(adjustMedicineId),
+      quantity: '1',
+      notes: 'E2E admin-add-user-dispatch test — should be rejected for non-admin',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('AU1')],
+    }, userToken);
+    assert(r.status === 401 || r.status === 403, `Expected 401 or 403, got ${r.status}`);
+  });
+
+  await test('Admin cannot submit a dispatch on behalf of another admin (400)', async () => {
+    const r = await apiGet(`${API}/users`, adminToken);
+    const otherAdmin = r.data.find(u => u.role === 'ADMIN');
+    assert(otherAdmin, 'No ADMIN user found to use as the invalid target');
+    const subR = await apiPostForm(`${API}/transactions/admin`, {
+      userId: String(otherAdmin.id),
+      medicineId: String(adjustMedicineId),
+      quantity: '1',
+      notes: 'E2E admin-add-user-dispatch test — should be rejected, target is an admin',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('AU2')],
+    }, adminToken);
+    assert(subR.status === 400, `Expected 400, got ${subR.status}: ${JSON.stringify(subR.data)}`);
+  });
+
+  let adminOnBehalfTxId;
+  await test('Admin submits a dispatch on behalf of john.doe via POST /transactions/admin', async () => {
+    const r = await apiPostForm(`${API}/transactions/admin`, {
+      userId: String(johnId),
+      medicineId: String(adjustMedicineId),
+      quantity: '2',
+      notes: 'E2E admin-add-user-dispatch test — submitted on behalf of john.doe',
+      medicineStockType: 'REGULAR_MEDICINE_STOCK',
+      screenshots: [makeFakePng('AU3')],
+    }, adminToken);
+    assert(r.status === 201, `Expected 201, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(Math.abs(r.data.quantity - 2) < 0.001, `Expected quantity 2, got ${r.data.quantity}`);
+    assert(r.data.status === 'PENDING', `Expected PENDING, got ${r.data.status}`);
+    adminOnBehalfTxId = r.data.id;
+  });
+
+  await test('The admin-submitted dispatch deducted from john.doe\'s own settled stock, not the admin\'s', async () => {
+    const r = await apiGet(`${API}/medicine-stock/available/${johnId}`, adminToken);
+    const item = r.data.find(i => i.medicineId === adjustMedicineId && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const available = item ? item.quantity : 0;
+    // Setup allocated +4 on top of the recorded baseline; a single pending 2-unit reservation
+    // leaves baseline + 2 available for john.doe.
+    const expected = addUserDispatchRegularBefore + 2;
+    assert(Math.abs(available - expected) < 0.001, `Expected ${expected} available, got ${available}`);
+  });
+
+  await test('The admin-submitted dispatch shows up in john.doe\'s own dispatch history', async () => {
+    const r = await apiGet(`${API}/transactions/my?size=50`, userToken);
+    const match = r.data.content.find(t => t.id === adminOnBehalfTxId);
+    assert(match, 'Admin-submitted dispatch not found in john.doe\'s own /transactions/my history');
+    assert(match.notes === 'E2E admin-add-user-dispatch test — submitted on behalf of john.doe',
+      `Unexpected notes on found transaction: ${match.notes}`);
+  });
+
+  await test('Admin approves the admin-submitted dispatch like any normal pending transaction', async () => {
+    const r = await apiPost(`${API}/transactions/${adminOnBehalfTxId}/approve`, { approved: true }, adminToken);
+    assert(r.status === 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.data)}`);
+    assert(r.data.status === 'APPROVED', `Expected APPROVED, got ${r.data.status}`);
+  });
+
+  await test('[TEARDOWN] Removes the leftover allocation from admin-add-user-dispatch test', async () => {
+    const r = await apiPost(`${API}/medicine-stock/adjust`, {
+      userId: johnId,
+      medicineId: adjustMedicineId,
+      adjustmentType: 'REDUCE',
+      quantity: 2,
+      note: 'E2E teardown — removing allocation for admin-add-user-dispatch test',
+    }, adminToken);
+    assert(r.status === 200, `Teardown failed: ${r.status} ${JSON.stringify(r.data)}`);
+  });
+
+  await test('[VERIFY TEARDOWN] john.doe REGULAR_MEDICINE_STOCK restored after admin-add-user-dispatch test', async () => {
+    const r = await apiGet(`${API}/medicine-stock`, adminToken);
+    const inv = r.data.find(i => i.userId === johnId && i.medicineId === adjustMedicineId
+      && i.medicineStockType === 'REGULAR_MEDICINE_STOCK');
+    const restored = inv ? inv.quantity : 0;
+    assert(Math.abs(restored - addUserDispatchRegularBefore) < 0.001,
+      `Expected ${addUserDispatchRegularBefore}, got ${restored}`);
+  });
+
   // ── Summary ───────────────────────────────────────────────────────────
   console.log(`\n${'='.repeat(40)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);

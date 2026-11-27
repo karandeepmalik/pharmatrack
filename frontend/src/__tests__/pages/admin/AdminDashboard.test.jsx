@@ -99,6 +99,12 @@ describe('AdminDashboard — navigation cards', () => {
       .toHaveAttribute('href', '/admin/medicine-stock-adjustments');
   });
 
+  test('has link to add user dispatches', () => {
+    renderPage();
+    expect(screen.getByRole('link', { name: /add user dispatches/i }))
+      .toHaveAttribute('href', '/admin/add-user-dispatch');
+  });
+
   test('renders nav cards in the requested sequence', () => {
     renderPage();
     const hrefs = screen.getAllByRole('link').map(link => link.getAttribute('href'));
@@ -109,6 +115,7 @@ describe('AdminDashboard — navigation cards', () => {
       '/admin/past-transactions',
       '/admin/dispatch-records',
       '/admin/modify-medicine-stock',
+      '/admin/add-user-dispatch',
       '/admin/medicine-stock-adjustments',
       '/admin/users',
       '/admin/medicine-stock',
