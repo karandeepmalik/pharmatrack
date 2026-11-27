@@ -4,15 +4,10 @@
     "allow": [
       "Read(**)",
       "Grep(**)",
-      "Glob(**)",
       "Edit(backend/**)",
-      "Write(backend/**)",
       "Edit(frontend/**)",
-      "Write(frontend/**)",
       "Edit(e2e/**)",
-      "Write(e2e/**)",
       "Edit(e2e-browser/**)",
-      "Write(e2e-browser/**)",
       "Bash(git checkout -b *)",
       "Bash(git add *)",
       "Bash(git commit *)",
@@ -44,9 +39,7 @@
     ],
     "deny": [
       "Edit(.github/**)",
-      "Write(.github/**)",
-      "Edit(.claude/**)",
-      "Write(.claude/**)"
+      "Edit(.claude/**)"
     ],
     "defaultMode": "default"
   }
