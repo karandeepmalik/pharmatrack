@@ -36,7 +36,10 @@ public class SecurityConfig {
                 .frameOptions(f->f.deny())
                 .contentTypeOptions(org.springframework.security.config.Customizer.withDefaults())
                 .httpStrictTransportSecurity(hsts->hsts.includeSubDomains(true).maxAgeInSeconds(31536000))
-                .contentSecurityPolicy(csp->csp.policyDirectives("default-src 'none'; frame-ancestors 'none'")))
+                // form-action has no fallback to default-src under CSP (unlike most directives),
+                // so "default-src 'none'" alone leaves form submissions unrestricted — this is
+                // an API-only backend with no HTML forms, so 'none' is correct here too.
+                .contentSecurityPolicy(csp->csp.policyDirectives("default-src 'none'; frame-ancestors 'none'; form-action 'none'")))
             .sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a->a
                 .requestMatchers("/api/auth/**","/actuator/health").permitAll()
