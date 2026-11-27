@@ -11,6 +11,7 @@ export default function AdminDashboard(){
             <Link to="/admin/past-transactions" className="nav-card"><h2>🕐 View Past Medicine Dispatches</h2><p>Browse transaction history by date range</p></Link>
             <Link to="/admin/dispatch-records" className="nav-card"><h2>✏️ Modify or Delete a Medicine Dispatch Record</h2><p>Search, edit notes or delete past dispatch records</p></Link>
             <Link to="/admin/modify-medicine-stock" className="nav-card"><h2>🔄 Modify Medicine Stock</h2><p>Add or reduce user medicine stock</p></Link>
+            <Link to="/admin/add-user-dispatch" className="nav-card"><h2>➕ Add User Dispatches</h2><p>Submit a dispatch on behalf of a registered user</p></Link>
             <Link to="/admin/medicine-stock-adjustments" className="nav-card"><h2>📝 Medicine Stock Modifications History</h2><p>Browse and delete medicine stock adjustment records</p></Link>
             <Link to="/admin/users" className="nav-card"><h2>👥 Manage Users</h2><p>Add users, manage access and passwords</p></Link>
             <Link to="/admin/medicine-stock" className="nav-card"><h2>📋 View Available Medicine Stock</h2><p>See all user stock levels</p></Link>

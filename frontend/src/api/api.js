@@ -56,6 +56,9 @@ export const getAvailableMedicineStock = () => api.get('/medicine-stock/availabl
 // ── Medicine stock — admin ──────────────────────────────────────────────
 export const getAdminMedicineStock = ()     => api.get('/medicine-stock');
 export const adjustMedicineStock   = (data) => api.post('/medicine-stock/adjust', data);
+// Admin "Add User Dispatches" — the same available-stock shape a user sees for themselves,
+// fetched for a selected target user instead of the authenticated caller.
+export const getAvailableMedicineStockForUser = (userId) => api.get(`/medicine-stock/available/${userId}`);
 
 // ── Medicines ──────────────────────────────────────────────────────────
 export const getMedicines    = ()     => api.get('/medicines');
@@ -79,6 +82,29 @@ export const submitTransaction = ({ medicineId, quantity, notes, screenshotFiles
   if (idempotencyKey) form.append('idempotencyKey', idempotencyKey);
   if (paymentStatus) form.append('paymentStatus', paymentStatus);
   return api.post('/transactions', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+/**
+ * Admin "Add User Dispatches" — submits a dispatch on behalf of a selected registered user
+ * rather than the authenticated caller. Same shape/semantics as submitTransaction (deducts
+ * from the target user's own stock, created PENDING, needs approval same as any user
+ * submission) — just routed to the admin-only endpoint with the target userId attached.
+ */
+export const submitTransactionForUser = (userId, { medicineId, quantity, notes, screenshotFiles, pricePerUnit, medicineStockType, submittedDate, idempotencyKey, paymentStatus }) => {
+  const form = new FormData();
+  form.append('userId',     String(userId));
+  form.append('medicineId', String(medicineId));
+  form.append('quantity',   String(quantity));
+  form.append('notes',      notes);
+  (screenshotFiles || []).forEach((file) => form.append('screenshots', file));
+  if (pricePerUnit != null) form.append('pricePerUnit', String(pricePerUnit));
+  if (medicineStockType) form.append('medicineStockType', medicineStockType);
+  if (submittedDate) form.append('submittedDate', submittedDate);
+  if (idempotencyKey) form.append('idempotencyKey', idempotencyKey);
+  if (paymentStatus) form.append('paymentStatus', paymentStatus);
+  return api.post('/transactions/admin', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 };

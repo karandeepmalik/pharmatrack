@@ -13,6 +13,7 @@ import ViewPastTransactions from './pages/admin/ViewPastTransactions';
 import ManageMedicines from './pages/admin/ManageMedicines';
 import AdminEditDispatch from './pages/admin/AdminEditDispatch';
 import ViewMedicineStockAdjustments from './pages/admin/ViewMedicineStockAdjustments';
+import AdminAddUserDispatch from './pages/admin/AdminAddUserDispatch';
 import UserDashboard from './pages/user/UserDashboard';
 import SubmitTransaction from './pages/user/SubmitTransaction';
 import MyTransactions from './pages/user/MyTransactions';
@@ -30,6 +31,7 @@ export default function App(){
         <Route path="/admin/medicines" element={<ProtectedRoute adminOnly><ManageMedicines/></ProtectedRoute>}/>
         <Route path="/admin/dispatch-records" element={<ProtectedRoute adminOnly><AdminEditDispatch/></ProtectedRoute>}/>
         <Route path="/admin/medicine-stock-adjustments" element={<ProtectedRoute adminOnly><ViewMedicineStockAdjustments/></ProtectedRoute>}/>
+        <Route path="/admin/add-user-dispatch" element={<ProtectedRoute adminOnly><AdminAddUserDispatch/></ProtectedRoute>}/>
         <Route path="/user/dashboard" element={<ProtectedRoute><UserDashboard/></ProtectedRoute>}/>
         <Route path="/user/submit" element={<ProtectedRoute><SubmitTransaction/></ProtectedRoute>}/>
         <Route path="/user/transactions" element={<ProtectedRoute><MyTransactions/></ProtectedRoute>}/>

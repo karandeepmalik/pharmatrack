@@ -129,6 +129,32 @@ class MedicineStockControllerTest {
         }
     }
 
+    // ── GET /api/medicine-stock/available/{userId} ─────────────────────────
+
+    @Nested @DisplayName("GET /api/medicine-stock/available/{userId} — admin views a specific user's medicineStock")
+    class GetAvailableForUser {
+        @Test @WithMockUser(roles = "ADMIN")
+        void adminCanGetAvailableForUser() throws Exception {
+            when(medicineStockService.getAvailableForUser(2L)).thenReturn(List.of(sampleResponse));
+            mockMvc.perform(get("/api/medicine-stock/available/2"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(jsonPath("$[0].username").value("john.doe"));
+        }
+
+        @Test @WithMockUser(roles = "USER")
+        void userForbidden() throws Exception {
+            mockMvc.perform(get("/api/medicine-stock/available/2"))
+                    .andExpect(status().isForbidden());
+        }
+
+        @Test
+        void unauthenticatedUnauthorized() throws Exception {
+            mockMvc.perform(get("/api/medicine-stock/available/2"))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
     // ── POST /api/medicine-stock/adjust ────────────────────────────────────
 
     @Nested @DisplayName("POST /api/medicine-stock/adjust — admin adjusts user medicineStock")

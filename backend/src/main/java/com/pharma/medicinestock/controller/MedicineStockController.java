@@ -23,6 +23,14 @@ public class MedicineStockController {
         return ResponseEntity.ok(medicineStockService.getAvailableForUser(uid));
     }
 
+    /** Admin "Add User Dispatches" — the same available-stock view a user sees for themselves,
+     *  fetched for a selected target user instead of the authenticated caller. */
+    @GetMapping("/available/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<MedicineStockResponse>> getAvailableForUser(@PathVariable Long userId) {
+        return ResponseEntity.ok(medicineStockService.getAvailableForUser(userId));
+    }
+
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<MedicineStockResponse>> getAll() {

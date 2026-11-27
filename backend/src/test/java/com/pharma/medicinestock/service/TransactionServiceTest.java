@@ -519,6 +519,56 @@ class TransactionServiceTest {
         }
     }
 
+    // ── submitForUser() — Admin "Add User Dispatches" ──────────────────
+
+    @Nested @DisplayName("submitForUser()")
+    class SubmitForUser {
+
+        @Test @DisplayName("resolves the target user by id and delegates to submit() with their username")
+        void submitForUser_valid_delegatesToSubmitWithTargetUsername() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            Transaction tx = savedTx(req);
+
+            when(userRepository.findById(1L)).thenReturn(Optional.of(regularUser));
+            when(userRepository.findByUsername("john.doe")).thenReturn(Optional.of(regularUser));
+            when(medicineRepository.findById(1L)).thenReturn(Optional.of(medicine));
+            when(medicineStockRepository.findByUserIdAndMedicineIdAndMedicineStockType(1L, 1L, MedicineStock.MedicineStockType.REGULAR_MEDICINE_STOCK))
+                    .thenReturn(Optional.of(medicineStock));
+            when(medicineStockRepository.save(any())).thenReturn(medicineStock);
+            when(transactionRepository.save(any())).thenReturn(tx);
+            when(transactionMapper.toResponse(tx)).thenReturn(stubResponse(tx));
+
+            TransactionResponse res = transactionService.submitForUser(req, 1L);
+
+            assertThat(res.getStatus()).isEqualTo("PENDING");
+            verify(medicineStockRepository).save(argThat(i -> i.getQuantity().compareTo(BigDecimal.valueOf(40)) == 0));
+        }
+
+        @Test @DisplayName("targeting a non-existent userId throws ResourceNotFoundException")
+        void submitForUser_userNotFound_throwsResourceNotFound() {
+            TransactionRequest req = buildReq("Dispatched to clinic B for FIP treatment");
+            when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> transactionService.submitForUser(req, 999L))
+                    .isInstanceOf(ResourceNotFoundException.class)
+                    .hasMessageContaining("User").hasMessageContaining("999");
+            verifyNoInteractions(medicineStockRepository);
+        }
+
+        @Test @DisplayName("targeting an ADMIN-role user is rejected before any stock is touched")
+        void submitForUser_targetIsAdmin_throwsIllegalArgument() {
+            TransactionRequest req = buildReq("Trying to dispatch to the admin account");
+            User admin = new User();
+            admin.setId(2L); admin.setUsername("admin"); admin.setRole(User.Role.ADMIN);
+            when(userRepository.findById(2L)).thenReturn(Optional.of(admin));
+
+            assertThatThrownBy(() -> transactionService.submitForUser(req, 2L))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Admin user cannot hold medicine stock");
+            verifyNoInteractions(medicineStockRepository, medicineRepository, transactionRepository);
+        }
+    }
+
     // ── getAllPaged() ─────────────────────────────────────────────────
 
     @Nested @DisplayName("getAllPaged()")

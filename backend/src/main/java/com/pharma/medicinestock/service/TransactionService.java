@@ -125,6 +125,25 @@ public class TransactionService {
         return transactionMapper.toResponse(saved);
     }
 
+    /**
+     * Admin "Add User Dispatches" — submits a dispatch on behalf of a selected user rather than
+     * the authenticated caller. Deliberately a thin wrapper around {@link #submit}, not a
+     * parallel implementation: the resulting transaction is PENDING, deducts from the target
+     * user's own settled stock, and shows up in that user's own dispatch history exactly as if
+     * they had submitted it themselves — admin involvement here is only about who initiated it,
+     * not a different approval path. Same "admin can't hold medicine stock" guard as the
+     * reassignment path in {@link #updateTransaction}.
+     */
+    @Transactional
+    public TransactionResponse submitForUser(TransactionRequest req, Long targetUserId) {
+        User targetUser = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", targetUserId));
+        if (targetUser.getRole() == User.Role.ADMIN) {
+            throw new IllegalArgumentException("Admin user cannot hold medicine stock");
+        }
+        return submit(req, targetUser.getUsername());
+    }
+
     @Transactional(readOnly = true)
     public Page<TransactionResponse> getAllPaged(String status, int page, int size) {
         PageRequest pageable = PageRequest.of(page, size);
